@@ -6,26 +6,41 @@ import pandas as pd
 import numpy as np
 import google.generativeai as genai
 from PIL import Image
+import requests
+import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Tri-Dimensional Kernel",
-    page_icon="💠",
+    page_title="SI-QA: Command Center",
+    page_icon="🚀",
     layout="wide"
 )
 
 # --- ESTILO VISUAL ---
 st.markdown("""
 <style>
-    .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
-    .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; }
-    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
-    h1, h2, h3 { color: #00ff00 !important; }
-    .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
+    .stApp { background-color: #050505; color: #00ff41; font-family: 'Consolas', monospace; }
+    .stButton>button { background-color: #004d00; color: #fff; border: 1px solid #00ff41; font-weight: bold; }
+    .stTextInput>div>div>input { background-color: #111; color: #00ff41; border: 1px solid #333; }
+    h1, h2, h3 { color: #00ff41 !important; }
+    .stSuccess { background-color: #003300; color: white; }
+    .stError { background-color: #330000; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- PROMPT MESTRE ORIGINAL (MANTIDO INTACTO) ---
+# --- MAPA DE TIMEFRAMES (INTELIGÊNCIA HÍBRIDA) ---
+# Converte o que a IA lê na imagem para segundos da API Deriv
+TIMEFRAME_MAP = {
+    "1M": 60, "M1": 60, "1 MINUTE": 60,
+    "5M": 300, "M5": 300, "5 MINUTES": 300,
+    "15M": 900, "M15": 900, "15 MINUTES": 900,
+    "30M": 1800, "M30": 1800, "30 MINUTES": 1800,
+    "1H": 3600, "H1": 3600, "1 HOUR": 3600,
+    "4H": 14400, "H4": 14400, "4 HOURS": 14400,
+    "1D": 86400, "D1": 86400, "DAILY": 86400
+}
+
+# --- PROMPT MESTRE (MANTIDO INTACTO) ---
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
 You are the "Synthetic Indices Quantum Architect" (SI-QA).
@@ -142,7 +157,7 @@ COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
 )
 """
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES DE API ---
 
 @st.cache_data(ttl=3600)
 def buscar_lista_ativos_deriv():
@@ -163,17 +178,20 @@ def buscar_lista_ativos_deriv():
         except: return None
     return asyncio.run(_fetch())
 
-async def get_deriv_history_hybrid(symbol_code):
+async def get_deriv_data_dynamic(symbol_code, granularity):
+    """
+    Baixa dados com granularidade dinâmica baseada na imagem.
+    """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
             req = {
                 "ticks_history": symbol_code,
                 "adjust_start_time": 1,
-                "count": 500, 
+                "count": 300, 
                 "end": "latest",
                 "style": "candles",
-                "granularity": 3600 # H1 Data Source
+                "granularity": granularity
             }
             await websocket.send(json.dumps(req))
             res = await websocket.recv()
@@ -183,163 +201,210 @@ async def get_deriv_history_hybrid(symbol_code):
     except Exception as e:
         return None, str(e)
 
-def calcular_indicadores_hibridos(df):
+# --- FUNÇÕES AUXILIARES (TELEGRAM & CÁLCULOS) ---
+
+def enviar_telegram(token, chat_id, mensagem):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, json=payload)
+    except:
+        pass
+
+def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
-    df['high'] = df['high'].astype(float)
-    df['low'] = df['low'].astype(float)
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
+    df['Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
+    df['Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
-    df['tr'] = np.maximum((df['high'] - df['low']), 
-                          np.maximum(abs(df['high'] - df['close'].shift()), 
-                                     abs(df['low'] - df['close'].shift())))
-    df['ATR'] = df['tr'].rolling(window=14).mean()
     return df.dropna()
 
-def executar_backtest_estatistico(df):
-    total = len(df)
-    candles_acima_ema200 = len(df[df['close'] > df['EMA_200']])
-    forca_tendencia = (candles_acima_ema200 / total) * 100
-    return f"""
-    [HYBRID DATA ANALYSIS - LAST {total} HOURS]
-    - EMA 200 (Long Term Trend): {df['EMA_200'].iloc[-1]:.2f}
-    - Trend Stability Score: {forca_tendencia:.1f}% ( > 50% implies Bullish Macro)
-    - Current Volatility (ATR): {df['ATR'].iloc[-1]:.4f}
+def analisar_imagem_completa(img, model, lista_ativos):
     """
-
-def identificar_ativo_via_ia(img, model, lista_oficial_ativos):
-    prompt = "Extract the ASSET NAME from the chart header exactly. Return ONLY the name."
+    Melhoria 1: Detecta NOME e TIMEFRAME da imagem.
+    """
+    prompt = """
+    Look at the chart header. 
+    1. Identify the Asset Name (e.g. Crash 1000 Index).
+    2. Identify the Timeframe (e.g. M1, M15, H1, 1 Minute).
+    Return Format: ASSET|TIMEFRAME
+    """
     try:
         response = model.generate_content([prompt, img])
-        texto_detectado = response.text.upper().strip()
-        texto_limpo = texto_detectado.replace("INDEX", "").strip()
-        melhor_match = None
-        codigo_match = None
-        for nome_oficial, codigo in lista_oficial_ativos.items():
-            nome_oficial_limpo = nome_oficial.replace("INDEX", "").strip()
-            if texto_limpo in nome_oficial_limpo or nome_oficial_limpo in texto_limpo:
-                melhor_match = nome_oficial
-                codigo_match = codigo
-                if texto_limpo == nome_oficial_limpo: break
-        return melhor_match, codigo_match, texto_detectado
+        texto = response.text.upper().strip()
+        
+        if "|" in texto:
+            nome_raw, tf_raw = texto.split("|")
+        else:
+            nome_raw, tf_raw = texto, "M15" # Fallback
+            
+        # Match Nome do Ativo
+        nome_ativo = None
+        codigo_ativo = None
+        nome_raw_clean = nome_raw.replace("INDEX", "").strip()
+        
+        for nome_oficial, codigo in lista_ativos.items():
+            nome_oficial_clean = nome_oficial.replace("INDEX", "").strip()
+            if nome_raw_clean in nome_oficial_clean or nome_oficial_clean in nome_raw_clean:
+                nome_ativo = nome_oficial
+                codigo_ativo = codigo
+                if nome_raw_clean == nome_oficial_clean: break
+        
+        # Match Timeframe
+        segundos = 3600 # Default H1
+        tf_label = "H1 (Default)"
+        
+        for key, val in TIMEFRAME_MAP.items():
+            if key in tf_raw.strip():
+                segundos = val
+                tf_label = f"{key} ({val}s)"
+                break
+                
+        return nome_ativo, codigo_ativo, segundos, tf_label
+        
     except Exception as e:
-        return None, None, str(e)
+        return None, None, 3600, str(e)
 
 # --- INTERFACE ---
 
-st.sidebar.header("⚙️ SI-QA CONFIG")
+st.sidebar.header("⚙️ SI-QA SETTINGS")
+
+# Segredos / API Keys
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
-    st.sidebar.success("✅ Conectado")
 else:
     api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
-st.title("💠 SI-QA: Tri-Dimensional Analyst")
-st.markdown("### Fusão Fractal: M15 (Entrada) + H1 (Tendência) + H4 (Estrutura)")
+st.sidebar.divider()
+st.sidebar.subheader("📡 Telegram Radar")
+tg_token = st.sidebar.text_input("Bot Token", type="password")
+tg_chat = st.sidebar.text_input("Chat ID")
 
-with st.spinner("Carregando Ativos Deriv..."):
+st.sidebar.divider()
+modo = st.sidebar.radio("Modo de Operação:", ["Análise Visual (Upload)", "Radar Automático 24/7"])
+
+with st.spinner("Conectando Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 
-if not LISTA_ATIVOS:
-    st.error("Sem conexão com a Deriv.")
-    st.stop()
+if not LISTA_ATIVOS: st.stop()
 
-# --- ÁREA DE UPLOAD TRIPLO ---
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.info("🕒 Curto Prazo")
-    img_m15 = st.file_uploader("Gráfico M15 (Gatilho)", type=['png', 'jpg'], key="m15")
-
-with col2:
-    st.info("🕒 Médio Prazo")
-    img_h1 = st.file_uploader("Gráfico H1 (Tendência)", type=['png', 'jpg'], key="h1")
-
-with col3:
-    st.info("🕒 Longo Prazo")
-    img_h4 = st.file_uploader("Gráfico H4 (Estrutura)", type=['png', 'jpg'], key="h4")
-
-if st.button("INICIAR ANÁLISE MULTI-FRACTAL", type="primary"):
-    if not api_key:
-        st.error("Falta API Key.")
-        st.stop()
+# ==========================================================
+# MODO 1: ANÁLISE VISUAL (MELHORIA 1 - DINÂMICO)
+# ==========================================================
+if modo == "Análise Visual (Upload)":
+    st.title("👁️ SI-QA: Dynamic Analysis")
+    st.markdown("### Detecta Ativo e Timeframe Automaticamente")
     
-    # Validação mínima: Pelo menos uma imagem é necessária
-    if not img_m15 and not img_h1 and not img_h4:
-        st.error("Por favor, envie pelo menos uma imagem (Recomendado: M15).")
-        st.stop()
+    col1, col2, col3 = st.columns(3)
+    with col1: img_main = st.file_uploader("Gráfico Principal (Define a Matemática)", type=['png', 'jpg'])
+    with col2: img_h1 = st.file_uploader("Gráfico H1 (Contexto)", type=['png', 'jpg'])
+    with col3: img_h4 = st.file_uploader("Gráfico H4 (Estrutura)", type=['png', 'jpg'])
+    
+    if st.button("EXECUTAR ANÁLISE", type="primary"):
+        if not api_key or not img_main:
+            st.error("API Key e Imagem Principal são obrigatórias.")
+            st.stop()
+            
+        status = st.status("Iniciando Visão Computacional...", expanded=True)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-3-flash-preview")
         
-    status = st.status("Iniciando Módulo de Fusão Fractal...", expanded=True)
-    
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-3-flash-preview")
-    
-    # 1. IDENTIFICAÇÃO (Usa a primeira imagem disponível)
-    status.write("👁️ Identificando Ativo...")
-    img_para_identificar = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
-    
-    nome_ativo, codigo, txt = identificar_ativo_via_ia(Image.open(img_para_identificar), model, LISTA_ATIVOS)
-    
-    if not nome_ativo:
-        status.update(label="Falha de Visão", state="error")
-        st.error(f"Não reconhecido: {txt}")
-        st.stop()
+        # 1. VISÃO DINÂMICA
+        status.write("👁️ Lendo Ativo e Timeframe da imagem...")
+        nome, codigo, segundos, tf_nome = analisar_imagem_completa(Image.open(img_main), model, LISTA_ATIVOS)
         
-    status.write(f"✅ Ativo Detectado: {nome_ativo}")
-    
-    # 2. DADOS (H1 - Híbrido)
-    status.write("📡 Baixando dados matemáticos...")
-    candles, erro = asyncio.run(get_deriv_history_hybrid(codigo))
-    if erro: st.error(erro); st.stop()
-    
-    # 3. CÁLCULOS
-    df = pd.DataFrame(candles)
-    df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
-    df_full = calcular_indicadores_hibridos(df)
-    stats = executar_backtest_estatistico(df_full)
-    
-    # 4. PREPARAR INPUTS (LISTA DE IMAGENS)
-    inputs_gemini = [SYSTEM_PROMPT]
-    
-    # Prompt de Contexto para as Imagens
-    contexto_imagens = "IMAGES PROVIDED FOR ANALYSIS:\n"
-    if img_m15: 
-        inputs_gemini.append(Image.open(img_m15))
-        contexto_imagens += "- IMAGE 1: M15 CHART (Look for Entry Triggers/Spikes)\n"
-    if img_h1: 
-        inputs_gemini.append(Image.open(img_h1))
-        contexto_imagens += "- IMAGE 2: H1 CHART (Look for Trend Direction)\n"
-    if img_h4: 
-        inputs_gemini.append(Image.open(img_h4))
-        contexto_imagens += "- IMAGE 3: H4 CHART (Look for Major Support/Resistance)\n"
+        if not nome:
+            status.update(label="Erro", state="error")
+            st.error("Falha na leitura.")
+            st.stop()
+            
+        status.write(f"✅ Ativo: **{nome}** | Timeframe Visual: **{tf_nome}**")
+        
+        # 2. DADOS PRECISOS
+        status.write(f"📡 Baixando dados matemáticos correspondentes ({segundos}s)...")
+        candles, erro = asyncio.run(get_deriv_data_dynamic(codigo, segundos))
+        
+        if erro: st.error(erro); st.stop()
+        
+        df = pd.DataFrame(candles)
+        df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
+        df_full = calcular_indicadores(df)
+        
+        # 3. GERAÇÃO
+        prompt_injecao = f"""
+        TARGET ASSET: {nome}
+        DETECTED TIMEFRAME: {tf_nome}
+        CURRENT PRICE: {df_full.iloc[-1]['close']}
+        
+        === MATCHING MATH DATA (LAST 15 CANDLES) ===
+        {df_full.tail(15).to_string()}
+        
+        TASK: Analyze using the specific logic for {tf_nome}.
+        """
+        
+        inputs = [SYSTEM_PROMPT, prompt_injecao, Image.open(img_main)]
+        if img_h1: inputs.append(Image.open(img_h1))
+        if img_h4: inputs.append(Image.open(img_h4))
+        
+        status.write("🧠 SI-QA Decodificando...")
+        response = model.generate_content(inputs)
+        status.update(label="Sucesso", state="complete", expanded=False)
+        
+        st.divider()
+        st.markdown(response.text)
 
-    prompt_injecao = f"""
-    TARGET ASSET: {nome_ativo}
-    CURRENT PRICE: {df_full.iloc[-1]['close']}
+# ==========================================================
+# MODO 2: RADAR AUTOMÁTICO (MELHORIA 2 - TELEGRAM)
+# ==========================================================
+elif modo == "Radar Automático 24/7":
+    st.title("📡 SI-QA: Silent Radar")
+    st.markdown("### Monitoramento Matemático em Segundo Plano")
     
-    {contexto_imagens}
+    ativos_alvo = st.multiselect("Selecione Ativos para Monitorar:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX", "VOLATILITY 75 INDEX"])
+    intervalo = st.slider("Intervalo de Varredura (Segundos)", 60, 300, 60)
     
-    === HYBRID MATH DATA (H1 TIMEFRAME) ===
-    {df_full.tail(15).to_string()}
-    
-    === STATISTICAL CONTEXT ===
-    {stats}
-    
-    === TASK: MULTI-TIMEFRAME DECISION ===
-    1. Cross-reference the Visual Structures (M15/H1/H4).
-    2. Confirm validity with Math Data.
-    3. Auto-Decide Strategy (Day Trade vs Swing) based on Confluence.
-    4. Execute SI-QA Logic.
-    """
-    
-    inputs_gemini.append(prompt_injecao)
-    
-    status.write("🧠 Cruzando dados M15/H1/H4 com Matemática...")
-    response = model.generate_content(inputs_gemini)
-    
-    status.update(label="Análise Concluída", state="complete", expanded=False)
-    st.divider()
-    st.markdown(response.text)
+    if st.button("ATIVAR RADAR", type="primary"):
+        if not tg_token or not tg_chat:
+            st.error("Configure o Token e Chat ID do Telegram na barra lateral.")
+            st.stop()
+            
+        st.success("📡 Radar Ativo! Mantenha esta aba aberta. Verifique seu Telegram.")
+        enviar_telegram(tg_token, tg_chat, "🚨 SI-QA RADAR INICIADO 🚨\nMonitorando o mercado...")
+        
+        placeholder = st.empty()
+        
+        while True:
+            log_scan = []
+            for nome_ativo in ativos_alvo:
+                codigo = LISTA_ATIVOS[nome_ativo]
+                
+                # Baixa dados M15 para o Radar (Padrão de Alerta)
+                candles, erro = asyncio.run(get_deriv_data_dynamic(codigo, 900))
+                
+                if candles:
+                    df = pd.DataFrame(candles)
+                    df = calcular_indicadores(df)
+                    last = df.iloc[-1]
+                    
+                    # --- LÓGICA DE ALERTA MATEMÁTICO (MATH GATES) ---
+                    # 1. Z-Score Extremo (Reversão)
+                    if abs(last['Z_Score']) > 2.8:
+                        msg = f"🚨 **ALERTA: {nome_ativo}**\nZ-Score Crítico: {last['Z_Score']:.2f}\nPossível Reversão Iminente!"
+                        enviar_telegram(tg_token, tg_chat, msg)
+                        log_scan.append(f"{nome_ativo}: 🔴 ALERTA ENVIADO (Z-Score)")
+                    
+                    # 2. Rompimento de Bandas (Volatilidade)
+                    elif last['close'] > last['Upper'] or last['close'] < last['Lower']:
+                        msg = f"⚠️ **ATIVIDADE: {nome_ativo}**\nPreço rompeu Bandas de Bollinger.\nAlta Volatilidade."
+                        enviar_telegram(tg_token, tg_chat, msg)
+                        log_scan.append(f"{nome_ativo}: 🟡 Aviso Enviado")
+                        
+                    else:
+                        log_scan.append(f"{nome_ativo}: ...Monitorando (Z: {last['Z_Score']:.2f})")
+                
+                time.sleep(1) # Delay leve entre ativos
+            
+            placeholder.code("\n".join(log_scan))
+            time.sleep(intervalo)
