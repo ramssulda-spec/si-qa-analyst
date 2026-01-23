@@ -9,8 +9,8 @@ from PIL import Image
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Auto-Decision Kernel",
-    page_icon="🧠",
+    page_title="SI-QA: Tri-Dimensional Kernel",
+    page_icon="💠",
     layout="wide"
 )
 
@@ -21,10 +21,11 @@ st.markdown("""
     .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; }
     div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
+    .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- PROMPT MESTRE ORIGINAL (INALTERADO) ---
+# --- PROMPT MESTRE ORIGINAL (MANTIDO INTACTO) ---
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
 You are the "Synthetic Indices Quantum Architect" (SI-QA).
@@ -145,7 +146,6 @@ COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
 
 @st.cache_data(ttl=3600)
 def buscar_lista_ativos_deriv():
-    """Baixa lista oficial da Deriv"""
     async def _fetch():
         uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
         try:
@@ -164,10 +164,6 @@ def buscar_lista_ativos_deriv():
     return asyncio.run(_fetch())
 
 async def get_deriv_history_hybrid(symbol_code):
-    """
-    Baixa dados de H1 (1 Hora) com profundidade de 500 velas.
-    Isso cobre tanto Day Trade (últimas 24h) quanto Swing (últimos 20 dias).
-    """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
@@ -177,7 +173,7 @@ async def get_deriv_history_hybrid(symbol_code):
                 "count": 500, 
                 "end": "latest",
                 "style": "candles",
-                "granularity": 3600 # 3600s = H1 (Timeframe Híbrido)
+                "granularity": 3600 # H1 Data Source
             }
             await websocket.send(json.dumps(req))
             res = await websocket.recv()
@@ -191,31 +187,22 @@ def calcular_indicadores_hibridos(df):
     df['close'] = df['close'].astype(float)
     df['high'] = df['high'].astype(float)
     df['low'] = df['low'].astype(float)
-    
-    # EMAs
-    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()   # Day Trade Trend
-    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()   # Medium Trend
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Swing Trade Trend
-    
-    # Bollinger & Z-Score
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
-    
-    # ATR
     df['tr'] = np.maximum((df['high'] - df['low']), 
                           np.maximum(abs(df['high'] - df['close'].shift()), 
                                      abs(df['low'] - df['close'].shift())))
     df['ATR'] = df['tr'].rolling(window=14).mean()
-    
     return df.dropna()
 
 def executar_backtest_estatistico(df):
     total = len(df)
-    # Analise de Força de Tendência (Para decidir se é Swing)
     candles_acima_ema200 = len(df[df['close'] > df['EMA_200']])
-    forca_tendencia = (candles_acima_ema200 / total) * 100 # % do tempo acima da média longa
-    
+    forca_tendencia = (candles_acima_ema200 / total) * 100
     return f"""
     [HYBRID DATA ANALYSIS - LAST {total} HOURS]
     - EMA 200 (Long Term Trend): {df['EMA_200'].iloc[-1]:.2f}
@@ -250,8 +237,8 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
-st.title("🧠 SI-QA: Autonomous Analyst")
-st.markdown("### Detector Automático: Day Trade & Swing Trade")
+st.title("💠 SI-QA: Tri-Dimensional Analyst")
+st.markdown("### Fusão Fractal: M15 (Entrada) + H1 (Tendência) + H4 (Estrutura)")
 
 with st.spinner("Carregando Ativos Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
@@ -260,33 +247,51 @@ if not LISTA_ATIVOS:
     st.error("Sem conexão com a Deriv.")
     st.stop()
 
-col1, col2 = st.columns(2)
-with col1: img_main = st.file_uploader("Gráfico (Qualquer Timeframe)", type=['png', 'jpg'])
-with col2: st.info("O sistema decidirá automaticamente se o sinal é para Day Trade ou Swing baseando-se na estrutura fractal encontrada.")
+# --- ÁREA DE UPLOAD TRIPLO ---
+col1, col2, col3 = st.columns(3)
 
-if st.button("ANALISAR MERCADO", type="primary"):
-    if not api_key or not img_main:
-        st.error("API ou Imagem faltando.")
+with col1:
+    st.info("🕒 Curto Prazo")
+    img_m15 = st.file_uploader("Gráfico M15 (Gatilho)", type=['png', 'jpg'], key="m15")
+
+with col2:
+    st.info("🕒 Médio Prazo")
+    img_h1 = st.file_uploader("Gráfico H1 (Tendência)", type=['png', 'jpg'], key="h1")
+
+with col3:
+    st.info("🕒 Longo Prazo")
+    img_h4 = st.file_uploader("Gráfico H4 (Estrutura)", type=['png', 'jpg'], key="h4")
+
+if st.button("INICIAR ANÁLISE MULTI-FRACTAL", type="primary"):
+    if not api_key:
+        st.error("Falta API Key.")
+        st.stop()
+    
+    # Validação mínima: Pelo menos uma imagem é necessária
+    if not img_m15 and not img_h1 and not img_h4:
+        st.error("Por favor, envie pelo menos uma imagem (Recomendado: M15).")
         st.stop()
         
-    status = st.status("Iniciando Módulo de Inteligência Híbrida...", expanded=True)
+    status = st.status("Iniciando Módulo de Fusão Fractal...", expanded=True)
     
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("models/gemini-3-flash-preview")
     
-    # 1. VISÃO
+    # 1. IDENTIFICAÇÃO (Usa a primeira imagem disponível)
     status.write("👁️ Identificando Ativo...")
-    nome_ativo, codigo, txt = identificar_ativo_via_ia(Image.open(img_main), model, LISTA_ATIVOS)
+    img_para_identificar = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
+    
+    nome_ativo, codigo, txt = identificar_ativo_via_ia(Image.open(img_para_identificar), model, LISTA_ATIVOS)
     
     if not nome_ativo:
         status.update(label="Falha de Visão", state="error")
         st.error(f"Não reconhecido: {txt}")
         st.stop()
         
-    status.write(f"✅ Ativo: {nome_ativo}")
+    status.write(f"✅ Ativo Detectado: {nome_ativo}")
     
     # 2. DADOS (H1 - Híbrido)
-    status.write("📡 Baixando dados H1 (Contexto Amplo)...")
+    status.write("📡 Baixando dados matemáticos...")
     candles, erro = asyncio.run(get_deriv_history_hybrid(codigo))
     if erro: st.error(erro); st.stop()
     
@@ -296,33 +301,45 @@ if st.button("ANALISAR MERCADO", type="primary"):
     df_full = calcular_indicadores_hibridos(df)
     stats = executar_backtest_estatistico(df_full)
     
-    # 4. INJEÇÃO DE TAREFA (AQUI A MÁGICA ACONTECE)
-    # Pedimos para a IA decidir o estilo
+    # 4. PREPARAR INPUTS (LISTA DE IMAGENS)
+    inputs_gemini = [SYSTEM_PROMPT]
+    
+    # Prompt de Contexto para as Imagens
+    contexto_imagens = "IMAGES PROVIDED FOR ANALYSIS:\n"
+    if img_m15: 
+        inputs_gemini.append(Image.open(img_m15))
+        contexto_imagens += "- IMAGE 1: M15 CHART (Look for Entry Triggers/Spikes)\n"
+    if img_h1: 
+        inputs_gemini.append(Image.open(img_h1))
+        contexto_imagens += "- IMAGE 2: H1 CHART (Look for Trend Direction)\n"
+    if img_h4: 
+        inputs_gemini.append(Image.open(img_h4))
+        contexto_imagens += "- IMAGE 3: H4 CHART (Look for Major Support/Resistance)\n"
+
     prompt_injecao = f"""
     TARGET ASSET: {nome_ativo}
     CURRENT PRICE: {df_full.iloc[-1]['close']}
     
-    === HYBRID MATH DATA (H1 TIMEFRAME - 500 CANDLES) ===
-    Last 15 Candles:
+    {contexto_imagens}
+    
+    === HYBRID MATH DATA (H1 TIMEFRAME) ===
     {df_full.tail(15).to_string()}
     
     === STATISTICAL CONTEXT ===
     {stats}
     
-    === TASK: DECISION MODE ===
-    1. Analyze the Visual Structure + Math Data.
-    2. DETERMINE THE BEST STRATEGY: 
-       - If structure is huge (Weekly/Daily levels) -> SWING TRADE.
-       - If structure is intraday flow -> DAY TRADE.
-    3. Explicitly state the "TRADING STYLE CHOSEN" in the output.
-    4. Execute SI-QA Logic normally.
+    === TASK: MULTI-TIMEFRAME DECISION ===
+    1. Cross-reference the Visual Structures (M15/H1/H4).
+    2. Confirm validity with Math Data.
+    3. Auto-Decide Strategy (Day Trade vs Swing) based on Confluence.
+    4. Execute SI-QA Logic.
     """
     
-    inputs = [SYSTEM_PROMPT, prompt_injecao, Image.open(img_main)]
+    inputs_gemini.append(prompt_injecao)
     
-    status.write("🧠 Decidindo melhor abordagem (Day vs Swing)...")
-    response = model.generate_content(inputs)
+    status.write("🧠 Cruzando dados M15/H1/H4 com Matemática...")
+    response = model.generate_content(inputs_gemini)
     
-    status.update(label="Decisão Tomada", state="complete", expanded=False)
+    status.update(label="Análise Concluída", state="complete", expanded=False)
     st.divider()
     st.markdown(response.text)
