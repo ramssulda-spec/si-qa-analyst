@@ -9,24 +9,22 @@ from PIL import Image
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Universal Auto-Detect",
-    page_icon="🧬",
+    page_title="SI-QA: Auto-Decision Kernel",
+    page_icon="🧠",
     layout="wide"
 )
 
-# --- CSS ESTILO "MATRIX" ---
+# --- ESTILO VISUAL ---
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
-    .stButton>button { background-color: #003300; color: #00ff00; border: 1px solid #00ff00; }
-    .stButton>button:hover { background-color: #00ff00; color: black; }
-    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #050505; }
+    .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; }
+    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
-    .stTextInput>div>div>input { color: #00ff00; background-color: #111; border: 1px solid #333; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- PROMPT MESTRE (SI-QA - INTEGRA) ---
+# --- PROMPT MESTRE ORIGINAL (INALTERADO) ---
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
 You are the "Synthetic Indices Quantum Architect" (SI-QA).
@@ -143,46 +141,43 @@ COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
 )
 """
 
-# --- FUNÇÕES DE API DINÂMICA (SEM MAPA FIXO) ---
+# --- FUNÇÕES ---
 
-@st.cache_data(ttl=3600) # Cache por 1 hora para não pesar
+@st.cache_data(ttl=3600)
 def buscar_lista_ativos_deriv():
-    """Conecta na Deriv e baixa a lista OFICIAL de todos os ativos existentes."""
+    """Baixa lista oficial da Deriv"""
     async def _fetch():
         uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
         try:
             async with websockets.connect(uri) as ws:
-                # Pede todos os símbolos ativos
                 req = {"active_symbols": "brief", "product_type": "basic"}
                 await ws.send(json.dumps(req))
                 res = await ws.recv()
                 data = json.loads(res)
-                
                 if 'error' in data: return None
-                
-                # Cria um dicionário { "NOME LEGÍVEL": "CÓDIGO API" }
                 ativos_dict = {}
                 for item in data['active_symbols']:
-                    # Filtra apenas sintéticos (geralmente market 'synthetic_index')
                     if item['market'] == 'synthetic_index':
                         ativos_dict[item['display_name'].upper()] = item['symbol']
                 return ativos_dict
-        except:
-            return None
-            
+        except: return None
     return asyncio.run(_fetch())
 
-async def get_deriv_history(symbol_code):
+async def get_deriv_history_hybrid(symbol_code):
+    """
+    Baixa dados de H1 (1 Hora) com profundidade de 500 velas.
+    Isso cobre tanto Day Trade (últimas 24h) quanto Swing (últimos 20 dias).
+    """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
             req = {
                 "ticks_history": symbol_code,
                 "adjust_start_time": 1,
-                "count": 500, # 500 velas para Backtest
+                "count": 500, 
                 "end": "latest",
                 "style": "candles",
-                "granularity": 900
+                "granularity": 3600 # 3600s = H1 (Timeframe Híbrido)
             }
             await websocket.send(json.dumps(req))
             res = await websocket.recv()
@@ -192,22 +187,19 @@ async def get_deriv_history(symbol_code):
     except Exception as e:
         return None, str(e)
 
-# --- FUNÇÕES DE CÁLCULO (O MOTOR) ---
-
-def calcular_indicadores_avancados(df):
+def calcular_indicadores_hibridos(df):
     df['close'] = df['close'].astype(float)
     df['high'] = df['high'].astype(float)
     df['low'] = df['low'].astype(float)
     
     # EMAs
-    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()   # Day Trade Trend
+    df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()   # Medium Trend
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Swing Trade Trend
     
     # Bollinger & Z-Score
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
-    df['Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
-    df['Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
     
     # ATR
@@ -220,160 +212,117 @@ def calcular_indicadores_avancados(df):
 
 def executar_backtest_estatistico(df):
     total = len(df)
-    if total < 50: return "Insufficient Data for Backtest"
-    
-    # Lógica de Backtest Simplificada para Prompt
-    # Conta quantas vezes o preço tocou na EMA e respeitou a tendência
-    toques = 0
-    respeitos = 0
-    
-    for i in range(1, total-1):
-        ema = df['EMA_20'].iloc[i]
-        low = df['low'].iloc[i]
-        high = df['high'].iloc[i]
-        
-        # Se tocou na EMA
-        if low <= ema <= high:
-            toques += 1
-            # Verifica candle seguinte (Exemplo: se close > ema anterior e próximo close > close anterior)
-            if df['close'].iloc[i+1] > df['close'].iloc[i]:
-                respeitos += 1
-                
-    rate = (respeitos / toques * 100) if toques > 0 else 0
-    sigma_events = len(df[abs(df['Z_Score']) > 3])
+    # Analise de Força de Tendência (Para decidir se é Swing)
+    candles_acima_ema200 = len(df[df['close'] > df['EMA_200']])
+    forca_tendencia = (candles_acima_ema200 / total) * 100 # % do tempo acima da média longa
     
     return f"""
-    [BACKTEST REPORT - 500 CANDLES]
-    - EMA 20 Interaction Events: {toques}
-    - Bounce/Trend Continuation Rate: {rate:.1f}%
-    - Extreme Volatility Events (Z>3): {sigma_events}
+    [HYBRID DATA ANALYSIS - LAST {total} HOURS]
+    - EMA 200 (Long Term Trend): {df['EMA_200'].iloc[-1]:.2f}
+    - Trend Stability Score: {forca_tendencia:.1f}% ( > 50% implies Bullish Macro)
     - Current Volatility (ATR): {df['ATR'].iloc[-1]:.4f}
     """
 
 def identificar_ativo_via_ia(img, model, lista_oficial_ativos):
-    """
-    1. IA lê o texto da imagem.
-    2. Python compara o texto com a lista oficial da Deriv para achar o match.
-    """
-    prompt = "Extract the ASSET NAME from the chart header exactly as written (e.g. 'Crash 1000 Index'). Return ONLY the name."
+    prompt = "Extract the ASSET NAME from the chart header exactly. Return ONLY the name."
     try:
         response = model.generate_content([prompt, img])
         texto_detectado = response.text.upper().strip()
-        
-        # Algoritmo de Busca Fuzzy (Encontrar o ativo na lista oficial)
-        # Removemos 'INDEX' para facilitar a comparação
         texto_limpo = texto_detectado.replace("INDEX", "").strip()
-        
         melhor_match = None
         codigo_match = None
-        
-        # Varre a lista dinâmica que baixamos da API
         for nome_oficial, codigo in lista_oficial_ativos.items():
             nome_oficial_limpo = nome_oficial.replace("INDEX", "").strip()
-            
-            # Se o texto da IA estiver contido no nome oficial (ou vice versa)
             if texto_limpo in nome_oficial_limpo or nome_oficial_limpo in texto_limpo:
                 melhor_match = nome_oficial
                 codigo_match = codigo
-                # Prioridade máxima para matches exatos (especialmente os '1s')
-                if texto_limpo == nome_oficial_limpo:
-                    break
-        
+                if texto_limpo == nome_oficial_limpo: break
         return melhor_match, codigo_match, texto_detectado
-        
     except Exception as e:
         return None, None, str(e)
 
 # --- INTERFACE ---
 
-# --- GESTÃO DE CHAVES DE SEGURANÇA ---
-st.sidebar.header("🔐 SI-QA KEY")
-
-# Tenta pegar a chave dos segredos do sistema (Nuvem ou Local)
+st.sidebar.header("⚙️ SI-QA CONFIG")
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
-    st.sidebar.success("✅ Chave API Integrada (Modo Seguro)")
+    st.sidebar.success("✅ Conectado")
 else:
-    # Se não achar, pede manualmente (Fallback)
     api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
-st.title("🧬 SI-QA: Universal Detector")
-st.markdown("### Sistema Autônomo de Reconhecimento e Análise")
+st.title("🧠 SI-QA: Autonomous Analyst")
+st.markdown("### Detector Automático: Day Trade & Swing Trade")
 
-# Carrega a lista de ativos assim que abre o app (silenciosamente)
-with st.spinner("Atualizando banco de dados de ativos da Deriv..."):
-    LISTA_ATIVOS_DINAMICA = buscar_lista_ativos_deriv()
+with st.spinner("Carregando Ativos Deriv..."):
+    LISTA_ATIVOS = buscar_lista_ativos_deriv()
 
-if not LISTA_ATIVOS_DINAMICA:
-    st.error("Erro ao conectar na Deriv para baixar lista de ativos. Verifique internet.")
+if not LISTA_ATIVOS:
+    st.error("Sem conexão com a Deriv.")
     st.stop()
-else:
-    st.sidebar.success(f"Banco de Dados Atualizado: {len(LISTA_ATIVOS_DINAMICA)} ativos sintéticos carregados.")
 
-col1, col2, col3 = st.columns(3)
-with col1: img_m15 = st.file_uploader("M15 (Scan Target)", type=['png', 'jpg'])
-with col2: img_h1 = st.file_uploader("H1 (Structure)", type=['png', 'jpg'])
-with col3: img_h4 = st.file_uploader("H4 (Trend)", type=['png', 'jpg'])
+col1, col2 = st.columns(2)
+with col1: img_main = st.file_uploader("Gráfico (Qualquer Timeframe)", type=['png', 'jpg'])
+with col2: st.info("O sistema decidirá automaticamente se o sinal é para Day Trade ou Swing baseando-se na estrutura fractal encontrada.")
 
-if st.button("INICIAR VARREDURA UNIVERSAL", type="primary"):
-    if not api_key or not img_m15:
-        st.error("Preciso da API Key e do gráfico M15.")
+if st.button("ANALISAR MERCADO", type="primary"):
+    if not api_key or not img_main:
+        st.error("API ou Imagem faltando.")
         st.stop()
         
-    status = st.status("Iniciando Protocolo...", expanded=True)
+    status = st.status("Iniciando Módulo de Inteligência Híbrida...", expanded=True)
     
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("models/gemini-3-flash-preview")
     
-    # 1. IDENTIFICAÇÃO (USANDO LISTA DINÂMICA)
-    status.write("👁️ Analisando imagem e cruzando com banco de dados Deriv...")
-    nome_ativo, codigo_ativo, texto_lido = identificar_ativo_via_ia(Image.open(img_m15), model, LISTA_ATIVOS_DINAMICA)
+    # 1. VISÃO
+    status.write("👁️ Identificando Ativo...")
+    nome_ativo, codigo, txt = identificar_ativo_via_ia(Image.open(img_main), model, LISTA_ATIVOS)
     
-    if nome_ativo:
-        status.write(f"✅ Identificado: **{nome_ativo}** (API: {codigo_ativo})")
-    else:
-        status.update(label="Falha de Identificação", state="error")
-        st.error(f"A IA leu '{texto_lido}', mas não encontrei correspondência na lista da Deriv.")
-        st.write("Ativos disponíveis:", list(LISTA_ATIVOS_DINAMICA.keys()))
+    if not nome_ativo:
+        status.update(label="Falha de Visão", state="error")
+        st.error(f"Não reconhecido: {txt}")
         st.stop()
         
-    # 2. DOWNLOAD & BACKTEST
-    status.write(f"📡 Baixando histórico profundo ({nome_ativo})...")
-    candles, erro = asyncio.run(get_deriv_history(codigo_ativo))
+    status.write(f"✅ Ativo: {nome_ativo}")
     
-    if erro:
-        st.error(f"Erro no download: {erro}")
-        st.stop()
-        
-    status.write("🧮 Executando Backtest Estatístico (500 Candles)...")
+    # 2. DADOS (H1 - Híbrido)
+    status.write("📡 Baixando dados H1 (Contexto Amplo)...")
+    candles, erro = asyncio.run(get_deriv_history_hybrid(codigo))
+    if erro: st.error(erro); st.stop()
+    
+    # 3. CÁLCULOS
     df = pd.DataFrame(candles)
     df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
-    df_full = calcular_indicadores_avancados(df)
+    df_full = calcular_indicadores_hibridos(df)
+    stats = executar_backtest_estatistico(df_full)
     
-    relatorio_backtest = executar_backtest_estatistico(df_full)
-    
-    # 3. EXECUÇÃO IA
-    status.write("🧠 Quantum Architect: Decodificando...")
-    
+    # 4. INJEÇÃO DE TAREFA (AQUI A MÁGICA ACONTECE)
+    # Pedimos para a IA decidir o estilo
     prompt_injecao = f"""
     TARGET ASSET: {nome_ativo}
     CURRENT PRICE: {df_full.iloc[-1]['close']}
     
-    === PHASE 3: VIRTUAL BACKTEST REPORT ===
-    {relatorio_backtest}
-    
-    === PHASE 2: LIVE MATH DATA (LAST 15 CANDLES) ===
+    === HYBRID MATH DATA (H1 TIMEFRAME - 500 CANDLES) ===
+    Last 15 Candles:
     {df_full.tail(15).to_string()}
     
-    TASK: Execute SI-QA Logic.
+    === STATISTICAL CONTEXT ===
+    {stats}
+    
+    === TASK: DECISION MODE ===
+    1. Analyze the Visual Structure + Math Data.
+    2. DETERMINE THE BEST STRATEGY: 
+       - If structure is huge (Weekly/Daily levels) -> SWING TRADE.
+       - If structure is intraday flow -> DAY TRADE.
+    3. Explicitly state the "TRADING STYLE CHOSEN" in the output.
+    4. Execute SI-QA Logic normally.
     """
     
-    inputs = [SYSTEM_PROMPT, prompt_injecao, Image.open(img_m15)]
-    if img_h1: inputs.append(Image.open(img_h1))
-    if img_h4: inputs.append(Image.open(img_h4))
+    inputs = [SYSTEM_PROMPT, prompt_injecao, Image.open(img_main)]
     
+    status.write("🧠 Decidindo melhor abordagem (Day vs Swing)...")
     response = model.generate_content(inputs)
-    status.update(label="Concluído", state="complete", expanded=False)
     
+    status.update(label="Decisão Tomada", state="complete", expanded=False)
     st.divider()
     st.markdown(response.text)
