@@ -36,6 +36,15 @@ TIMEFRAME_MAP = {
     "1D": 86400, "D1": 86400
 }
 
+# --- CONFIGURAÇÃO DE SEGURANÇA (CORREÇÃO DO ERRO) ---
+# Isso impede que o Gemini bloqueie a resposta por achar que o gráfico é "perigoso"
+SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
+
 # ==============================================================================
 # PROMPT MESTRE ORIGINAL (100% INTACTO)
 # ==============================================================================
@@ -337,7 +346,9 @@ if modo == "Análise Visual + Backtest":
             
         status = st.status("Executando Protocolo SI-QA...", expanded=True)
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-3-flash-preview")
+        
+        # AQUI ESTÁ A CORREÇÃO DE SEGURANÇA:
+        model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
         # 1. Identificação (Prioridade: M15 -> H1 -> H4)
         status.write("👁️ Identificando Ativo...")
@@ -398,14 +409,21 @@ if modo == "Análise Visual + Backtest":
         inputs_gemini.append(prompt_injecao)
         
         status.write("🧠 Gerando Sinal Final...")
-        resp = model.generate_content(inputs_gemini)
-        status.update(label="Concluído", state="complete")
         
-        st.divider()
-        st.markdown(resp.text)
-        
-        with st.expander("Ver Prova Real (Backtest Python)"):
-            st.text(relatorio_backtest)
+        # TRATAMENTO DE ERRO DE SEGURANÇA NA GERAÇÃO
+        try:
+            resp = model.generate_content(inputs_gemini)
+            status.update(label="Concluído", state="complete")
+            st.divider()
+            st.markdown(resp.text)
+            
+            with st.expander("Ver Prova Real (Backtest Python)"):
+                st.text(relatorio_backtest)
+        except ValueError:
+            status.update(label="Bloqueio de Segurança", state="error")
+            st.error("O Gemini bloqueou a resposta. Isso acontece raramente em gráficos voláteis. Tente novamente ou use outra imagem.")
+        except Exception as e:
+            st.error(f"Erro desconhecido: {str(e)}")
 
 # ==========================================================
 # MODO 2: RADAR
