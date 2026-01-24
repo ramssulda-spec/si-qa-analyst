@@ -11,7 +11,7 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Original Kernel + Reality",
+    page_title="SI-QA: Ultimate Kernel",
     page_icon="💠",
     layout="wide"
 )
@@ -20,10 +20,11 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
-    .stButton>button { background-color: #003300; color: #fff; border: 1px solid #00ff00; }
+    .stButton>button { background-color: #003300; color: #fff; border: 1px solid #00ff00; width: 100%; }
     div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #050505; }
     .stSuccess { background-color: #064000; color: white; }
     h1, h2, h3 { color: #00ff00 !important; }
+    .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,7 +37,7 @@ TIMEFRAME_MAP = {
 }
 
 # ==============================================================================
-# PROMPT MESTRE ORIGINAL (RESTAURADO NA ÍNTEGRA)
+# PROMPT MESTRE ORIGINAL (100% INTACTO)
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
@@ -153,7 +154,6 @@ SYSTEM STATE: {CALCULATING...}
 COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
 )
 """
-# ==============================================================================
 
 # --- FUNÇÕES DE API ---
 
@@ -177,7 +177,7 @@ def buscar_lista_ativos_deriv():
     return asyncio.run(_fetch())
 
 async def get_deep_history(symbol_code, granularity):
-    """Baixa 2000 velas para Backtest Robusto"""
+    """Baixa 2000 velas para Backtest Robusto (Reality Engine)"""
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
@@ -197,26 +197,24 @@ async def get_deep_history(symbol_code, granularity):
     except Exception as e:
         return None, str(e)
 
-# --- O MOTOR DE BACKTEST REAL (PYTHON REALITY ENGINE) ---
+# --- MOTOR DE BACKTEST REAL (PYTHON) ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
     df['high'] = df['high'].astype(float)
     df['low'] = df['low'].astype(float)
     
-    # Indicadores Básicos
+    # Indicadores
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
-    df['Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
-    df['Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
     
     return df.dropna()
 
 def rodar_backtest_python(df):
     """
-    Simula Mean Reversion nas últimas 2000 velas.
+    Simula Mean Reversion nas últimas 2000 velas para validar Phase 3.
     """
     total_candles = len(df)
     if total_candles < 100: return "Dados insuficientes."
@@ -229,10 +227,9 @@ def rodar_backtest_python(df):
     for i in range(50, total_candles - 10):
         row = df.iloc[i]
         
-        # Cenário 1: Z-Score > 2 (Venda potencial)
+        # Setup: Z-Score > 2.0 (Sobrecompra) -> Alvo: EMA 20
         if row['Z_Score'] > 2.0:
             sinais += 1
-            # Verifica se preço retornou à média nas próximas 10 velas
             outcome = "LOSS"
             for future_i in range(i+1, min(i+11, total_candles)):
                 future_row = df.iloc[future_i]
@@ -242,7 +239,7 @@ def rodar_backtest_python(df):
                     break
             if outcome == "LOSS": losses += 1
 
-        # Cenário 2: Z-Score < -2 (Compra potencial)
+        # Setup: Z-Score < -2.0 (Sobrevenda) -> Alvo: EMA 20
         elif row['Z_Score'] < -2.0:
             sinais += 1
             outcome = "LOSS"
@@ -257,18 +254,18 @@ def rodar_backtest_python(df):
     win_rate = (wins / sinais * 100) if sinais > 0 else 0
     
     return f"""
-    [DATA ARRAY INJECTION FOR PHASE 3: REALITY CHECK]
-    (Calculated over {total_candles} candles history)
+    [REALITY ENGINE REPORT (PYTHON)]
+    (Data Source: Last {total_candles} candles)
     - PATTERN FREQUENCY: {sinais} times detected in history.
-    - HISTORICAL SUCCESS: {wins} times target hit (Mean Reversion).
-    - HISTORICAL FAILURES: {losses} times failed.
-    - CALCULATED FAILURE RATE: {100 - win_rate:.1f}%
+    - SUCCESSFUL REVERSIONS: {wins}
+    - FAILURES: {losses}
     - CALCULATED WIN RATE: {win_rate:.1f}%
     
-    INSTRUCTION: Use this data to fulfill Phase 3 'Virtual Backtest Check'.
+    INSTRUCTION: Use this explicit Win Rate for Phase 3 'Virtual Backtest Check'.
     """
 
 def analisar_imagem(img, model, lista_ativos):
+    """Detecta Ativo e Timeframe"""
     prompt = "Identify Asset Name and Timeframe from header. Return: ASSET|TIMEFRAME"
     try:
         response = model.generate_content([prompt, img])
@@ -286,17 +283,17 @@ def analisar_imagem(img, model, lista_ativos):
                 codigo_ativo = v
                 if nome_clean == k_clean: break
         
-        segundos = 3600
-        tf_label = "H1"
+        segundos = 900 # Default M15
+        tf_label = "M15"
         for k, v in TIMEFRAME_MAP.items():
             if k in tf_raw:
                 segundos = v
                 tf_label = k
                 break
         return nome_ativo, codigo_ativo, segundos, tf_label
-    except: return None, None, 3600, "Erro IA"
+    except: return None, None, 900, "Erro IA"
 
-# --- FUNÇÃO TELEGRAM ---
+# --- FUNÇÕES TELEGRAM ---
 def enviar_telegram(token, chat_id, msg):
     try:
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
@@ -304,7 +301,7 @@ def enviar_telegram(token, chat_id, msg):
     except: pass
 
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA CONFIG")
+st.sidebar.header("⚙️ SI-QA SETTINGS")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -314,38 +311,48 @@ tg_chat = st.sidebar.text_input("Chat ID")
 
 modo = st.sidebar.radio("Modo:", ["Análise Visual + Backtest", "Radar Automático"])
 
-with st.spinner("Carregando Ativos..."):
+with st.spinner("Conectando Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
-# MODO 1: ANÁLISE + BACKTEST REAL
+# ==========================================================
+# MODO 1: ANÁLISE COMPLETA (3 IMAGENS + BACKTEST)
+# ==========================================================
 if modo == "Análise Visual + Backtest":
-    st.title("🧬 SI-QA: Original Kernel + Reality Engine")
+    st.title("💠 SI-QA: Ultimate Analysis")
+    st.markdown("### Upload Multi-Timeframe (Tri-Dimensional)")
     
-    img = st.file_uploader("Upload Gráfico (M15/H1/H4)", type=['png', 'jpg'])
+    col1, col2, col3 = st.columns(3)
+    with col1: img_m15 = st.file_uploader("M15 (Gatilho/Entry)", type=['png', 'jpg'])
+    with col2: img_h1 = st.file_uploader("H1 (Tendência)", type=['png', 'jpg'])
+    with col3: img_h4 = st.file_uploader("H4 (Estrutura)", type=['png', 'jpg'])
     
-    if st.button("INICIAR DECODIFICAÇÃO"):
-        if not api_key or not img:
-            st.error("Dados incompletos.")
+    if st.button("INICIAR DECODIFICAÇÃO TOTAL"):
+        if not api_key:
+            st.error("Falta API Key.")
+            st.stop()
+        if not img_m15 and not img_h1 and not img_h4:
+            st.error("Envie pelo menos uma imagem.")
             st.stop()
             
         status = st.status("Executando Protocolo SI-QA...", expanded=True)
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemini-3-flash-preview")
         
-        # 1. Visão
-        status.write("👁️ Fase 0: Identificando Ativo...")
-        nome, codigo, segundos, tf_nome = analisar_imagem(Image.open(img), model, LISTA_ATIVOS)
+        # 1. Identificação (Prioridade: M15 -> H1 -> H4)
+        status.write("👁️ Identificando Ativo...")
+        img_principal = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
+        nome, codigo, segundos, tf_nome = analisar_imagem(Image.open(img_principal), model, LISTA_ATIVOS)
         
         if not nome:
             status.update(label="Erro", state="error")
-            st.error("Não identifiquei o ativo.")
+            st.error("Falha na identificação do ativo.")
             st.stop()
             
-        status.write(f"✅ Ativo: {nome} | Timeframe: {tf_nome}")
+        status.write(f"✅ Ativo: {nome} | Timeframe Base: {tf_nome}")
         
-        # 2. Dados Profundos (2000 velas)
-        status.write(f"📡 Baixando 2000 velas ({tf_nome}) para Backtest...")
+        # 2. Dados Profundos (2000 velas do timeframe detectado)
+        status.write(f"📡 Baixando 2000 velas de {tf_nome} para Backtest...")
         candles, erro = asyncio.run(get_deep_history(codigo, segundos))
         if erro: st.error(erro); st.stop()
         
@@ -353,37 +360,56 @@ if modo == "Análise Visual + Backtest":
         df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
         df = calcular_indicadores(df)
         
-        # 3. O Backtest Python
-        status.write("🧮 Fase 3: Rodando Simulação Estatística Real...")
+        # 3. Backtest Python
+        status.write("🧮 Rodando Reality Engine (Estatística)...")
         relatorio_backtest = rodar_backtest_python(df)
         
-        # 4. Injeção de Dados (Data Array para o Prompt Original)
-        # Aqui nós "enganamos" o prompt original entregando o resultado pronto do backtest
+        # 4. Preparar Prompt Multi-Imagem
+        inputs_gemini = [SYSTEM_PROMPT]
+        
+        contexto_imgs = "IMAGES PROVIDED:\n"
+        if img_m15: 
+            inputs_gemini.append(Image.open(img_m15))
+            contexto_imgs += "- IMAGE 1: M15 CHART (Entry Trigger)\n"
+        if img_h1: 
+            inputs_gemini.append(Image.open(img_h1))
+            contexto_imgs += "- IMAGE 2: H1 CHART (Trend)\n"
+        if img_h4: 
+            inputs_gemini.append(Image.open(img_h4))
+            contexto_imgs += "- IMAGE 3: H4 CHART (Structure)\n"
+            
         prompt_injecao = f"""
-        TARGET: {nome} ({tf_nome})
-        CURRENT PRICE: {df.iloc[-1]['close']}
+        TARGET ASSET: {nome}
+        BASE TIMEFRAME: {tf_nome}
+        PRICE: {df.iloc[-1]['close']}
         Z-SCORE: {df.iloc[-1]['Z_Score']:.2f}
         
-        === DATA ARRAY FOR PHASE 3 (BACKTEST) ===
+        {contexto_imgs}
+        
+        === REAL-TIME BACKTEST DATA (PHASE 3 CHECK) ===
         {relatorio_backtest}
         
-        === LIVE MARKET DATA (LAST 15 CANDLES) ===
+        === LIVE MATH DATA (LAST 15 CANDLES) ===
         {df.tail(15).to_string()}
         
-        COMMAND: USE THE DATA ABOVE TO EXECUTE YOUR KERNEL LOGIC.
+        COMMAND: EXECUTE SI-QA KERNEL LOGIC USING THE DATA ABOVE.
         """
         
-        status.write("🧠 Fase Final: Decodificação SI-QA...")
-        resp = model.generate_content([SYSTEM_PROMPT, prompt_injecao, Image.open(img)])
+        inputs_gemini.append(prompt_injecao)
+        
+        status.write("🧠 Gerando Sinal Final...")
+        resp = model.generate_content(inputs_gemini)
         status.update(label="Concluído", state="complete")
         
         st.divider()
         st.markdown(resp.text)
         
-        with st.expander("Ver Relatório Bruto do Backtest (Python)"):
+        with st.expander("Ver Prova Real (Backtest Python)"):
             st.text(relatorio_backtest)
 
+# ==========================================================
 # MODO 2: RADAR
+# ==========================================================
 elif modo == "Radar Automático":
     st.title("📡 Radar de Probabilidade (Z-Score)")
     alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
@@ -398,8 +424,7 @@ elif modo == "Radar Automático":
             log = []
             for nome in alvos:
                 codigo = LISTA_ATIVOS[nome]
-                # Baixa 2000 velas para ter Z-Score preciso
-                candles, _ = asyncio.run(get_deep_history(codigo, 900)) 
+                candles, _ = asyncio.run(get_deep_history(codigo, 900)) # M15 padrão
                 
                 if candles:
                     df = pd.DataFrame(candles)
