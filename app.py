@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: MTF Sniper",
-    page_icon="🎯",
+    page_title="SI-QA: Tri-Force Analyst",
+    page_icon="⚡",
     layout="wide"
 )
 
@@ -20,15 +20,14 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
-    .stButton>button { background-color: #003300; color: #fff; border: 1px solid #00ff00; width: 100%; }
-    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #050505; }
-    .stSuccess { background-color: #064000; color: white; }
+    .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; width: 100%; }
+    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
     .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SEGURANÇA ---
+# --- CONFIGURAÇÃO DE SEGURANÇA (Para evitar bloqueios em gráficos vermelhos) ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -37,7 +36,7 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE ORIGINAL (MANTIDO)
+# PROMPT MESTRE ORIGINAL (100% INTACTO)
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
@@ -176,93 +175,50 @@ def buscar_lista_ativos_deriv():
         except: return None
     return asyncio.run(_fetch())
 
-async def get_dual_timeframe_data(symbol_code, macro_granularity):
+async def get_triple_data(symbol_code):
     """
-    BAIXA DADOS DUPLOS: M15 (Para Gatilho) + MACRO (Para Tendência)
+    BAIXA DADOS DE M15, H1 e H4 SIMULTANEAMENTE
     """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
-            # Requisita M15 (Fixo)
-            req_micro = {
-                "ticks_history": symbol_code, "adjust_start_time": 1,
-                "count": 100, "end": "latest", "style": "candles", "granularity": 900
-            }
-            # Requisita Macro (Variável: H1 ou H4)
-            req_macro = {
-                "ticks_history": symbol_code, "adjust_start_time": 1,
-                "count": 300, "end": "latest", "style": "candles", "granularity": macro_granularity
-            }
+            # Solicitações
+            req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 50, "end": "latest", "style": "candles", "granularity": 900}
+            req_h1 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 100, "end": "latest", "style": "candles", "granularity": 3600}
+            req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
-            # Envia Micro
-            await websocket.send(json.dumps(req_micro))
-            res_micro = await websocket.recv()
-            data_micro = json.loads(res_micro)
+            # Envia e Recebe M15
+            await websocket.send(json.dumps(req_m15))
+            res_m15 = await websocket.recv()
             
-            # Envia Macro
-            await websocket.send(json.dumps(req_macro))
-            res_macro = await websocket.recv()
-            data_macro = json.loads(res_macro)
+            # Envia e Recebe H1
+            await websocket.send(json.dumps(req_h1))
+            res_h1 = await websocket.recv()
             
-            if 'error' in data_micro or 'error' in data_macro: return None, None, "Erro API"
+            # Envia e Recebe H4
+            await websocket.send(json.dumps(req_h4))
+            res_h4 = await websocket.recv()
             
-            return data_micro['candles'], data_macro['candles'], None
+            d_m15 = json.loads(res_m15)
+            d_h1 = json.loads(res_h1)
+            d_h4 = json.loads(res_h4)
+            
+            if 'error' in d_m15 or 'error' in d_h1 or 'error' in d_h4: return None, None, None, "Erro API"
+            
+            return d_m15['candles'], d_h1['candles'], d_h4['candles'], None
     except Exception as e:
-        return None, None, str(e)
+        return None, None, None, str(e)
 
-# --- CÁLCULOS MATEMÁTICOS MTF ---
+# --- CÁLCULOS MATEMÁTICOS ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
-    df['high'] = df['high'].astype(float)
-    df['low'] = df['low'].astype(float)
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Mestra
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Tendência Mestra
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
     return df.dropna()
-
-def analisar_confluencia_python(df_micro, df_macro):
-    """
-    CRUZA A TENDÊNCIA MACRO COM O SINAL MICRO
-    Retorna um relatório de inteligência para a IA.
-    """
-    # 1. Analisa Tendência Macro
-    last_macro = df_macro.iloc[-1]
-    tendencia_macro = "ALTA" if last_macro['close'] > last_macro['EMA_200'] else "BAIXA"
-    
-    # 2. Analisa Gatilho Micro (M15)
-    last_micro = df_micro.iloc[-1]
-    z_micro = last_micro['Z_Score']
-    
-    sinal_final = "NEUTRO/AGUARDAR"
-    motivo = "Sem confluência."
-    
-    # Lógica de Sniper
-    if tendencia_macro == "ALTA":
-        if z_micro < -1.5: # M15 está barato (pullback) numa tendência de alta
-            sinal_final = "COMPRA FORTE (SNIPER)"
-            motivo = "Macro em ALTA e M15 sobrevendido (Pullback identificado)."
-        elif z_micro > 2.0:
-            sinal_final = "PERIGOSO (VENDA CONTRA TENDÊNCIA)"
-            motivo = "M15 pede venda, mas Macro é alta. Ignorar scalping."
-            
-    elif tendencia_macro == "BAIXA":
-        if z_micro > 1.5: # M15 está caro (pullback) numa tendência de baixa
-            sinal_final = "VENDA FORTE (SNIPER)"
-            motivo = "Macro em BAIXA e M15 sobrecomprado (Pullback identificado)."
-        elif z_micro < -2.0:
-            sinal_final = "PERIGOSO (COMPRA CONTRA TENDÊNCIA)"
-            motivo = "M15 pede compra, mas Macro é baixa. Ignorar scalping."
-            
-    return f"""
-    [MTF CONFLUENCE ENGINE REPORT]
-    1. MACRO DIRECTION ({len(df_macro)} candles): {tendencia_macro} (Above/Below EMA 200)
-    2. MICRO TRIGGER (M15 Z-Score): {z_micro:.2f}
-    3. PYTHON VERDICT: {sinal_final}
-    4. REASON: {motivo}
-    """
 
 def analisar_imagem(img, model, lista_ativos):
     prompt = "Identify Asset Name ONLY. Return: ASSET_NAME"
@@ -278,163 +234,104 @@ def analisar_imagem(img, model, lista_ativos):
         return nome_ativo, codigo_ativo
     except: return None, None
 
-# --- FUNÇÕES TELEGRAM ---
-def enviar_telegram(token, chat_id, msg):
-    try:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
-    except: pass
-
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA SNIPER")
+st.sidebar.header("⚙️ SI-QA CONFIG")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
-st.sidebar.divider()
-tg_token = st.sidebar.text_input("Bot Token", type="password")
-tg_chat = st.sidebar.text_input("Chat ID")
-
-st.sidebar.divider()
-st.sidebar.subheader("🎯 Alvo Macro (Direção)")
-estilo = st.sidebar.radio(
-    "Definir Tendência Pelo:",
-    ["Day Trade (H1 define direção)", "Swing Trade (H4 define direção)"],
-    index=0
-)
-
-# Configura o Macro
-if estilo == "Day Trade (H1 define direção)":
-    macro_tf = 3600
-    nome_macro = "H1"
-else:
-    macro_tf = 14400
-    nome_macro = "H4"
-
-modo_app = st.sidebar.radio("Ferramenta:", ["Análise MTF (Visual)", "Radar MTF (Auto)"])
+st.title("⚡ SI-QA: Tri-Force Analyst")
+st.markdown("### Análise Fractal Simultânea (M15 + H1 + H4)")
+st.info("O sistema analisará os 3 tempos gráficos e decidirá automaticamente se o melhor trade é **Day Trade** ou **Swing Trade**.")
 
 with st.spinner("Conectando..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
-# ==========================================================
-# MODO 1: ANÁLISE MTF VISUAL
-# ==========================================================
-if modo_app == "Análise MTF (Visual)":
-    st.title(f"🎯 SI-QA: Sniper ({nome_macro} + M15)")
-    st.info(f"Estratégia: A direção é definida pelo **{nome_macro}**, mas a entrada busca precisão no **M15**.")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1: img_m15 = st.file_uploader("M15 (Entrada)", type=['png', 'jpg'])
-    with col2: img_macro = st.file_uploader(f"{nome_macro} (Direção)", type=['png', 'jpg'])
-    
-    if st.button("ANALISAR CONFLUÊNCIA"):
-        if not api_key: st.error("Falta API Key."); st.stop()
-        if not img_m15: st.error("M15 é obrigatório para entrada."); st.stop()
-            
-        status = st.status("Iniciando Sniper Protocol...", expanded=True)
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-        
-        # 1. Identificação
-        status.write("👁️ Identificando Ativo...")
-        img_p = img_m15 if img_m15 else img_macro
-        nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
-        
-        if not nome: status.update(label="Erro Visão", state="error"); st.stop()
-        status.write(f"✅ Ativo: {nome}")
-        
-        # 2. Dados Duplos (Micro + Macro)
-        status.write(f"📡 Baixando dados combinados (M15 + {nome_macro})...")
-        c_micro, c_macro, erro = asyncio.run(get_dual_timeframe_data(codigo, macro_tf))
-        if erro: st.error(erro); st.stop()
-        
-        df_micro = calcular_indicadores(pd.DataFrame(c_micro))
-        df_macro = calcular_indicadores(pd.DataFrame(c_macro))
-        
-        # 3. Análise de Confluência Python
-        status.write("🧮 Cruzando Tendência vs Gatilho...")
-        relatorio_mtf = analisar_confluencia_python(df_micro, df_macro)
-        
-        # 4. Prompt Injection (A Lógica Sniper)
-        inputs_gemini = [SYSTEM_PROMPT]
-        contexto = "IMAGES PROVIDED:\n"
-        if img_m15: inputs_gemini.append(Image.open(img_m15)); contexto+="- M15 CHART (Entry Precision)\n"
-        if img_macro: inputs_gemini.append(Image.open(img_macro)); contexto+=f"- {nome_macro} CHART (Macro Trend)\n"
-        
-        prompt_injecao = f"""
-        TARGET: {nome}
-        STRATEGY: MTF SNIPER (Macro Direction: {nome_macro} | Entry Trigger: M15)
-        
-        === DATA INTELLIGENCE ===
-        {relatorio_mtf}
-        
-        === DETAILED DATA ===
-        MACRO ({nome_macro}) PRICE: {df_macro.iloc[-1]['close']} (EMA 200: {df_macro.iloc[-1]['EMA_200']:.2f})
-        MICRO (M15) PRICE: {df_micro.iloc[-1]['close']} (Z-Score: {df_micro.iloc[-1]['Z_Score']:.2f})
-        
-        TASK:
-        1. Read the Python Verdict above.
-        2. Look at the images to confirm structure (e.g., Support/Resistance).
-        3. IGNORE M15 signals that go against the {nome_macro} Trend.
-        4. ONLY recommend trade if Macro and Micro are aligned (Confluence).
-        """
-        
-        inputs_gemini.append(prompt_injecao)
-        
-        try:
-            status.write("🧠 Gerando Sinal de Precisão...")
-            resp = model.generate_content(inputs_gemini)
-            status.update(label="Pronto", state="complete")
-            st.divider()
-            st.markdown(resp.text)
-            with st.expander("Ver Relatório de Confluência"): st.text(relatorio_mtf)
-        except Exception as e:
-            st.error(f"Erro: {e}")
+# ÁREA DE UPLOAD TRIPLO
+col1, col2, col3 = st.columns(3)
+with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
+with col2: img_h1 = st.file_uploader("2. H1 (Tendência)", type=['png', 'jpg'])
+with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
 
-# ==========================================================
-# MODO 2: RADAR MTF
-# ==========================================================
-elif modo_app == "Radar MTF (Auto)":
-    st.title(f"📡 Radar Sniper ({nome_macro} + M15)")
-    st.markdown("Monitora a **Tendência Macro** e avisa quando o **M15** der entrada a favor dela.")
-    alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
+if st.button("ANALISAR E DECIDIR MELHOR SINAL"):
+    if not api_key: st.error("Falta API Key."); st.stop()
     
-    if st.button("INICIAR RADAR SNIPER"):
-        if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar Sniper Ativo...")
-        enviar_telegram(tg_token, tg_chat, f"📡 RADAR SNIPER INICIADO ({nome_macro} x M15)")
+    # Pega qualquer imagem para identificar o ativo
+    img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
+    if not img_p: st.error("Envie pelo menos uma imagem."); st.stop()
         
-        ph = st.empty()
-        while True:
-            log = []
-            for nome in alvos:
-                codigo = LISTA_ATIVOS[nome]
-                c_micro, c_macro, _ = asyncio.run(get_dual_timeframe_data(codigo, macro_tf))
-                
-                if c_micro and c_macro:
-                    df_mi = calcular_indicadores(pd.DataFrame(c_micro))
-                    df_ma = calcular_indicadores(pd.DataFrame(c_macro))
-                    
-                    # Lógica de Alerta
-                    z = df_mi.iloc[-1]['Z_Score']
-                    trend_up = df_ma.iloc[-1]['close'] > df_ma.iloc[-1]['EMA_200']
-                    
-                    msg = ""
-                    # Compra a favor da tendência
-                    if trend_up and z < -2.0:
-                        msg = f"🎯 **{nome}**\nSNIPER BUY!\nMacro: Alta ({nome_macro})\nM15: Sobrevendido (Z: {z:.2f})"
-                    
-                    # Venda a favor da tendência
-                    elif not trend_up and z > 2.0:
-                        msg = f"🎯 **{nome}**\nSNIPER SELL!\nMacro: Baixa ({nome_macro})\nM15: Sobrecomprado (Z: {z:.2f})"
-                        
-                    if msg:
-                        enviar_telegram(tg_token, tg_chat, msg)
-                        log.append(f"{nome}: 🟢 SINAL ENVIADO")
-                    else:
-                        dir_str = "Alta" if trend_up else "Baixa"
-                        log.append(f"{nome}: Macro {dir_str} | M15 Z: {z:.2f}")
-                        
-                time.sleep(1)
-            ph.code("\n".join(log))
-            time.sleep(60)
+    status = st.status("Iniciando Análise Tri-Dimensional...", expanded=True)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
+    
+    # 1. Identificação
+    status.write("👁️ Identificando Ativo...")
+    nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
+    
+    if not nome: status.update(label="Erro Visão", state="error"); st.stop()
+    status.write(f"✅ Ativo: {nome}")
+    
+    # 2. Dados Triplos
+    status.write("📡 Baixando dados matemáticos de M15, H1 e H4...")
+    c_m15, c_h1, c_h4, erro = asyncio.run(get_triple_data(codigo))
+    if erro: st.error(erro); st.stop()
+    
+    df_m15 = calcular_indicadores(pd.DataFrame(c_m15))
+    df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
+    df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
+    
+    # 3. Prompt de Injeção Inteligente
+    inputs_gemini = [SYSTEM_PROMPT]
+    contexto = "IMAGES PROVIDED:\n"
+    if img_m15: inputs_gemini.append(Image.open(img_m15)); contexto+="- IMAGE 1: M15 (Gatilho Curto)\n"
+    if img_h1: inputs_gemini.append(Image.open(img_h1)); contexto+="- IMAGE 2: H1 (Estrutura Média)\n"
+    if img_h4: inputs_gemini.append(Image.open(img_h4)); contexto+="- IMAGE 3: H4 (Tendência Macro)\n"
+    
+    # Dados matemáticos resumidos para não estourar o prompt
+    prompt_injecao = f"""
+    TARGET: {nome}
+    
+    {contexto}
+    
+    === TRIPLE TIMEFRAME MATHEMATICS ===
+    [H4 - MACRO]
+    Price: {df_h4.iloc[-1]['close']}
+    EMA 200 (Long Trend): {df_h4.iloc[-1]['EMA_200']:.2f}
+    Z-Score: {df_h4.iloc[-1]['Z_Score']:.2f}
+    Trend Status: {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
+    
+    [H1 - STRUCTURE]
+    Price: {df_h1.iloc[-1]['close']}
+    Z-Score: {df_h1.iloc[-1]['Z_Score']:.2f}
+    
+    [M15 - ENTRY]
+    Price: {df_m15.iloc[-1]['close']}
+    Z-Score: {df_m15.iloc[-1]['Z_Score']:.2f}
+    
+    === CRITICAL TASK: AUTO-DECISION ===
+    1. Compare H4 Trend vs M15 Entry.
+    2. DECIDE THE BEST TRADE TYPE:
+       - IF H4 structure is dominant (e.g. hitting major support) -> CALL "SWING TRADE".
+       - IF H4 is flat but H1 is trending -> CALL "DAY TRADE".
+    3. Output the single best high-probability signal based on this confluence.
+    4. IGNORE M15 scalping signals that conflict with H4 trend.
+    """
+    
+    inputs_gemini.append(prompt_injecao)
+    
+    try:
+        status.write("🧠 Cruzando dados e decidindo estratégia...")
+        resp = model.generate_content(inputs_gemini)
+        status.update(label="Análise Pronta", state="complete")
+        st.divider()
+        st.markdown(resp.text)
+        
+        # Mostra os dados técnicos para você conferir
+        with st.expander("Ver Dados Técnicos (Raio-X)"):
+            c1, c2, c3 = st.columns(3)
+            with c1: st.write("**M15 Z-Score:**", f"{df_m15.iloc[-1]['Z_Score']:.2f}")
+            with c2: st.write("**H1 Z-Score:**", f"{df_h1.iloc[-1]['Z_Score']:.2f}")
+            with c3: st.write("**H4 Trend:**", "ALTA" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BAIXA")
+            
+    except Exception as e:
+        st.error(f"Erro na geração: {e}")
