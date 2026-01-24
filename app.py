@@ -11,7 +11,7 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Golden Ratio",
+    page_title="SI-QA: Golden Ratio (Fixed)",
     page_icon="✨",
     layout="wide"
 )
@@ -37,7 +37,7 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE (COM INJEÇÃO DE FIBONACCI)
+# PROMPT MESTRE
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
@@ -118,7 +118,6 @@ async def get_platinum_data(symbol_code):
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
-            # M15 (Deep), H1, H4 (Macro para Fib)
             req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
             req_h1 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 3600}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 300, "end": "latest", "style": "candles", "granularity": 14400}
@@ -136,7 +135,7 @@ async def get_platinum_data(symbol_code):
     except Exception as e:
         return None, None, None, str(e)
 
-# --- MATEMÁTICA AVANÇADA (RSI + FIBONACCI) ---
+# --- MATEMÁTICA AVANÇADA ---
 
 def calcular_rsi(series, period=14):
     delta = series.diff(1)
@@ -159,37 +158,29 @@ def calcular_indicadores(df):
     return df.dropna()
 
 def detectar_fibonacci_macro(df_macro):
-    """
-    Calcula se o preço atual está perto de 61.8% da última grande pernada (H4).
-    """
     last_price = df_macro.iloc[-1]['close']
     trend_up = last_price > df_macro.iloc[-1]['EMA_200']
     
-    # Pega Máxima e Mínima das últimas 100 velas (Estrutura Macro)
     max_h = df_macro['high'].tail(100).max()
     min_l = df_macro['low'].tail(100).min()
     diff = max_h - min_l
     
     fib_status = "NO ZONE"
-    distancia = 0
     golden_level = 0
     
     if trend_up:
-        # Tendência de Alta: Preço cai (Retração) até o suporte Fib
-        # Retração é medida do Fundo ao Topo. O nível 61.8% está abaixo do topo.
         golden_level = max_h - (diff * 0.618)
-        # Verifica se preço está perto (margem de erro 0.5%)
         if abs(last_price - golden_level) < (last_price * 0.005):
             fib_status = "⚠️ GOLDEN POCKET (BUY ZONE)"
     else:
-        # Tendência de Baixa: Preço sobe (Retração) até a resistência Fib
         golden_level = min_l + (diff * 0.618)
         if abs(last_price - golden_level) < (last_price * 0.005):
             fib_status = "⚠️ GOLDEN POCKET (SELL ZONE)"
             
     return fib_status, golden_level
 
-def rodar_backtest_avancado(df):
+# CORREÇÃO: Função renomeada para 'rodar_backtest_estatistico'
+def rodar_backtest_estatistico(df):
     total = len(df)
     if total < 500: return "Dados insuficientes."
     wins = 0; losses = 0; sinais = 0
@@ -271,7 +262,7 @@ if modo_operacao == "Análise Visual (Fibonacci)":
         if ativo_manual != "Automático (IA)":
             nome_ativo = ativo_manual; codigo_ativo = LISTA_ATIVOS[ativo_manual]
         else:
-            try: model_vision = genai.GenerativeModel("models/gemini-1.5-flash") # Mais rápido pra ler
+            try: model_vision = genai.GenerativeModel("models/gemini-1.5-flash")
             except: model_vision = genai.GenerativeModel("models/gemini-1.5-flash")
             nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
             if not nome_ativo: st.warning("Selecione o ativo manualmente."); st.stop()
@@ -289,7 +280,7 @@ if modo_operacao == "Análise Visual (Fibonacci)":
         status.write("📐 Traçando Fibonacci no H4...")
         fib_msg, fib_price = detectar_fibonacci_macro(df_h4)
         
-        # Backtest
+        # Backtest (CHAMADA CORRIGIDA)
         status.write("🧮 Rodando Backtest...")
         backtest_msg = rodar_backtest_estatistico(df_m15)
         
