@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Ultimate Kernel",
-    page_icon="💠",
+    page_title="SI-QA: MTF Sniper",
+    page_icon="🎯",
     layout="wide"
 )
 
@@ -28,16 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- MAPA DE TIMEFRAMES ---
-TIMEFRAME_MAP = {
-    "1M": 60, "M1": 60, "5M": 300, "M5": 300, 
-    "15M": 900, "M15": 900, "30M": 1800, "M30": 1800,
-    "1H": 3600, "H1": 3600, "4H": 14400, "H4": 14400,
-    "1D": 86400, "D1": 86400
-}
-
-# --- CONFIGURAÇÃO DE SEGURANÇA (CORREÇÃO DO ERRO) ---
-# Isso impede que o Gemini bloqueie a resposta por achar que o gráfico é "perigoso"
+# --- SEGURANÇA ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -46,7 +37,7 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE ORIGINAL (100% INTACTO)
+# PROMPT MESTRE ORIGINAL (MANTIDO)
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
@@ -185,122 +176,107 @@ def buscar_lista_ativos_deriv():
         except: return None
     return asyncio.run(_fetch())
 
-async def get_deep_history(symbol_code, granularity):
-    """Baixa 2000 velas para Backtest Robusto (Reality Engine)"""
+async def get_dual_timeframe_data(symbol_code, macro_granularity):
+    """
+    BAIXA DADOS DUPLOS: M15 (Para Gatilho) + MACRO (Para Tendência)
+    """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
-            req = {
-                "ticks_history": symbol_code,
-                "adjust_start_time": 1,
-                "count": 2000, 
-                "end": "latest",
-                "style": "candles",
-                "granularity": granularity
+            # Requisita M15 (Fixo)
+            req_micro = {
+                "ticks_history": symbol_code, "adjust_start_time": 1,
+                "count": 100, "end": "latest", "style": "candles", "granularity": 900
             }
-            await websocket.send(json.dumps(req))
-            res = await websocket.recv()
-            data = json.loads(res)
-            if 'error' in data: return None, data['error']['message']
-            return data['candles'], None
+            # Requisita Macro (Variável: H1 ou H4)
+            req_macro = {
+                "ticks_history": symbol_code, "adjust_start_time": 1,
+                "count": 300, "end": "latest", "style": "candles", "granularity": macro_granularity
+            }
+            
+            # Envia Micro
+            await websocket.send(json.dumps(req_micro))
+            res_micro = await websocket.recv()
+            data_micro = json.loads(res_micro)
+            
+            # Envia Macro
+            await websocket.send(json.dumps(req_macro))
+            res_macro = await websocket.recv()
+            data_macro = json.loads(res_macro)
+            
+            if 'error' in data_micro or 'error' in data_macro: return None, None, "Erro API"
+            
+            return data_micro['candles'], data_macro['candles'], None
     except Exception as e:
-        return None, str(e)
+        return None, None, str(e)
 
-# --- MOTOR DE BACKTEST REAL (PYTHON) ---
+# --- CÁLCULOS MATEMÁTICOS MTF ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
     df['high'] = df['high'].astype(float)
     df['low'] = df['low'].astype(float)
-    
-    # Indicadores
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Mestra
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
-    
     return df.dropna()
 
-def rodar_backtest_python(df):
+def analisar_confluencia_python(df_micro, df_macro):
     """
-    Simula Mean Reversion nas últimas 2000 velas para validar Phase 3.
+    CRUZA A TENDÊNCIA MACRO COM O SINAL MICRO
+    Retorna um relatório de inteligência para a IA.
     """
-    total_candles = len(df)
-    if total_candles < 100: return "Dados insuficientes."
+    # 1. Analisa Tendência Macro
+    last_macro = df_macro.iloc[-1]
+    tendencia_macro = "ALTA" if last_macro['close'] > last_macro['EMA_200'] else "BAIXA"
     
-    wins = 0
-    losses = 0
-    sinais = 0
+    # 2. Analisa Gatilho Micro (M15)
+    last_micro = df_micro.iloc[-1]
+    z_micro = last_micro['Z_Score']
     
-    # Loop de simulação
-    for i in range(50, total_candles - 10):
-        row = df.iloc[i]
-        
-        # Setup: Z-Score > 2.0 (Sobrecompra) -> Alvo: EMA 20
-        if row['Z_Score'] > 2.0:
-            sinais += 1
-            outcome = "LOSS"
-            for future_i in range(i+1, min(i+11, total_candles)):
-                future_row = df.iloc[future_i]
-                if future_row['low'] <= future_row['EMA_20']:
-                    wins += 1
-                    outcome = "WIN"
-                    break
-            if outcome == "LOSS": losses += 1
-
-        # Setup: Z-Score < -2.0 (Sobrevenda) -> Alvo: EMA 20
-        elif row['Z_Score'] < -2.0:
-            sinais += 1
-            outcome = "LOSS"
-            for future_i in range(i+1, min(i+11, total_candles)):
-                future_row = df.iloc[future_i]
-                if future_row['high'] >= future_row['EMA_20']:
-                    wins += 1
-                    outcome = "WIN"
-                    break
-            if outcome == "LOSS": losses += 1
-
-    win_rate = (wins / sinais * 100) if sinais > 0 else 0
+    sinal_final = "NEUTRO/AGUARDAR"
+    motivo = "Sem confluência."
     
+    # Lógica de Sniper
+    if tendencia_macro == "ALTA":
+        if z_micro < -1.5: # M15 está barato (pullback) numa tendência de alta
+            sinal_final = "COMPRA FORTE (SNIPER)"
+            motivo = "Macro em ALTA e M15 sobrevendido (Pullback identificado)."
+        elif z_micro > 2.0:
+            sinal_final = "PERIGOSO (VENDA CONTRA TENDÊNCIA)"
+            motivo = "M15 pede venda, mas Macro é alta. Ignorar scalping."
+            
+    elif tendencia_macro == "BAIXA":
+        if z_micro > 1.5: # M15 está caro (pullback) numa tendência de baixa
+            sinal_final = "VENDA FORTE (SNIPER)"
+            motivo = "Macro em BAIXA e M15 sobrecomprado (Pullback identificado)."
+        elif z_micro < -2.0:
+            sinal_final = "PERIGOSO (COMPRA CONTRA TENDÊNCIA)"
+            motivo = "M15 pede compra, mas Macro é baixa. Ignorar scalping."
+            
     return f"""
-    [REALITY ENGINE REPORT (PYTHON)]
-    (Data Source: Last {total_candles} candles)
-    - PATTERN FREQUENCY: {sinais} times detected in history.
-    - SUCCESSFUL REVERSIONS: {wins}
-    - FAILURES: {losses}
-    - CALCULATED WIN RATE: {win_rate:.1f}%
-    
-    INSTRUCTION: Use this explicit Win Rate for Phase 3 'Virtual Backtest Check'.
+    [MTF CONFLUENCE ENGINE REPORT]
+    1. MACRO DIRECTION ({len(df_macro)} candles): {tendencia_macro} (Above/Below EMA 200)
+    2. MICRO TRIGGER (M15 Z-Score): {z_micro:.2f}
+    3. PYTHON VERDICT: {sinal_final}
+    4. REASON: {motivo}
     """
 
 def analisar_imagem(img, model, lista_ativos):
-    """Detecta Ativo e Timeframe"""
-    prompt = "Identify Asset Name and Timeframe from header. Return: ASSET|TIMEFRAME"
+    prompt = "Identify Asset Name ONLY. Return: ASSET_NAME"
     try:
         response = model.generate_content([prompt, img])
-        texto = response.text.upper().strip()
-        if "|" in texto: nome_raw, tf_raw = texto.split("|")
-        else: nome_raw, tf_raw = texto, "M15"
-            
+        nome_raw = response.text.upper().strip().replace("INDEX", "").strip()
         nome_ativo = None
         codigo_ativo = None
-        nome_clean = nome_raw.replace("INDEX", "").strip()
         for k, v in lista_ativos.items():
             k_clean = k.replace("INDEX", "").strip()
-            if nome_clean in k_clean or k_clean in nome_clean:
-                nome_ativo = k
-                codigo_ativo = v
-                if nome_clean == k_clean: break
-        
-        segundos = 900 # Default M15
-        tf_label = "M15"
-        for k, v in TIMEFRAME_MAP.items():
-            if k in tf_raw:
-                segundos = v
-                tf_label = k
-                break
-        return nome_ativo, codigo_ativo, segundos, tf_label
-    except: return None, None, 900, "Erro IA"
+            if nome_raw in k_clean or k_clean in nome_raw:
+                nome_ativo = k; codigo_ativo = v; break
+        return nome_ativo, codigo_ativo
+    except: return None, None
 
 # --- FUNÇÕES TELEGRAM ---
 def enviar_telegram(token, chat_id, msg):
@@ -310,7 +286,7 @@ def enviar_telegram(token, chat_id, msg):
     except: pass
 
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA SETTINGS")
+st.sidebar.header("⚙️ SI-QA SNIPER")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -318,143 +294,147 @@ st.sidebar.divider()
 tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
-modo = st.sidebar.radio("Modo:", ["Análise Visual + Backtest", "Radar Automático"])
+st.sidebar.divider()
+st.sidebar.subheader("🎯 Alvo Macro (Direção)")
+estilo = st.sidebar.radio(
+    "Definir Tendência Pelo:",
+    ["Day Trade (H1 define direção)", "Swing Trade (H4 define direção)"],
+    index=0
+)
 
-with st.spinner("Conectando Deriv..."):
+# Configura o Macro
+if estilo == "Day Trade (H1 define direção)":
+    macro_tf = 3600
+    nome_macro = "H1"
+else:
+    macro_tf = 14400
+    nome_macro = "H4"
+
+modo_app = st.sidebar.radio("Ferramenta:", ["Análise MTF (Visual)", "Radar MTF (Auto)"])
+
+with st.spinner("Conectando..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
 # ==========================================================
-# MODO 1: ANÁLISE COMPLETA (3 IMAGENS + BACKTEST)
+# MODO 1: ANÁLISE MTF VISUAL
 # ==========================================================
-if modo == "Análise Visual + Backtest":
-    st.title("💠 SI-QA: Ultimate Analysis")
-    st.markdown("### Upload Multi-Timeframe (Tri-Dimensional)")
+if modo_app == "Análise MTF (Visual)":
+    st.title(f"🎯 SI-QA: Sniper ({nome_macro} + M15)")
+    st.info(f"Estratégia: A direção é definida pelo **{nome_macro}**, mas a entrada busca precisão no **M15**.")
     
     col1, col2, col3 = st.columns(3)
-    with col1: img_m15 = st.file_uploader("M15 (Gatilho/Entry)", type=['png', 'jpg'])
-    with col2: img_h1 = st.file_uploader("H1 (Tendência)", type=['png', 'jpg'])
-    with col3: img_h4 = st.file_uploader("H4 (Estrutura)", type=['png', 'jpg'])
+    with col1: img_m15 = st.file_uploader("M15 (Entrada)", type=['png', 'jpg'])
+    with col2: img_macro = st.file_uploader(f"{nome_macro} (Direção)", type=['png', 'jpg'])
     
-    if st.button("INICIAR DECODIFICAÇÃO TOTAL"):
-        if not api_key:
-            st.error("Falta API Key.")
-            st.stop()
-        if not img_m15 and not img_h1 and not img_h4:
-            st.error("Envie pelo menos uma imagem.")
-            st.stop()
+    if st.button("ANALISAR CONFLUÊNCIA"):
+        if not api_key: st.error("Falta API Key."); st.stop()
+        if not img_m15: st.error("M15 é obrigatório para entrada."); st.stop()
             
-        status = st.status("Executando Protocolo SI-QA...", expanded=True)
+        status = st.status("Iniciando Sniper Protocol...", expanded=True)
         genai.configure(api_key=api_key)
-        
-        # AQUI ESTÁ A CORREÇÃO DE SEGURANÇA:
         model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
-        # 1. Identificação (Prioridade: M15 -> H1 -> H4)
+        # 1. Identificação
         status.write("👁️ Identificando Ativo...")
-        img_principal = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
-        nome, codigo, segundos, tf_nome = analisar_imagem(Image.open(img_principal), model, LISTA_ATIVOS)
+        img_p = img_m15 if img_m15 else img_macro
+        nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
         
-        if not nome:
-            status.update(label="Erro", state="error")
-            st.error("Falha na identificação do ativo.")
-            st.stop()
-            
-        status.write(f"✅ Ativo: {nome} | Timeframe Base: {tf_nome}")
+        if not nome: status.update(label="Erro Visão", state="error"); st.stop()
+        status.write(f"✅ Ativo: {nome}")
         
-        # 2. Dados Profundos (2000 velas do timeframe detectado)
-        status.write(f"📡 Baixando 2000 velas de {tf_nome} para Backtest...")
-        candles, erro = asyncio.run(get_deep_history(codigo, segundos))
+        # 2. Dados Duplos (Micro + Macro)
+        status.write(f"📡 Baixando dados combinados (M15 + {nome_macro})...")
+        c_micro, c_macro, erro = asyncio.run(get_dual_timeframe_data(codigo, macro_tf))
         if erro: st.error(erro); st.stop()
         
-        df = pd.DataFrame(candles)
-        df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
-        df = calcular_indicadores(df)
+        df_micro = calcular_indicadores(pd.DataFrame(c_micro))
+        df_macro = calcular_indicadores(pd.DataFrame(c_macro))
         
-        # 3. Backtest Python
-        status.write("🧮 Rodando Reality Engine (Estatística)...")
-        relatorio_backtest = rodar_backtest_python(df)
+        # 3. Análise de Confluência Python
+        status.write("🧮 Cruzando Tendência vs Gatilho...")
+        relatorio_mtf = analisar_confluencia_python(df_micro, df_macro)
         
-        # 4. Preparar Prompt Multi-Imagem
+        # 4. Prompt Injection (A Lógica Sniper)
         inputs_gemini = [SYSTEM_PROMPT]
+        contexto = "IMAGES PROVIDED:\n"
+        if img_m15: inputs_gemini.append(Image.open(img_m15)); contexto+="- M15 CHART (Entry Precision)\n"
+        if img_macro: inputs_gemini.append(Image.open(img_macro)); contexto+=f"- {nome_macro} CHART (Macro Trend)\n"
         
-        contexto_imgs = "IMAGES PROVIDED:\n"
-        if img_m15: 
-            inputs_gemini.append(Image.open(img_m15))
-            contexto_imgs += "- IMAGE 1: M15 CHART (Entry Trigger)\n"
-        if img_h1: 
-            inputs_gemini.append(Image.open(img_h1))
-            contexto_imgs += "- IMAGE 2: H1 CHART (Trend)\n"
-        if img_h4: 
-            inputs_gemini.append(Image.open(img_h4))
-            contexto_imgs += "- IMAGE 3: H4 CHART (Structure)\n"
-            
         prompt_injecao = f"""
-        TARGET ASSET: {nome}
-        BASE TIMEFRAME: {tf_nome}
-        PRICE: {df.iloc[-1]['close']}
-        Z-SCORE: {df.iloc[-1]['Z_Score']:.2f}
+        TARGET: {nome}
+        STRATEGY: MTF SNIPER (Macro Direction: {nome_macro} | Entry Trigger: M15)
         
-        {contexto_imgs}
+        === DATA INTELLIGENCE ===
+        {relatorio_mtf}
         
-        === REAL-TIME BACKTEST DATA (PHASE 3 CHECK) ===
-        {relatorio_backtest}
+        === DETAILED DATA ===
+        MACRO ({nome_macro}) PRICE: {df_macro.iloc[-1]['close']} (EMA 200: {df_macro.iloc[-1]['EMA_200']:.2f})
+        MICRO (M15) PRICE: {df_micro.iloc[-1]['close']} (Z-Score: {df_micro.iloc[-1]['Z_Score']:.2f})
         
-        === LIVE MATH DATA (LAST 15 CANDLES) ===
-        {df.tail(15).to_string()}
-        
-        COMMAND: EXECUTE SI-QA KERNEL LOGIC USING THE DATA ABOVE.
+        TASK:
+        1. Read the Python Verdict above.
+        2. Look at the images to confirm structure (e.g., Support/Resistance).
+        3. IGNORE M15 signals that go against the {nome_macro} Trend.
+        4. ONLY recommend trade if Macro and Micro are aligned (Confluence).
         """
         
         inputs_gemini.append(prompt_injecao)
         
-        status.write("🧠 Gerando Sinal Final...")
-        
-        # TRATAMENTO DE ERRO DE SEGURANÇA NA GERAÇÃO
         try:
+            status.write("🧠 Gerando Sinal de Precisão...")
             resp = model.generate_content(inputs_gemini)
-            status.update(label="Concluído", state="complete")
+            status.update(label="Pronto", state="complete")
             st.divider()
             st.markdown(resp.text)
-            
-            with st.expander("Ver Prova Real (Backtest Python)"):
-                st.text(relatorio_backtest)
-        except ValueError:
-            status.update(label="Bloqueio de Segurança", state="error")
-            st.error("O Gemini bloqueou a resposta. Isso acontece raramente em gráficos voláteis. Tente novamente ou use outra imagem.")
+            with st.expander("Ver Relatório de Confluência"): st.text(relatorio_mtf)
         except Exception as e:
-            st.error(f"Erro desconhecido: {str(e)}")
+            st.error(f"Erro: {e}")
 
 # ==========================================================
-# MODO 2: RADAR
+# MODO 2: RADAR MTF
 # ==========================================================
-elif modo == "Radar Automático":
-    st.title("📡 Radar de Probabilidade (Z-Score)")
+elif modo_app == "Radar MTF (Auto)":
+    st.title(f"📡 Radar Sniper ({nome_macro} + M15)")
+    st.markdown("Monitora a **Tendência Macro** e avisa quando o **M15** der entrada a favor dela.")
     alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
-    if st.button("INICIAR RADAR"):
+    if st.button("INICIAR RADAR SNIPER"):
         if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar Rodando... (Não feche esta aba)")
-        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
+        st.success("Radar Sniper Ativo...")
+        enviar_telegram(tg_token, tg_chat, f"📡 RADAR SNIPER INICIADO ({nome_macro} x M15)")
         
         ph = st.empty()
         while True:
             log = []
             for nome in alvos:
                 codigo = LISTA_ATIVOS[nome]
-                candles, _ = asyncio.run(get_deep_history(codigo, 900)) # M15 padrão
+                c_micro, c_macro, _ = asyncio.run(get_dual_timeframe_data(codigo, macro_tf))
                 
-                if candles:
-                    df = pd.DataFrame(candles)
-                    df = calcular_indicadores(df)
-                    z = df.iloc[-1]['Z_Score']
+                if c_micro and c_macro:
+                    df_mi = calcular_indicadores(pd.DataFrame(c_micro))
+                    df_ma = calcular_indicadores(pd.DataFrame(c_macro))
                     
-                    if abs(z) > 2.8:
-                        msg = f"🚨 **{nome}**\nZ-Score Crítico: {z:.2f}\nProbabilidade de Reversão Alta!"
+                    # Lógica de Alerta
+                    z = df_mi.iloc[-1]['Z_Score']
+                    trend_up = df_ma.iloc[-1]['close'] > df_ma.iloc[-1]['EMA_200']
+                    
+                    msg = ""
+                    # Compra a favor da tendência
+                    if trend_up and z < -2.0:
+                        msg = f"🎯 **{nome}**\nSNIPER BUY!\nMacro: Alta ({nome_macro})\nM15: Sobrevendido (Z: {z:.2f})"
+                    
+                    # Venda a favor da tendência
+                    elif not trend_up and z > 2.0:
+                        msg = f"🎯 **{nome}**\nSNIPER SELL!\nMacro: Baixa ({nome_macro})\nM15: Sobrecomprado (Z: {z:.2f})"
+                        
+                    if msg:
                         enviar_telegram(tg_token, tg_chat, msg)
-                        log.append(f"{nome}: 🔴 ALERTA (Z: {z:.2f})")
+                        log.append(f"{nome}: 🟢 SINAL ENVIADO")
                     else:
-                        log.append(f"{nome}: ... (Z: {z:.2f})")
+                        dir_str = "Alta" if trend_up else "Baixa"
+                        log.append(f"{nome}: Macro {dir_str} | M15 Z: {z:.2f}")
+                        
                 time.sleep(1)
             ph.code("\n".join(log))
             time.sleep(60)
