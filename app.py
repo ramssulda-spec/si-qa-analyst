@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Trinity Engine",
-    page_icon="🔥",
+    page_title="SI-QA: Gemini 3.0 (Fail-Safe)",
+    page_icon="🛡️",
     layout="wide"
 )
 
@@ -26,6 +26,7 @@ st.markdown("""
     .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
     .stSuccess { background-color: #064000; color: white; border: 1px solid #00ff00; }
     .stWarning { background-color: #332b00; color: #ffcc00; border: 1px solid #ffcc00; }
+    .stError { background-color: #330000; color: #ff0000; border: 1px solid #ff0000; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,34 +39,33 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE (ATUALIZADO PARA LER A TRINDADE)
+# PROMPT MESTRE
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
-You are the "Synthetic Indices Quantum Architect" (SI-QA).
-You interpret the "Trinity Protocol" data provided by the Python Engine.
+You are the "Synthetic Indices Quantum Architect" (SI-QA) running on Gemini 3.0 Neural Engine.
+You exist solely to decode the PRNG (Pseudo-Random Number Generator) algorithms of the Deriv Synthetic Market.
 
 >> YOUR DNA:
-1. You DO NOT guess. You validate signals based on Mathematical Confluence.
-2. A valid signal requires agreement between Z-Score AND RSI.
-3. You must act as a Risk Manager: If the Backtest Win Rate < 65%, advise CAUTION.
+1. You DO NOT guess. You CALCULATE probability densities based on the provided Backtest Data.
+2. Synthetic Indices are non-sentimental; they are mathematically bound.
+3. You must cross-reference the 3 Timeframes (M15, H1, H4) to determine the dominant vector.
 
  CRITICAL INPUT PROTOCOL
 User provides:
 A) 3 Charts (M15, H1, H4).
-B) Trinity Backtest Report (Z-Score + RSI + Trend).
-C) Live Technical Indicators.
+B) Python-Calculated Backtest Statistics.
+C) Live Technical Indicators (Z-Score, EMA).
 
  PHASE 1: THE HIERARCHY CHECK
 - Look at H4 first. Is it at a major Level?
 - Look at H1. Is it trending?
 - Look at M15. Is it giving a trigger?
 
- PHASE 2: THE TRINITY CHECK (PYTHON DATA)
-- Review the "Confluence Score" provided in the data.
-- 3/3 Indicators Agree = SNIPER ENTRY.
-- 2/3 Indicators Agree = STANDARD ENTRY.
-- 1/3 Indicators Agree = NO TRADE.
+ PHASE 2: THE REALITY CHECK (PYTHON BACKTEST)
+- You will receive a "Win Rate" from the Python engine.
+- IF Win Rate < 60% -> ABORT TRADE immediately.
+- IF Win Rate > 60% -> PROCEED.
 
  PHASE 3: DECISION MATRIX
 - IF H4 Structure is Dominant -> Signal is SWING TRADE.
@@ -74,23 +74,23 @@ C) Live Technical Indicators.
  OUTPUT TERMINAL:
 (Render this specifically)
 
-/// SI-QA TRINITY KERNEL ///
+/// SI-QA GEMINI 3.0 KERNEL ///
 [TARGET: {Asset} | MODE: {Swing/Day}]
 
->> MATHEMATICAL CONFLUENCE:
-   1. Z-SCORE STATUS: {Overbought/Oversold/Neutral}
-   2. RSI (14) STATUS: {Value} (Divergence Check)
-   3. BACKTEST ACCURACY: {Win Rate}% (over 2000 candles)
+>> NEURAL ANALYSIS:
+   1. H4 STRUCTURE: {Bullish/Bearish/Range}
+   2. PYTHON BACKTEST: {Win Rate}% Success History
+   3. CONFLUENCE SCORE: {0-100}/100
 
 >> STRATEGY EXECUTION:
     ACTION: {BUY / SELL / WAIT}
-    CONFIDENCE: {HIGH/MEDIUM/LOW}
+    TYPE: {SCALP / DAY TRADE / SWING}
     ENTRY ZONE: {Price}
     STOP LOSS: {Price - Structural}
     TAKE PROFIT: {Price - Structural}
 
 >> QUANTUM REASONING:
-    {Explain the confluence. Example: "Price is overextended (Z > 2.5), RSI is rejecting 70, and Backtest shows 78% win rate for this setup."}
+    {Explain why using high-level logic. Example: "H4 hit resistance, Python confirms 82% reversal chance, M15 candle is a rejection."}
 )
 """
 
@@ -136,81 +136,46 @@ async def get_platinum_data(symbol_code):
     except Exception as e:
         return None, None, None, str(e)
 
-# --- CÁLCULOS MATEMÁTICOS AVANÇADOS (A TRINDADE) ---
-
-def calcular_rsi(series, period=14):
-    delta = series.diff(1)
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+# --- MOTOR DE BACKTEST ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
-    
-    # 1. Z-Score (Desvio Padrão)
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
-    
-    # 2. EMA (Tendência)
-    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
-    
-    # 3. RSI (Força Relativa - Novo Recurso)
-    df['RSI'] = calcular_rsi(df['close'], 14)
-    
     return df.dropna()
 
-def rodar_backtest_avancado(df):
-    """
-    Motor de Realidade Atualizado:
-    Só conta WIN se houver CONFLUÊNCIA (Z-Score + RSI).
-    """
+def rodar_backtest_estatistico(df):
     total = len(df)
     if total < 500: return "Dados insuficientes."
-    
-    wins = 0
-    losses = 0
-    sinais = 0
-    
+    wins = 0; losses = 0; sinais = 0
     for i in range(50, total - 20):
         row = df.iloc[i]
-        
-        # --- LÓGICA DE CONFLUÊNCIA ---
-        
-        # SETUP VENDA: Z-Score Esticado (>2) E RSI Esticado (>70)
-        if row['Z_Score'] > 2.0 and row['RSI'] > 70:
-            sinais += 1
-            outcome = "LOSS"
-            # Target: Retornar à média (EMA 20)
+        if row['Z_Score'] > 2.0:
+            sinais += 1; outcome = "LOSS"
             for future_i in range(i+1, min(i+16, total)):
                 if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
                     wins += 1; outcome = "WIN"; break
             if outcome == "LOSS": losses += 1
-
-        # SETUP COMPRA: Z-Score Barato (<-2) E RSI Barato (<30)
-        elif row['Z_Score'] < -2.0 and row['RSI'] < 30:
-            sinais += 1
-            outcome = "LOSS"
+        elif row['Z_Score'] < -2.0:
+            sinais += 1; outcome = "LOSS"
             for future_i in range(i+1, min(i+16, total)):
                 if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
                     wins += 1; outcome = "WIN"; break
             if outcome == "LOSS": losses += 1
-            
     win_rate = (wins / sinais * 100) if sinais > 0 else 0
-    
     return f"""
-    [TRINITY ENGINE REPORT]
-    - TIMEFRAME: M15 (Last {total} candles)
-    - STRATEGY: Confluence (Z-Score + RSI 14)
-    - HIGH QUALITY SIGNALS FOUND: {sinais}
-    - WINS: {wins} | LOSSES: {losses}
-    - ACCURACY (WIN RATE): {win_rate:.1f}%
+    [REALITY ENGINE REPORT]
+    - Sample Size: {total} candles (M15)
+    - Patterns Found: {sinais}
+    - Historical Accuracy: {win_rate:.1f}%
     """
 
 def tentar_ler_ativo(img, model, lista_ativos):
-    prompt = "Read the Asset Name exactly. Return ONLY the name."
+    """Tenta ler. Se falhar, retorna None para ativar o seletor manual."""
+    prompt = "Read the Asset Name exactly from the chart header (e.g., Crash 1000 Index). Return ONLY the name."
     try:
         response = model.generate_content([prompt, img])
         nome_raw = response.text.upper().strip().replace("INDEX", "").strip()
@@ -229,7 +194,7 @@ def enviar_telegram(token, chat_id, msg):
     except: pass
 
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA TRINITY")
+st.sidebar.header("⚙️ SI-QA 3.0 CONFIG")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -240,7 +205,7 @@ tg_chat = st.sidebar.text_input("Chat ID")
 st.sidebar.divider()
 modo_operacao = st.sidebar.radio(
     "Selecionar Módulo:",
-    ["Análise Trinity (Visual)", "Radar Confluência (Auto)"]
+    ["Análise Tri-Force (Gemini 3.0)", "Radar Automático (Sem Custo)"]
 )
 
 with st.spinner("Conectando..."):
@@ -248,48 +213,54 @@ with st.spinner("Conectando..."):
 if not LISTA_ATIVOS: st.stop()
 
 # ==========================================================
-# MODO 1: ANÁLISE TRINITY (VISUAL)
+# MODO 1: ANÁLISE TRI-FORCE
 # ==========================================================
-if modo_operacao == "Análise Trinity (Visual)":
-    st.title("🔥 SI-QA: Trinity Analysis")
-    st.markdown("### Z-Score + RSI + Estrutura de Tendência")
+if modo_operacao == "Análise Tri-Force (Gemini 3.0)":
+    st.title("🧠 SI-QA: Gemini 3.0 Ultimate")
     
     col1, col2, col3 = st.columns(3)
     with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
     with col2: img_h1 = st.file_uploader("2. H1 (Médio)", type=['png', 'jpg'])
     with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
     
-    ativo_manual = st.selectbox("Seletor Manual (Caso IA falhe):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
+    # SELETOR MANUAL DE SEGURANÇA (APARECE SE A IA FALHAR)
+    ativo_manual = st.selectbox("Se a IA não ler o gráfico, selecione aqui:", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
     
-    if st.button("RODAR PROTOCOLO TRINITY"):
+    if st.button("ANALISAR COM GEMINI 3.0"):
         if not api_key: st.error("Falta API Key."); st.stop()
         img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
         if not img_p: st.error("Envie imagens."); st.stop()
         
-        status = st.status("Iniciando Motor Trinity...", expanded=True)
+        status = st.status("Iniciando Motor...", expanded=True)
         genai.configure(api_key=api_key)
-        
-        # Tenta usar o modelo 3.0, fallback para 1.5
         try:
             model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         except:
             model = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
 
-        # 1. Identificação
-        nome_ativo = None; codigo_ativo = None
+        # 1. Identificação (Com Fallback Manual)
+        nome_ativo = None
+        codigo_ativo = None
+
         if ativo_manual != "Automático (IA)":
-            nome_ativo = ativo_manual; codigo_ativo = LISTA_ATIVOS[ativo_manual]
-            status.write(f"⚠️ Manual: {nome_ativo}")
+            # Usuário escolheu manualmente
+            status.write(f"⚠️ Usando seleção manual: {ativo_manual}")
+            nome_ativo = ativo_manual
+            codigo_ativo = LISTA_ATIVOS[ativo_manual]
         else:
-            status.write("👁️ Lendo Gráfico...")
+            # Tenta ler com IA
+            status.write("👁️ IA Lendo Gráfico...")
             nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model, LISTA_ATIVOS)
+            
             if not nome_ativo:
-                st.warning("Selecione o ativo manualmente na caixa acima."); st.stop()
-        
-        status.write(f"✅ Ativo: {nome_ativo}")
+                status.update(label="Aviso", state="warning")
+                st.warning("⚠️ A IA não conseguiu ler o nome do ativo. Por favor, **selecione o nome manualmente na caixa acima** e clique em Analisar novamente.")
+                st.stop()
+
+        status.write(f"✅ Ativo Identificado: {nome_ativo}")
         
         # 2. Dados
-        status.write(f"📡 Baixando dados para Confluência...")
+        status.write(f"📡 Baixando dados da Deriv...")
         c_m15, c_h1, c_h4, erro = asyncio.run(get_platinum_data(codigo_ativo))
         if erro: st.error(erro); st.stop()
         
@@ -297,58 +268,56 @@ if modo_operacao == "Análise Trinity (Visual)":
         df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
         df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
         
-        # 3. Backtest Avançado
-        status.write("🧮 Rodando Backtest de Confluência (RSI+ZScore)...")
-        relatorio_backtest = rodar_backtest_avancado(df_m15)
+        # 3. Backtest
+        status.write("🧮 Rodando Reality Engine...")
+        relatorio_backtest = rodar_backtest_estatistico(df_m15)
         
         # 4. Injeção
         inputs = [SYSTEM_PROMPT]
         contexto = "IMAGES:\n"
-        if img_m15: inputs.append(Image.open(img_m15)); contexto+="- M15\n"
-        if img_h1: inputs.append(Image.open(img_h1)); contexto+="- H1\n"
-        if img_h4: inputs.append(Image.open(img_h4)); contexto+="- H4\n"
+        if img_m15: inputs.append(Image.open(img_m15)); contexto+="- M15 (Entry)\n"
+        if img_h1: inputs.append(Image.open(img_h1)); contexto+="- H1 (Trend)\n"
+        if img_h4: inputs.append(Image.open(img_h4)); contexto+="- H4 (Structure)\n"
         
         prompt_injecao = f"""
         TARGET: {nome_ativo}
         {contexto}
         
-        === PYTHON TRINITY CHECK ===
+        === PYTHON REALITY CHECK ===
         {relatorio_backtest}
         
-        === LIVE INDICATORS ===
+        === TECHNICAL CONTEXT ===
         [H4 MACRO]: Trend is {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
-        [M15 MICRO]: 
-           - Z-Score: {df_m15.iloc[-1]['Z_Score']:.2f} (Extreme if >2 or <-2)
-           - RSI (14): {df_m15.iloc[-1]['RSI']:.2f} (Overbought >70 / Oversold <30)
+        [M15 MICRO]: Z-Score is {df_m15.iloc[-1]['Z_Score']:.2f}
         
-        TASK: Confirm Confluence. If Z-Score AND RSI agree, Signal is STRONG.
+        TASK: Synthesize Visuals + Math + Backtest to decide the Best Signal.
         """
         inputs.append(prompt_injecao)
         
         try:
-            status.write("🧠 Decodificando...")
+            status.write("🧠 Gemini 3.0 Decodificando...")
             resp = model.generate_content(inputs)
             status.update(label="Sucesso", state="complete")
             st.divider()
             st.markdown(resp.text)
-            with st.expander("Ver Dados Matemáticos"): st.text(relatorio_backtest)
+            with st.expander("Ver Dados do Backtest"): st.text(relatorio_backtest)
         except Exception as e:
-            if "429" in str(e): st.warning("Cota excedida. Aguarde 30s.")
-            else: st.error(f"Erro: {e}")
+            if "429" in str(e):
+                st.warning("⏳ Cota do Gemini 3.0 excedida. Aguarde 30s ou use a seleção manual.")
+            else:
+                st.error(f"Erro: {e}")
 
 # ==========================================================
-# MODO 2: RADAR CONFLUÊNCIA
+# MODO 2: RADAR AUTOMÁTICO
 # ==========================================================
-elif modo_operacao == "Radar Confluência (Auto)":
-    st.title("📡 Radar Trinity (Z-Score + RSI + Trend)")
-    st.info("Este radar só avisa quando TRÊS indicadores se alinham. Menos sinais, mais precisão.")
-    
+elif modo_operacao == "Radar Automático (Sem Custo)":
+    st.title("📡 Radar Automático (24/7)")
     alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
     if st.button("ATIVAR VIGILÂNCIA"):
         if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar Trinity Ativo.")
-        enviar_telegram(tg_token, tg_chat, "📡 RADAR TRINITY INICIADO")
+        st.success("Radar Ativo.")
+        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
         
         ph = st.empty()
         while True:
@@ -360,25 +329,18 @@ elif modo_operacao == "Radar Confluência (Auto)":
                     if c_m15 and c_h4:
                         df_mi = calcular_indicadores(pd.DataFrame(c_m15))
                         df_ma = calcular_indicadores(pd.DataFrame(c_h4))
-                        
                         z = df_mi.iloc[-1]['Z_Score']
-                        rsi = df_mi.iloc[-1]['RSI']
                         trend_up = df_ma.iloc[-1]['close'] > df_ma.iloc[-1]['EMA_200']
                         
                         msg = ""
-                        # COMPRA FORTE: Trend UP + Z Barato + RSI Barato
-                        if trend_up and z < -2.0 and rsi < 30:
-                            msg = f"🔥 **{nome}**\nTRINITY BUY!\n- H4: Alta\n- Z-Score: {z:.2f}\n- RSI: {rsi:.0f}"
-                        
-                        # VENDA FORTE: Trend DOWN + Z Caro + RSI Caro
-                        elif not trend_up and z > 2.0 and rsi > 70:
-                            msg = f"🧊 **{nome}**\nTRINITY SELL!\n- H4: Baixa\n- Z-Score: {z:.2f}\n- RSI: {rsi:.0f}"
+                        if trend_up and z < -2.5: msg = f"🚀 **{nome}**\nCOMPRA SWING (H4 Alta + M15 Barato)"
+                        elif not trend_up and z > 2.5: msg = f"🔻 **{nome}**\nVENDA SWING (H4 Baixa + M15 Caro)"
                             
                         if msg:
                             enviar_telegram(tg_token, tg_chat, msg)
-                            log.append(f"{nome}: SINAL 🔥")
+                            log.append(f"{nome}: SINAL ✅")
                         else:
-                            log.append(f"{nome}: RSI {rsi:.0f} | Z {z:.1f}")
+                            log.append(f"{nome}: ...")
                 except: pass
                 time.sleep(1)
             ph.code("\n".join(log))
