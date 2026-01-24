@@ -11,12 +11,12 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Platinum (Backtest + Tri-Force)",
-    page_icon="💎",
+    page_title="SI-QA: Gemini 3.0 Ultimate",
+    page_icon="🧠",
     layout="wide"
 )
 
-# --- ESTILO VISUAL ---
+# --- ESTILO VISUAL (MATRIX STYLE) ---
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
@@ -24,10 +24,13 @@ st.markdown("""
     div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
     .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
+    .stSuccess { background-color: #064000; color: white; border: 1px solid #00ff00; }
+    .stWarning { background-color: #332b00; color: #ffcc00; border: 1px solid #ffcc00; }
+    .stError { background-color: #330000; color: #ff0000; border: 1px solid #ff0000; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SEGURANÇA ---
+# --- SEGURANÇA (ANTI-BLOQUEIO) ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -36,121 +39,58 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE ORIGINAL (100% INTACTO)
+# PROMPT MESTRE (OTIMIZADO PARA GEMINI 3.0)
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
-You are the "Synthetic Indices Quantum Architect" (SI-QA).
+You are the "Synthetic Indices Quantum Architect" (SI-QA) running on Gemini 3.0 Neural Engine.
 You exist solely to decode the PRNG (Pseudo-Random Number Generator) algorithms of the Deriv Synthetic Market.
 
 >> YOUR DNA:
-1. You DO NOT guess. You DO NOT predict. You CALCULATE probability densities.
-2. Synthetic Indices are non-sentimental; they are mathematically bound by specific algorithms.
-3. Your analysis must rely on Volatility Cycles, Mathematical Deviation (Z-Score), and Fractal Algorithm Defects.
+1. You DO NOT guess. You CALCULATE probability densities based on the provided Backtest Data.
+2. Synthetic Indices are non-sentimental; they are mathematically bound.
+3. You must cross-reference the 3 Timeframes (M15, H1, H4) to determine the dominant vector.
 
- CRITICAL INPUT PROTOCOL (MANDATORY)
-Since you function as a text/vision processing engine, you require INPUT to execute the code.
-User MUST provide either:
-A) A High-Definition Screenshot of the chart (Timeframes: M15, H1, H4).
-B) A Data Array of the last 30-50 Candles (OHLC Values).
-**IF NO DATA IS PROVIDED: State "AWAITING DATA INJECTION" and Pause.**
+ CRITICAL INPUT PROTOCOL
+User provides:
+A) 3 Charts (M15, H1, H4).
+B) Python-Calculated Backtest Statistics.
+C) Live Technical Indicators (Z-Score, EMA).
 
- PHASE 0: INDEX-SPECIFIC SUB-ROUTINE LOADING
-First, Identify the Asset and Load its specific Logic:
+ PHASE 1: THE HIERARCHY CHECK
+- Look at H4 first. Is it at a major Level?
+- Look at H1. Is it trending?
+- Look at M15. Is it giving a trigger?
 
-[SUB-ROUTINE A: VOLATILITY INDICES (V75, V10, V100)]
-Focus: Standard Deviation Expansions, Mean Reversion to Moving Averages (EMA 20/50), Accumulation/Distribution.
-Triggers: Breakers + ATR expansion > 2.0.
+ PHASE 2: THE REALITY CHECK (PYTHON BACKTEST)
+- You will receive a "Win Rate" from the Python engine.
+- IF Win Rate < 60% -> ABORT TRADE immediately.
+- IF Win Rate > 60% -> PROCEED.
 
-[SUB-ROUTINE B: SPIKE INDICES (BOOM & CRASH)]
-Focus: Tick Counting, Drop/Spike Rejection zones, "N" Pattern formation.
-Rule: AGAINST the Spike trading is BANNED unless Structure Shift is confirmed on H1.
-Rule: WITH the Spike trading requires 'Golden Pocket' Retracement (61.8% - 78.6%).
+ PHASE 3: DECISION MATRIX
+- IF H4 Structure is Dominant -> Signal is SWING TRADE.
+- IF H4 is Ranging but H1 is Trending -> Signal is DAY TRADE.
 
-[SUB-ROUTINE C: DISCRETE INDICES (STEP & JUMP)]
-Focus: Level Ladders, Support breaks.
-Triggers: Only Break & Retest of flat levels.
-
- PHASE 1: PRNG ALGORITHMIC DECODER (THE QUANTUM SCAN)
-
-1.1. ALGORITHMIC REGIME DETECTION
-Calculate current state relative to recent history:
-- [0] Dead Zone: Low volatility/ATR < Historical Mean. (ACTION: IDLE)
-- [1] Pump/Dump: Volatility > 3 Sigma. (ACTION: FADE/REVERSION)
-- [2] Flow State: Consistent HH/HL sequence w/ Displacement. (ACTION: TREND FOLLOWING)
-
-1.2. FRACTAL NOISE CANCELLATION
-Identify and DISCARD "Noise Candles":
-- Candles with >50% Wicks relative to Body.
-- Candles strictly inside previous candle range (Harami/Inside Bar).
-*Target only "Power Candles" (Body > 70% of Range).*
-
- PHASE 2: THE "MATH-FIRST" VALIDATION GATES
-The setup is valid ONLY if the Boolean Logic is TRUE for ALL:
-
-1. [DISPLACEMENT VELOCITY]: Did price move away from the zone faster (fewer candles) than it took to get there? [T/F]
-2. [LIQUIDITY EXTRACTION]: Did the move initiate AFTER clearing a fractal High/Low? (The Judas Swing) [T/F]
-3. [PREMIUM/DISCOUNT ARRAY]: Is the entry in the correct Quadrant (Above 50% for Sell, Below 50% for Buy)? [T/F]
-4. [IMBALANCE PRESENCE]: Is there an unmitigated FVG or Algorithm Gap clearly visible? [T/F]
-
-If ANY is "False" => STATUS: ABORT_NO_EDGE.
-
- PHASE 3: REAL-TIME BACKTEST SIMULATION (VIRTUAL)
-*Mental Simulation:*
-"Scan the visible chart history. Look for the EXACT same pattern setup. How many times did it appear? How many times did it fail?"
-- Pattern Frequency Score (1-10)
-- Failure Rate estimation.
-*If Failure Rate in simulation > 40% -> ABORT.*
-
- PHASE 4: EXECUTION MATRIX (SURGICAL PRECISION)
-
->> ENTRY ZONES (Choose One Best Match):
-1. **The Origin (Extreme):** Order Block Body Open (Precision Entry).
-2. **The Equilibrium (Fair Value):** 50% of the FVG.
-3. **The Spike Limit (Boom/Crash):** Previous Spike Base + Spread.
-
->> RISK PARAMETERS (Dynamic):
-- Stop Loss: MUST be protected by a structural Invalidity Point (ATR Buffer added).
-- Risk Reward Ratio: STRICTLY > 1:3. No exceptions.
-
- PHASE 5: PROBABILITY & OUTPUT GENERATION
-
-Compute final score "Win Probability" (WP) based on Confluences/Regime.
-Output formatted specifically for trader execution.
-
----
  OUTPUT TERMINAL:
-(Render this specifically when you analyze the data)
+(Render this specifically)
 
-/// SYNTHETIC QUANTUM DECODER ///
-[TIMESTAMP: Current | ASSET: {Symbol}]
+/// SI-QA GEMINI 3.0 KERNEL ///
+[TARGET: {Asset} | MODE: {Swing/Day}]
 
-SYSTEM STATE: {CALCULATING...}
->> REGIME DETECTED: [ {Type} | STRENGTH: {0-100}% ]
-   *Mathematical Context: (e.g. 2 SD Expansion, Range Bound)*
-
->> PRNG DECODING:
-   [1] Structure Break: {YES/NO/PENDING}
-   [2] Algorithm Trap (Fakeout): {DETECTED/CLEAN}
-   [3] Momentum Velocity: {ACCELERATING / DECELERATING}
-
->> VIRTUAL BACKTEST CHECK:
-   "Similar structures in current view have yielded positive reactions X out of Y times."
+>> NEURAL ANALYSIS:
+   1. H4 STRUCTURE: {Bullish/Bearish/Range}
+   2. PYTHON BACKTEST: {Win Rate}% Success History
+   3. CONFLUENCE SCORE: {0-100}/100
 
 >> STRATEGY EXECUTION:
-    ACTION: {BUY LIMIT / SELL LIMIT / BUY NOW / SELL NOW / STAY OUT}
-    ENTRY PRICE (Specific): {1234.56}
-    STOP LOSS (Hard Deck): {1230.00}
-    TAKE PROFIT 1 (Liq pool): {1250.00}
-    TAKE PROFIT 2 (Extension): {1280.00}
+    ACTION: {BUY / SELL / WAIT}
+    TYPE: {SCALP / DAY TRADE / SWING}
+    ENTRY ZONE: {Price}
+    STOP LOSS: {Price - Structural}
+    TAKE PROFIT: {Price - Structural}
 
->> FINAL CONFIDENCE RATING:
-    PROBABILITY: {XX.X%}
-    CRITICAL WARNING: {Example: "Against Trend," "Approaching Key Level"}
-    ADVICE: {One precise tactical instruction}
-
----------------------------------------------------
-COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
+>> QUANTUM REASONING:
+    {Explain why using high-level logic. Example: "H4 hit resistance, Python confirms 82% reversal chance, M15 candle is a rejection."}
 )
 """
 
@@ -177,9 +117,9 @@ def buscar_lista_ativos_deriv():
 
 async def get_platinum_data(symbol_code):
     """
-    BAIXA TUDO:
-    1. M15 PROFUNDO (2000 velas) -> Para Backtest Estatístico
-    2. H1 e H4 (200 velas) -> Para Contexto Tri-Force
+    BAIXA DADOS COMPLETOS:
+    - M15 (2000 velas) para Estatística Real.
+    - H1 e H4 (200 velas) para Contexto.
     """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
@@ -191,7 +131,7 @@ async def get_platinum_data(symbol_code):
             req_h1 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 3600}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
-            # Execução
+            # Execução Rápida
             await websocket.send(json.dumps(req_m15_deep)); res_m15 = await websocket.recv()
             await websocket.send(json.dumps(req_h1)); res_h1 = await websocket.recv()
             await websocket.send(json.dumps(req_h4)); res_h4 = await websocket.recv()
@@ -200,13 +140,13 @@ async def get_platinum_data(symbol_code):
             d_h1 = json.loads(res_h1)
             d_h4 = json.loads(res_h4)
             
-            if 'error' in d_m15 or 'error' in d_h1 or 'error' in d_h4: return None, None, None, "Erro API"
+            if 'error' in d_m15 or 'error' in d_h1 or 'error' in d_h4: return None, None, None, "Erro API Deriv"
             
             return d_m15['candles'], d_h1['candles'], d_h4['candles'], None
     except Exception as e:
         return None, None, None, str(e)
 
-# --- MOTOR DE BACKTEST (RESTAURADO!) ---
+# --- MOTOR DE BACKTEST (REALITY ENGINE) ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
@@ -219,11 +159,10 @@ def calcular_indicadores(df):
 
 def rodar_backtest_estatistico(df):
     """
-    Testa a eficácia da estratégia nas últimas 2000 velas de M15.
-    Lógica: Reversão à Média (Z-Score > 2.0 volta para EMA 20).
+    Testa a eficácia da reversão nas últimas 2000 velas.
     """
     total = len(df)
-    if total < 500: return "Dados insuficientes para estatística."
+    if total < 500: return "Dados insuficientes."
     
     wins = 0
     losses = 0
@@ -236,7 +175,6 @@ def rodar_backtest_estatistico(df):
         if row['Z_Score'] > 2.0:
             sinais += 1
             outcome = "LOSS"
-            # Verifica próximas 15 velas
             for future_i in range(i+1, min(i+16, total)):
                 if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
                     wins += 1; outcome = "WIN"; break
@@ -255,15 +193,13 @@ def rodar_backtest_estatistico(df):
     
     return f"""
     [REALITY ENGINE REPORT]
-    - TIMEFRAME ANALYZED: M15 (Last {total} candles)
-    - PATTERN FREQUENCY: {sinais} signals found in history.
-    - HISTORICAL SUCCESS: {wins}
-    - HISTORICAL FAILURES: {losses}
-    - CALCULATED PROBABILITY (WIN RATE): {win_rate:.1f}%
+    - Sample Size: {total} candles (M15)
+    - Patterns Found: {sinais}
+    - Historical Accuracy: {win_rate:.1f}%
     """
 
 def analisar_imagem(img, model, lista_ativos):
-    prompt = "Identify Asset Name ONLY. Return: ASSET_NAME"
+    prompt = "Identify Asset Name ONLY (e.g. Crash 1000). Return: ASSET_NAME"
     try:
         response = model.generate_content([prompt, img])
         nome_raw = response.text.upper().strip().replace("INDEX", "").strip()
@@ -284,7 +220,7 @@ def enviar_telegram(token, chat_id, msg):
     except: pass
 
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA PLATINUM")
+st.sidebar.header("⚙️ SI-QA 3.0 CONFIG")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -294,8 +230,8 @@ tg_chat = st.sidebar.text_input("Chat ID")
 
 st.sidebar.divider()
 modo_operacao = st.sidebar.radio(
-    "Modo:",
-    ["Análise Tri-Force + Backtest", "Radar Automático (Telegram)"]
+    "Selecionar Módulo:",
+    ["Análise Tri-Force (Gemini 3.0)", "Radar Automático (Sem Custo)"]
 )
 
 with st.spinner("Conectando..."):
@@ -303,33 +239,49 @@ with st.spinner("Conectando..."):
 if not LISTA_ATIVOS: st.stop()
 
 # ==========================================================
-# MODO 1: ANÁLISE TRI-FORCE + BACKTEST
+# MODO 1: ANÁLISE TRI-FORCE (GEMINI 3.0)
 # ==========================================================
-if modo_operacao == "Análise Tri-Force + Backtest":
-    st.title("💎 SI-QA: Platinum Analysis")
-    st.markdown("### 3 Visões (M15/H1/H4) + 1 Verdade Estatística")
+if modo_operacao == "Análise Tri-Force (Gemini 3.0)":
+    st.title("🧠 SI-QA: Gemini 3.0 Ultimate")
+    st.markdown("### Análise de Precisão Máxima")
     
     col1, col2, col3 = st.columns(3)
     with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
     with col2: img_h1 = st.file_uploader("2. H1 (Médio)", type=['png', 'jpg'])
     with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
     
-    if st.button("RODAR PROTOCOLO COMPLETO"):
+    if st.button("ANALISAR COM GEMINI 3.0"):
         if not api_key: st.error("Falta API Key."); st.stop()
         img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
         if not img_p: st.error("Envie imagens."); st.stop()
         
-        status = st.status("Iniciando Análise Platina...", expanded=True)
+        status = st.status("Iniciando Motor Gemini 3.0...", expanded=True)
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
+        # --- CONFIGURAÇÃO ESPECÍFICA DO MODELO 3.0 ---
+        try:
+            model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
+        except:
+            # Fallback caso o nome exato mude na API do usuário, tenta o 1.5 Pro que é forte tbm
+            model = genai.GenerativeModel("models/gemini-1.5-pro", safety_settings=SAFETY_SETTINGS)
+
         # 1. Identificação
         status.write("👁️ Identificando Ativo...")
-        nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
-        if not nome: status.update(label="Erro", state="error"); st.stop()
+        try:
+            nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
+            if not nome: 
+                status.update(label="Falha Visão", state="error")
+                st.error("Imagem ilegível.")
+                st.stop()
+        except Exception as e:
+            if "429" in str(e):
+                st.warning("⚠️ Limite de cota atingido (Erro 429). O modelo 3.0 é limitado. Aguarde 30s.")
+                st.stop()
+            else:
+                st.error(f"Erro: {e}"); st.stop()
         
-        # 2. Dados Completos (M15 Deep, H1, H4)
-        status.write(f"📡 Baixando 2000 velas de Backtest + Contexto H1/H4...")
+        # 2. Dados
+        status.write(f"📡 Baixando 2000 velas de Backtest + Contexto...")
         c_m15, c_h1, c_h4, erro = asyncio.run(get_platinum_data(codigo))
         if erro: st.error(erro); st.stop()
         
@@ -337,11 +289,11 @@ if modo_operacao == "Análise Tri-Force + Backtest":
         df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
         df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
         
-        # 3. Rodar Backtest (Reality Engine)
-        status.write("🧮 Calculando Probabilidade Real (Backtest Python)...")
+        # 3. Backtest
+        status.write("🧮 Rodando Reality Engine...")
         relatorio_backtest = rodar_backtest_estatistico(df_m15)
         
-        # 4. Prompt
+        # 4. Injeção
         inputs = [SYSTEM_PROMPT]
         contexto = "IMAGES:\n"
         if img_m15: inputs.append(Image.open(img_m15)); contexto+="- M15 (Entry)\n"
@@ -352,42 +304,51 @@ if modo_operacao == "Análise Tri-Force + Backtest":
         TARGET: {nome}
         {contexto}
         
-        === REAL-TIME BACKTEST (PHASE 3 CHECK) ===
+        === PYTHON REALITY CHECK ===
         {relatorio_backtest}
         
-        === TRI-FORCE DATA CONTEXT ===
-        [H4 MACRO]: Price {df_h4.iloc[-1]['close']} | Trend: {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
-        [M15 MICRO]: Z-Score {df_m15.iloc[-1]['Z_Score']:.2f}
+        === TECHNICAL CONTEXT ===
+        [H4 MACRO]: Trend is {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
+        [M15 MICRO]: Z-Score is {df_m15.iloc[-1]['Z_Score']:.2f}
         
         TASK:
-        1. Use the H4 Trend to decide Day Trade vs Swing.
-        2. Use the Backtest Win Rate to calculate Probability.
-        3. Combine all into one final signal.
+        1. Synthesize Visuals + Math + Backtest.
+        2. Decide: Swing (if H4 dominant) or Day Trade (if H1 dominant).
         """
         inputs.append(prompt_injecao)
         
         try:
-            status.write("🧠 Gerando Veredito Final...")
+            status.write("🧠 Gemini 3.0 Decodificando...")
             resp = model.generate_content(inputs)
-            status.update(label="Pronto", state="complete")
+            status.update(label="Sucesso", state="complete")
             st.divider()
             st.markdown(resp.text)
             
-            with st.expander("Ver Relatório Estatístico (Python)"):
+            with st.expander("Ver Dados do Backtest"):
                 st.text(relatorio_backtest)
                 
-        except Exception as e: st.error(f"Erro: {e}")
+        except Exception as e:
+            if "429" in str(e):
+                status.update(label="Pausa Necessária", state="warning")
+                st.warning("""
+                ⏳ **O Google pediu um intervalo!**
+                O Modelo 3.0 atingiu o limite gratuito temporário.
+                Aguarde cerca de 30 a 60 segundos e tente novamente.
+                """)
+            else:
+                st.error(f"Erro: {e}")
 
 # ==========================================================
-# MODO 2: RADAR AUTOMÁTICO
+# MODO 2: RADAR AUTOMÁTICO (ZERO CUSTO)
 # ==========================================================
-elif modo_operacao == "Radar Automático (Telegram)":
-    st.title("📡 SI-QA: Radar Platina")
+elif modo_operacao == "Radar Automático (Sem Custo)":
+    st.title("📡 Radar Automático (24/7)")
+    st.info("Este radar não consome sua cota do Gemini. Pode deixar rodando o dia todo.")
     alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
-    if st.button("ATIVAR MONITORAMENTO"):
+    if st.button("ATIVAR VIGILÂNCIA"):
         if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar Ativo.")
+        st.success("Radar Ativo. Monitorando Z-Score e Tendência...")
         enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
         
         ph = st.empty()
@@ -396,7 +357,6 @@ elif modo_operacao == "Radar Automático (Telegram)":
             for nome in alvos:
                 try:
                     codigo = LISTA_ATIVOS[nome]
-                    # Baixa dados (M15 e H4 para Sniper Logic)
                     c_m15, _, c_h4, _ = asyncio.run(get_platinum_data(codigo))
                     
                     if c_m15 and c_h4:
