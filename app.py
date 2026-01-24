@@ -27,7 +27,7 @@ if st.button("Testar Gemini"):
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("models/gemini-1.5-flash")
+            model = genai.GenerativeModel("models/gemini-3-flash-preview")
             response = model.generate_content("Diga apenas 'Operante'.")
             st.success(f"✅ Gemini Respondeu: {response.text}")
         except Exception as e:
@@ -70,3 +70,4 @@ try:
 except ImportError as e:
     st.error(f"❌ Falta instalar biblioteca: {str(e)}")
     st.info("Verifique seu requirements.txt")
+
