@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Gemini 3.0 (Fail-Safe)",
-    page_icon="🛡️",
+    page_title="SI-QA: Golden Ratio",
+    page_icon="✨",
     layout="wide"
 )
 
@@ -23,10 +23,8 @@ st.markdown("""
     .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; width: 100%; }
     div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
-    .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
     .stSuccess { background-color: #064000; color: white; border: 1px solid #00ff00; }
     .stWarning { background-color: #332b00; color: #ffcc00; border: 1px solid #ffcc00; }
-    .stError { background-color: #330000; color: #ff0000; border: 1px solid #ff0000; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -39,33 +37,33 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE
+# PROMPT MESTRE (COM INJEÇÃO DE FIBONACCI)
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
-You are the "Synthetic Indices Quantum Architect" (SI-QA) running on Gemini 3.0 Neural Engine.
-You exist solely to decode the PRNG (Pseudo-Random Number Generator) algorithms of the Deriv Synthetic Market.
+You are the "Synthetic Indices Quantum Architect" (SI-QA).
+You interpret the "Golden Protocol" (Z-Score + RSI + Fibonacci).
 
 >> YOUR DNA:
-1. You DO NOT guess. You CALCULATE probability densities based on the provided Backtest Data.
-2. Synthetic Indices are non-sentimental; they are mathematically bound.
-3. You must cross-reference the 3 Timeframes (M15, H1, H4) to determine the dominant vector.
+1. You DO NOT guess. You validate signals based on Mathematical Confluence.
+2. A "Sniper Entry" requires price to be at a Key Level (Support/Resistance) OR a Fibonacci Zone (61.8%).
+3. You must act as a Risk Manager: If the Backtest Win Rate < 65%, advise CAUTION.
 
  CRITICAL INPUT PROTOCOL
 User provides:
 A) 3 Charts (M15, H1, H4).
-B) Python-Calculated Backtest Statistics.
-C) Live Technical Indicators (Z-Score, EMA).
+B) Backtest Report (Probability).
+C) Fibonacci & Indicator Data.
 
  PHASE 1: THE HIERARCHY CHECK
 - Look at H4 first. Is it at a major Level?
 - Look at H1. Is it trending?
 - Look at M15. Is it giving a trigger?
 
- PHASE 2: THE REALITY CHECK (PYTHON BACKTEST)
-- You will receive a "Win Rate" from the Python engine.
-- IF Win Rate < 60% -> ABORT TRADE immediately.
-- IF Win Rate > 60% -> PROCEED.
+ PHASE 2: THE GOLDEN CHECK (PYTHON DATA)
+- Check the "FIBONACCI STATUS". Is price near the 61.8% Golden Pocket?
+- Check Z-Score (Overextended) and RSI.
+- IF Price is at Fib 61.8% AND Z-Score is extreme -> EXECUTE.
 
  PHASE 3: DECISION MATRIX
 - IF H4 Structure is Dominant -> Signal is SWING TRADE.
@@ -74,23 +72,24 @@ C) Live Technical Indicators (Z-Score, EMA).
  OUTPUT TERMINAL:
 (Render this specifically)
 
-/// SI-QA GEMINI 3.0 KERNEL ///
+/// SI-QA GOLDEN KERNEL ///
 [TARGET: {Asset} | MODE: {Swing/Day}]
 
->> NEURAL ANALYSIS:
-   1. H4 STRUCTURE: {Bullish/Bearish/Range}
-   2. PYTHON BACKTEST: {Win Rate}% Success History
-   3. CONFLUENCE SCORE: {0-100}/100
+>> MATHEMATICAL CONFLUENCE:
+   1. FIBONACCI ZONE: {Hit/Near/Far} (Distance to 61.8% level)
+   2. Z-SCORE STATUS: {Value}
+   3. RSI STATUS: {Value}
+   4. BACKTEST ACCURACY: {Win Rate}%
 
 >> STRATEGY EXECUTION:
     ACTION: {BUY / SELL / WAIT}
-    TYPE: {SCALP / DAY TRADE / SWING}
+    CONFIDENCE: {HIGH/MEDIUM/LOW}
     ENTRY ZONE: {Price}
     STOP LOSS: {Price - Structural}
-    TAKE PROFIT: {Price - Structural}
+    TAKE PROFIT 1: {Fibonacci 0% or -27%}
 
 >> QUANTUM REASONING:
-    {Explain why using high-level logic. Example: "H4 hit resistance, Python confirms 82% reversal chance, M15 candle is a rejection."}
+    {Explain the confluence. Mention if the "Golden Pocket" (61.8%) is active.}
 )
 """
 
@@ -119,11 +118,12 @@ async def get_platinum_data(symbol_code):
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
-            req_m15_deep = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
+            # M15 (Deep), H1, H4 (Macro para Fib)
+            req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
             req_h1 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 3600}
-            req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
+            req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 300, "end": "latest", "style": "candles", "granularity": 14400}
             
-            await websocket.send(json.dumps(req_m15_deep)); res_m15 = await websocket.recv()
+            await websocket.send(json.dumps(req_m15)); res_m15 = await websocket.recv()
             await websocket.send(json.dumps(req_h1)); res_h1 = await websocket.recv()
             await websocket.send(json.dumps(req_h4)); res_h4 = await websocket.recv()
             
@@ -131,58 +131,94 @@ async def get_platinum_data(symbol_code):
             d_h1 = json.loads(res_h1)
             d_h4 = json.loads(res_h4)
             
-            if 'error' in d_m15 or 'error' in d_h1 or 'error' in d_h4: return None, None, None, "Erro API Deriv"
+            if 'error' in d_m15 or 'error' in d_h1 or 'error' in d_h4: return None, None, None, "Erro API"
             return d_m15['candles'], d_h1['candles'], d_h4['candles'], None
     except Exception as e:
         return None, None, None, str(e)
 
-# --- MOTOR DE BACKTEST ---
+# --- MATEMÁTICA AVANÇADA (RSI + FIBONACCI) ---
+
+def calcular_rsi(series, period=14):
+    delta = series.diff(1)
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
+    df['high'] = df['high'].astype(float)
+    df['low'] = df['low'].astype(float)
+    
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
     df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
+    df['RSI'] = calcular_rsi(df['close'], 14)
     return df.dropna()
 
-def rodar_backtest_estatistico(df):
+def detectar_fibonacci_macro(df_macro):
+    """
+    Calcula se o preço atual está perto de 61.8% da última grande pernada (H4).
+    """
+    last_price = df_macro.iloc[-1]['close']
+    trend_up = last_price > df_macro.iloc[-1]['EMA_200']
+    
+    # Pega Máxima e Mínima das últimas 100 velas (Estrutura Macro)
+    max_h = df_macro['high'].tail(100).max()
+    min_l = df_macro['low'].tail(100).min()
+    diff = max_h - min_l
+    
+    fib_status = "NO ZONE"
+    distancia = 0
+    golden_level = 0
+    
+    if trend_up:
+        # Tendência de Alta: Preço cai (Retração) até o suporte Fib
+        # Retração é medida do Fundo ao Topo. O nível 61.8% está abaixo do topo.
+        golden_level = max_h - (diff * 0.618)
+        # Verifica se preço está perto (margem de erro 0.5%)
+        if abs(last_price - golden_level) < (last_price * 0.005):
+            fib_status = "⚠️ GOLDEN POCKET (BUY ZONE)"
+    else:
+        # Tendência de Baixa: Preço sobe (Retração) até a resistência Fib
+        golden_level = min_l + (diff * 0.618)
+        if abs(last_price - golden_level) < (last_price * 0.005):
+            fib_status = "⚠️ GOLDEN POCKET (SELL ZONE)"
+            
+    return fib_status, golden_level
+
+def rodar_backtest_avancado(df):
     total = len(df)
     if total < 500: return "Dados insuficientes."
     wins = 0; losses = 0; sinais = 0
     for i in range(50, total - 20):
         row = df.iloc[i]
-        if row['Z_Score'] > 2.0:
+        # Confluência: Z-Score + RSI
+        if row['Z_Score'] > 2.0 and row['RSI'] > 70:
             sinais += 1; outcome = "LOSS"
             for future_i in range(i+1, min(i+16, total)):
                 if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
                     wins += 1; outcome = "WIN"; break
             if outcome == "LOSS": losses += 1
-        elif row['Z_Score'] < -2.0:
+        elif row['Z_Score'] < -2.0 and row['RSI'] < 30:
             sinais += 1; outcome = "LOSS"
             for future_i in range(i+1, min(i+16, total)):
                 if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
                     wins += 1; outcome = "WIN"; break
             if outcome == "LOSS": losses += 1
     win_rate = (wins / sinais * 100) if sinais > 0 else 0
-    return f"""
-    [REALITY ENGINE REPORT]
-    - Sample Size: {total} candles (M15)
-    - Patterns Found: {sinais}
-    - Historical Accuracy: {win_rate:.1f}%
-    """
+    return f"WIN RATE: {win_rate:.1f}% ({sinais} Sinais)"
 
 def tentar_ler_ativo(img, model, lista_ativos):
-    """Tenta ler. Se falhar, retorna None para ativar o seletor manual."""
-    prompt = "Read the Asset Name exactly from the chart header (e.g., Crash 1000 Index). Return ONLY the name."
+    prompt = "Read the Asset Name exactly. Return ONLY the name."
     try:
         response = model.generate_content([prompt, img])
         nome_raw = response.text.upper().strip().replace("INDEX", "").strip()
         for k, v in lista_ativos.items():
             k_clean = k.replace("INDEX", "").strip()
-            if nome_raw in k_clean or k_clean in nome_raw:
-                return k, v
+            if nome_raw in k_clean or k_clean in nome_raw: return k, v
         return None, None
     except: return None, None
 
@@ -194,7 +230,7 @@ def enviar_telegram(token, chat_id, msg):
     except: pass
 
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA 3.0 CONFIG")
+st.sidebar.header("⚙️ SI-QA GOLDEN")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -203,121 +239,107 @@ tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
 st.sidebar.divider()
-modo_operacao = st.sidebar.radio(
-    "Selecionar Módulo:",
-    ["Análise Tri-Force (Gemini 3.0)", "Radar Automático (Sem Custo)"]
-)
+modo_operacao = st.sidebar.radio("Modo:", ["Análise Visual (Fibonacci)", "Radar Auto (Fibonacci)"])
 
 with st.spinner("Conectando..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
 # ==========================================================
-# MODO 1: ANÁLISE TRI-FORCE
+# MODO 1: ANÁLISE VISUAL COM FIBONACCI
 # ==========================================================
-if modo_operacao == "Análise Tri-Force (Gemini 3.0)":
-    st.title("🧠 SI-QA: Gemini 3.0 Ultimate")
+if modo_operacao == "Análise Visual (Fibonacci)":
+    st.title("✨ SI-QA: Golden Ratio Analysis")
     
     col1, col2, col3 = st.columns(3)
-    with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
-    with col2: img_h1 = st.file_uploader("2. H1 (Médio)", type=['png', 'jpg'])
-    with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
+    with col1: img_m15 = st.file_uploader("1. M15", type=['png', 'jpg'])
+    with col2: img_h1 = st.file_uploader("2. H1", type=['png', 'jpg'])
+    with col3: img_h4 = st.file_uploader("3. H4", type=['png', 'jpg'])
     
-    # SELETOR MANUAL DE SEGURANÇA (APARECE SE A IA FALHAR)
-    ativo_manual = st.selectbox("Se a IA não ler o gráfico, selecione aqui:", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
+    ativo_manual = st.selectbox("Seletor Manual (Backup):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
     
-    if st.button("ANALISAR COM GEMINI 3.0"):
+    if st.button("CALCULAR FIBONACCI & SINAL"):
         if not api_key: st.error("Falta API Key."); st.stop()
         img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
         if not img_p: st.error("Envie imagens."); st.stop()
         
-        status = st.status("Iniciando Motor...", expanded=True)
+        status = st.status("Calculando Níveis Matemáticos...", expanded=True)
         genai.configure(api_key=api_key)
-        try:
-            model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-        except:
-            model = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
-
-        # 1. Identificação (Com Fallback Manual)
-        nome_ativo = None
-        codigo_ativo = None
-
-        if ativo_manual != "Automático (IA)":
-            # Usuário escolheu manualmente
-            status.write(f"⚠️ Usando seleção manual: {ativo_manual}")
-            nome_ativo = ativo_manual
-            codigo_ativo = LISTA_ATIVOS[ativo_manual]
-        else:
-            # Tenta ler com IA
-            status.write("👁️ IA Lendo Gráfico...")
-            nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model, LISTA_ATIVOS)
-            
-            if not nome_ativo:
-                status.update(label="Aviso", state="warning")
-                st.warning("⚠️ A IA não conseguiu ler o nome do ativo. Por favor, **selecione o nome manualmente na caixa acima** e clique em Analisar novamente.")
-                st.stop()
-
-        status.write(f"✅ Ativo Identificado: {nome_ativo}")
         
-        # 2. Dados
-        status.write(f"📡 Baixando dados da Deriv...")
+        # Identificação
+        nome_ativo = None; codigo_ativo = None
+        if ativo_manual != "Automático (IA)":
+            nome_ativo = ativo_manual; codigo_ativo = LISTA_ATIVOS[ativo_manual]
+        else:
+            try: model_vision = genai.GenerativeModel("models/gemini-1.5-flash") # Mais rápido pra ler
+            except: model_vision = genai.GenerativeModel("models/gemini-1.5-flash")
+            nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
+            if not nome_ativo: st.warning("Selecione o ativo manualmente."); st.stop()
+        
+        status.write(f"✅ Ativo: {nome_ativo}")
+        
+        # Dados
         c_m15, c_h1, c_h4, erro = asyncio.run(get_platinum_data(codigo_ativo))
         if erro: st.error(erro); st.stop()
         
         df_m15 = calcular_indicadores(pd.DataFrame(c_m15))
-        df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
-        df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
+        df_h4 = calcular_indicadores(pd.DataFrame(c_h4)) # Macro para Fib
         
-        # 3. Backtest
-        status.write("🧮 Rodando Reality Engine...")
-        relatorio_backtest = rodar_backtest_estatistico(df_m15)
+        # CÁLCULO FIBONACCI
+        status.write("📐 Traçando Fibonacci no H4...")
+        fib_msg, fib_price = detectar_fibonacci_macro(df_h4)
         
-        # 4. Injeção
+        # Backtest
+        status.write("🧮 Rodando Backtest...")
+        backtest_msg = rodar_backtest_estatistico(df_m15)
+        
+        # Prompt
+        try: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
+        except: model_logic = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
+        
         inputs = [SYSTEM_PROMPT]
         contexto = "IMAGES:\n"
-        if img_m15: inputs.append(Image.open(img_m15)); contexto+="- M15 (Entry)\n"
-        if img_h1: inputs.append(Image.open(img_h1)); contexto+="- H1 (Trend)\n"
-        if img_h4: inputs.append(Image.open(img_h4)); contexto+="- H4 (Structure)\n"
+        if img_m15: inputs.append(Image.open(img_m15))
+        if img_h1: inputs.append(Image.open(img_h1))
+        if img_h4: inputs.append(Image.open(img_h4))
         
         prompt_injecao = f"""
         TARGET: {nome_ativo}
         {contexto}
         
-        === PYTHON REALITY CHECK ===
-        {relatorio_backtest}
+        === GOLDEN DATA ===
+        [FIBONACCI H4]: {fib_msg} (Golden Level Price: {fib_price:.2f})
+        [M15 INDICATORS]: Z-Score {df_m15.iloc[-1]['Z_Score']:.2f} | RSI {df_m15.iloc[-1]['RSI']:.2f}
+        [BACKTEST]: {backtest_msg}
         
-        === TECHNICAL CONTEXT ===
-        [H4 MACRO]: Trend is {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
-        [M15 MICRO]: Z-Score is {df_m15.iloc[-1]['Z_Score']:.2f}
-        
-        TASK: Synthesize Visuals + Math + Backtest to decide the Best Signal.
+        TASK:
+        If Price is near Fibonacci 61.8% AND Indicators are extreme -> STRONG SIGNAL.
         """
         inputs.append(prompt_injecao)
         
         try:
-            status.write("🧠 Gemini 3.0 Decodificando...")
-            resp = model.generate_content(inputs)
-            status.update(label="Sucesso", state="complete")
+            status.write("🧠 Gerando Sinal...")
+            resp = model_logic.generate_content(inputs)
+            status.update(label="Concluído", state="complete")
             st.divider()
             st.markdown(resp.text)
-            with st.expander("Ver Dados do Backtest"): st.text(relatorio_backtest)
+            st.info(f"📊 **Dados Matemáticos:**\n\nFibonacci Status: **{fib_msg}**\nNível 61.8%: {fib_price:.2f}")
         except Exception as e:
-            if "429" in str(e):
-                st.warning("⏳ Cota do Gemini 3.0 excedida. Aguarde 30s ou use a seleção manual.")
-            else:
-                st.error(f"Erro: {e}")
+            if "429" in str(e): st.warning("Limite Gemini atingido. Aguarde.")
+            else: st.error(f"Erro: {e}")
 
 # ==========================================================
-# MODO 2: RADAR AUTOMÁTICO
+# MODO 2: RADAR FIBONACCI
 # ==========================================================
-elif modo_operacao == "Radar Automático (Sem Custo)":
-    st.title("📡 Radar Automático (24/7)")
+elif modo_operacao == "Radar Auto (Fibonacci)":
+    st.title("📡 Radar Fibonacci (Golden Pocket)")
+    st.markdown("Avisa quando o preço toca na retração de **61.8% do H4**.")
     alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
-    if st.button("ATIVAR VIGILÂNCIA"):
+    if st.button("ATIVAR"):
         if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar Ativo.")
-        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
+        st.success("Radar Fibonacci Ativo.")
+        enviar_telegram(tg_token, tg_chat, "📡 RADAR FIBONACCI INICIADO")
         
         ph = st.empty()
         while True:
@@ -327,20 +349,16 @@ elif modo_operacao == "Radar Automático (Sem Custo)":
                     codigo = LISTA_ATIVOS[nome]
                     c_m15, _, c_h4, _ = asyncio.run(get_platinum_data(codigo))
                     if c_m15 and c_h4:
-                        df_mi = calcular_indicadores(pd.DataFrame(c_m15))
                         df_ma = calcular_indicadores(pd.DataFrame(c_h4))
-                        z = df_mi.iloc[-1]['Z_Score']
-                        trend_up = df_ma.iloc[-1]['close'] > df_ma.iloc[-1]['EMA_200']
+                        fib_status, fib_price = detectar_fibonacci_macro(df_ma)
                         
-                        msg = ""
-                        if trend_up and z < -2.5: msg = f"🚀 **{nome}**\nCOMPRA SWING (H4 Alta + M15 Barato)"
-                        elif not trend_up and z > 2.5: msg = f"🔻 **{nome}**\nVENDA SWING (H4 Baixa + M15 Caro)"
-                            
-                        if msg:
+                        if "GOLDEN POCKET" in fib_status:
+                            current = df_ma.iloc[-1]['close']
+                            msg = f"✨ **{nome}**\nPREÇO NO GOLDEN POCKET (61.8%)!\nPreço: {current}\nNível Fib: {fib_price:.2f}"
                             enviar_telegram(tg_token, tg_chat, msg)
-                            log.append(f"{nome}: SINAL ✅")
+                            log.append(f"{nome}: SINAL FIBONACCI ✅")
                         else:
-                            log.append(f"{nome}: ...")
+                            log.append(f"{nome}: Longe do Fib...")
                 except: pass
                 time.sleep(1)
             ph.code("\n".join(log))
