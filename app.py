@@ -347,8 +347,8 @@ if modo_operacao == "Análise Visual (TITAN)":
         status.write(f"🧬 Protocolo: **{classe_ativo}**")
         
         # 4. Prompt Gemini
-        try: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-        except: model_logic = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
+        try: model_logic = genai.GenerativeModel("gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
+        except: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
         inputs = [SYSTEM_PROMPT]
         contexto = "CHARTS PROVIDED:\n"
@@ -429,6 +429,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
                 time.sleep(1) # Intervalo pequeno
             ph.code("\n".join(log))
             time.sleep(30) # Intervalo maior entre ciclos
+
 
 
 
