@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: TITAN (Full Stack)",
-    page_icon="🧬",
+    page_title="SI-QA: TITAN (Turbo)",
+    page_icon="⚡",
     layout="wide"
 )
 
@@ -23,7 +23,6 @@ st.markdown("""
     .stButton>button { background-color: #004d00; color: #ffffff; border: 1px solid #00ff00; font-weight: bold; width: 100%; }
     div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #0a0a0a; }
     h1, h2, h3 { color: #00ff00 !important; }
-    .stFileUploader>div>div>button { color: #000; background-color: #00ff00; }
     .stSuccess { background-color: #064000; color: white; border: 1px solid #00ff00; }
     .stWarning { background-color: #332b00; color: #ffcc00; border: 1px solid #ffcc00; }
     .stError { background-color: #330000; color: #ff0000; border: 1px solid #ff0000; }
@@ -39,7 +38,7 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE: SI-QA TITAN
+# PROMPT MESTRE
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
@@ -101,7 +100,7 @@ C) BACKTEST DATA (Win Rate of the strategy).
 )
 """
 
-# --- FUNÇÕES API ---
+# --- FUNÇÕES API COM TIMEOUT (CORREÇÃO DE TRAVAMENTO) ---
 
 @st.cache_data(ttl=3600)
 def buscar_lista_ativos_deriv():
@@ -111,7 +110,8 @@ def buscar_lista_ativos_deriv():
             async with websockets.connect(uri) as ws:
                 req = {"active_symbols": "brief", "product_type": "basic"}
                 await ws.send(json.dumps(req))
-                res = await ws.recv()
+                # Timeout de 5 segundos para não travar no inicio
+                res = await asyncio.wait_for(ws.recv(), timeout=5.0)
                 data = json.loads(res)
                 if 'error' in data: return None
                 ativos_dict = {}
@@ -130,15 +130,24 @@ async def get_raw_data(symbol_code):
             req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
-            await websocket.send(json.dumps(req_m15)); res_m15 = await websocket.recv()
-            await websocket.send(json.dumps(req_h4)); res_h4 = await websocket.recv()
+            # Envia requisições
+            await websocket.send(json.dumps(req_m15))
+            # Timeout de 10s para não ficar processando infinitamente
+            res_m15 = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+            
+            await websocket.send(json.dumps(req_h4))
+            res_h4 = await asyncio.wait_for(websocket.recv(), timeout=10.0)
             
             d_m15 = json.loads(res_m15)
             d_h4 = json.loads(res_h4)
             
-            if 'error' in d_m15 or 'error' in d_h4: return None, None, "Erro API"
+            if 'error' in d_m15 or 'error' in d_h4: return None, None, "Erro API Deriv (Dados inválidos)"
             return d_m15['candles'], d_h4['candles'], None
-    except Exception as e: return None, None, str(e)
+            
+    except asyncio.TimeoutError:
+        return None, None, "Erro: Deriv demorou muito para responder (Timeout)."
+    except Exception as e: 
+        return None, None, str(e)
 
 # --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS ---
 
@@ -173,7 +182,6 @@ def math_boom_crash(df, tipo):
     return df
 
 # --- MOTOR DE BACKTEST (REALITY ENGINE) ---
-# Este módulo testa a estratégia nos últimos 2000 candles
 
 def rodar_backtest(df, classe_ativo):
     total = len(df)
@@ -187,7 +195,6 @@ def rodar_backtest(df, classe_ativo):
         
         # 1. Backtest para Volatility/Step (Reversão à Média)
         if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
-            # Z-Score Extremo (>2) deve retornar à EMA 20
             if 'Z_Score' in row and row['Z_Score'] > 2.0:
                 sinais += 1; outcome = "LOSS"
                 for future_i in range(i+1, min(i+16, total)):
@@ -202,16 +209,14 @@ def rodar_backtest(df, classe_ativo):
                 if outcome == "LOSS": losses += 1
         
         # 2. Backtest para Boom/Crash (Seguir Tendência)
-        # Se EMA200 sobe e preço toca EMA20 -> Sobe?
         elif "PROTOCOL A" in classe_ativo:
             trend_up = row['close'] > row['EMA_200']
-            pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001) # Perto da média
+            pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001)
             
             if trend_up and pullback:
                 sinais += 1; outcome = "LOSS"
-                # Verifica se subiu nas próximas 5 velas
                 if df.iloc[min(i+5, total-1)]['close'] > row['close']:
-                    wins += 1; outcome = "WIN" # Simples Trend Following
+                    wins += 1; outcome = "WIN" 
                 else: losses += 1
 
     win_rate = (wins / sinais * 100) if sinais > 0 else 0
@@ -241,7 +246,6 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
     elif "STEP" in nome_ativo or "JUMP" in nome_ativo:
         classe = "PROTOCOL B: DISCRETE INDICES"
         df_final = math_volatility_step(df_m15)
-        # Calcula ATR
         df_final['tr'] = np.maximum((df_final['high'] - df_final['low']), abs(df_final['high'] - df_final['close'].shift()))
         atr = df_final['tr'].rolling(14).mean().iloc[-1]
         info_extra = f"[DISCRETE DATA]\nATR: {atr:.4f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
@@ -251,9 +255,7 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
         df_final = math_volatility_step(df_m15)
         info_extra = f"[MEAN REVERSION DATA]\nZ-Score: {df_final.iloc[-1]['Z_Score']:.2f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
         
-    # EXECUTA O BACKTEST COM O DATAFRAME JÁ PROCESSADO
     relatorio_backtest = rodar_backtest(df_final, classe)
-    
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
@@ -270,11 +272,11 @@ def tentar_ler_ativo(img, model, lista_ativos):
 def enviar_telegram(token, chat_id, msg):
     try:
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
 # --- INTERFACE PRINCIPAL ---
-st.sidebar.header("⚙️ SI-QA TITAN")
+st.sidebar.header("⚙️ SI-QA TITAN (TURBO)")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
@@ -283,7 +285,7 @@ tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
 st.sidebar.divider()
-modo_operacao = st.sidebar.radio("Modo:", ["Análise Visual (TITAN + Backtest)", "Radar Auto (Telegram)"])
+modo_operacao = st.sidebar.radio("Modo:", ["Análise Visual (TITAN)", "Radar Auto (Telegram)"])
 
 with st.spinner("Conectando Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
@@ -292,8 +294,8 @@ if not LISTA_ATIVOS: st.stop()
 # ==========================================================
 # MODO 1: ANÁLISE VISUAL TITAN
 # ==========================================================
-if modo_operacao == "Análise Visual (TITAN + Backtest)":
-    st.title("🧬 SI-QA: TITAN Adaptive")
+if modo_operacao == "Análise Visual (TITAN)":
+    st.title("⚡ SI-QA: TITAN Turbo")
     
     col1, col2, col3 = st.columns(3)
     with col1: img_m15 = st.file_uploader("1. M15", type=['png', 'jpg'])
@@ -307,7 +309,7 @@ if modo_operacao == "Análise Visual (TITAN + Backtest)":
         img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
         if not img_p: st.error("Envie imagens."); st.stop()
         
-        status = st.status("Processando...", expanded=True)
+        status = st.status("🚀 Iniciando Protocolo...", expanded=True)
         genai.configure(api_key=api_key)
         
         # 1. Identificação
@@ -318,25 +320,35 @@ if modo_operacao == "Análise Visual (TITAN + Backtest)":
         else:
             try: model_vision = genai.GenerativeModel("models/gemini-1.5-flash")
             except: model_vision = genai.GenerativeModel("models/gemini-1.5-flash")
-            nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
-            if not nome_ativo: st.warning("IA não leu o nome. Use o Seletor Manual."); st.stop()
+            
+            status.write("👁️ Lendo gráfico (Timeout 10s)...")
+            # Adicionado Timeout manual lógico aqui (se a lib nao suportar, o try/except segura)
+            try:
+                nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
+            except Exception as e:
+                st.warning("IA demorou. Use o seletor manual."); st.stop()
+            
+            if not nome_ativo: st.warning("IA não leu. Use o Seletor Manual."); st.stop()
         
         status.write(f"✅ Ativo: {nome_ativo}")
         
-        # 2. Dados
+        # 2. Dados (Com Timeout Novo)
+        status.write("📡 Baixando dados (Isso deve ser rápido)...")
         c_m15, c_h4, erro = asyncio.run(get_raw_data(codigo_ativo))
-        if erro: st.error(erro); st.stop()
+        if erro: 
+            status.update(label="Erro de Rede", state="error")
+            st.error(f"Falha na conexão: {erro}"); st.stop()
         
-        # 3. Processamento Adaptativo + BACKTEST
-        status.write("🧠 Rodando Reality Engine (Backtest)...")
+        # 3. Processamento
+        status.write("🧠 Calculando Backtest...")
         df_m15 = pd.DataFrame(c_m15)
         relatorio_math, classe_ativo, relatorio_backtest = processar_dados_inteligentes(nome_ativo, df_m15)
         
         status.write(f"🧬 Protocolo: **{classe_ativo}**")
         
-        # 4. Prompt Gemini 3.0
+        # 4. Prompt Gemini
         try: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-        except: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
+        except: model_logic = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
         
         inputs = [SYSTEM_PROMPT]
         contexto = "CHARTS PROVIDED:\n"
@@ -360,7 +372,7 @@ if modo_operacao == "Análise Visual (TITAN + Backtest)":
         inputs.append(prompt_injecao)
         
         try:
-            status.write("🧠 Decodificando...")
+            status.write("🧠 IA Pensando (Gemini)...")
             resp = model_logic.generate_content(inputs)
             status.update(label="Sucesso", state="complete")
             st.divider()
@@ -371,8 +383,8 @@ if modo_operacao == "Análise Visual (TITAN + Backtest)":
                 st.text(relatorio_math)
                 
         except Exception as e:
-            if "429" in str(e): st.warning("Cota Gemini 3.0 excedida. Aguarde 30s.")
-            else: st.error(f"Erro: {e}")
+            if "429" in str(e): st.warning("Cota Gemini excedida. Aguarde 30s.")
+            else: st.error(f"Erro IA: {e}")
 
 # ==========================================================
 # MODO 2: RADAR AUTOMÁTICO
@@ -383,7 +395,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
     
     if st.button("ATIVAR VIGILÂNCIA"):
         if not tg_token: st.error("Falta Telegram"); st.stop()
-        st.success("Radar TITAN Ativo.")
+        st.success("Radar Ativo.")
         enviar_telegram(tg_token, tg_chat, "📡 RADAR TITAN INICIADO")
         
         ph = st.empty()
@@ -396,32 +408,27 @@ elif modo_operacao == "Radar Auto (Telegram)":
                     
                     if c_m15:
                         df_m15 = pd.DataFrame(c_m15)
-                        # O Radar também usa a lógica adaptativa
                         math_report, classe, _ = processar_dados_inteligentes(nome, df_m15)
                         
                         msg = ""
-                        # Logica Crash/Boom
                         if "SPIKE" in classe:
                             if "Trend: BULLISH" in math_report and "BOOM" in nome:
                                 msg = f"🚀 **{nome}**\nProtocolo A: Tendência de Alta em BOOM"
                             elif "Trend: BEARISH" in math_report and "CRASH" in nome:
                                 msg = f"🔻 **{nome}**\nProtocolo A: Tendência de Baixa em CRASH"
-                        
-                        # Logica Step/V75
                         elif "Z-Score" in math_report: 
-                            # Extrai Z-score do texto se possível, ou recalcula rapido
-                            if "Extreme" in math_report: # Já detectado na função
+                            if "Extreme" in math_report:
                                 msg = f"⚡ **{nome}**\nProtocolo C: Z-Score Extremo"
                         
                         if msg:
                             enviar_telegram(tg_token, tg_chat, msg)
                             log.append(f"{nome}: ALERTA ✅")
                         else:
-                            log.append(f"{nome}: Monitorando...")
+                            log.append(f"{nome}: ...")
                 except: pass
-                time.sleep(1)
+                time.sleep(1) # Intervalo pequeno
             ph.code("\n".join(log))
-            time.sleep(60)
+            time.sleep(30) # Intervalo maior entre ciclos
 
 
 
