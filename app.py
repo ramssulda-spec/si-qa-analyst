@@ -11,36 +11,33 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Command Center",
-    page_icon="🚀",
+    page_title="SI-QA: Original Kernel + Reality",
+    page_icon="💠",
     layout="wide"
 )
 
 # --- ESTILO VISUAL ---
 st.markdown("""
 <style>
-    .stApp { background-color: #050505; color: #00ff41; font-family: 'Consolas', monospace; }
-    .stButton>button { background-color: #004d00; color: #fff; border: 1px solid #00ff41; font-weight: bold; }
-    .stTextInput>div>div>input { background-color: #111; color: #00ff41; border: 1px solid #333; }
-    h1, h2, h3 { color: #00ff41 !important; }
-    .stSuccess { background-color: #003300; color: white; }
-    .stError { background-color: #330000; color: white; }
+    .stApp { background-color: #000000; color: #00ff00; font-family: 'Courier New', monospace; }
+    .stButton>button { background-color: #003300; color: #fff; border: 1px solid #00ff00; }
+    div[data-testid="stExpander"] { border: 1px solid #00ff00; background-color: #050505; }
+    .stSuccess { background-color: #064000; color: white; }
+    h1, h2, h3 { color: #00ff00 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- MAPA DE TIMEFRAMES (INTELIGÊNCIA HÍBRIDA) ---
-# Converte o que a IA lê na imagem para segundos da API Deriv
+# --- MAPA DE TIMEFRAMES ---
 TIMEFRAME_MAP = {
-    "1M": 60, "M1": 60, "1 MINUTE": 60,
-    "5M": 300, "M5": 300, "5 MINUTES": 300,
-    "15M": 900, "M15": 900, "15 MINUTES": 900,
-    "30M": 1800, "M30": 1800, "30 MINUTES": 1800,
-    "1H": 3600, "H1": 3600, "1 HOUR": 3600,
-    "4H": 14400, "H4": 14400, "4 HOURS": 14400,
-    "1D": 86400, "D1": 86400, "DAILY": 86400
+    "1M": 60, "M1": 60, "5M": 300, "M5": 300, 
+    "15M": 900, "M15": 900, "30M": 1800, "M30": 1800,
+    "1H": 3600, "H1": 3600, "4H": 14400, "H4": 14400,
+    "1D": 86400, "D1": 86400
 }
 
-# --- PROMPT MESTRE (MANTIDO INTACTO) ---
+# ==============================================================================
+# PROMPT MESTRE ORIGINAL (RESTAURADO NA ÍNTEGRA)
+# ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
 You are the "Synthetic Indices Quantum Architect" (SI-QA).
@@ -156,6 +153,7 @@ SYSTEM STATE: {CALCULATING...}
 COMMAND: WAITING FOR CHART IMAGE OR OHLC DATA ARRAY TO INITIATE DECODING.
 )
 """
+# ==============================================================================
 
 # --- FUNÇÕES DE API ---
 
@@ -178,17 +176,15 @@ def buscar_lista_ativos_deriv():
         except: return None
     return asyncio.run(_fetch())
 
-async def get_deriv_data_dynamic(symbol_code, granularity):
-    """
-    Baixa dados com granularidade dinâmica baseada na imagem.
-    """
+async def get_deep_history(symbol_code, granularity):
+    """Baixa 2000 velas para Backtest Robusto"""
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
             req = {
                 "ticks_history": symbol_code,
                 "adjust_start_time": 1,
-                "count": 300, 
+                "count": 2000, 
                 "end": "latest",
                 "style": "candles",
                 "granularity": granularity
@@ -201,210 +197,221 @@ async def get_deriv_data_dynamic(symbol_code, granularity):
     except Exception as e:
         return None, str(e)
 
-# --- FUNÇÕES AUXILIARES (TELEGRAM & CÁLCULOS) ---
-
-def enviar_telegram(token, chat_id, mensagem):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, json=payload)
-    except:
-        pass
+# --- O MOTOR DE BACKTEST REAL (PYTHON REALITY ENGINE) ---
 
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
+    df['high'] = df['high'].astype(float)
+    df['low'] = df['low'].astype(float)
+    
+    # Indicadores Básicos
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
     df['Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
+    
     return df.dropna()
 
-def analisar_imagem_completa(img, model, lista_ativos):
+def rodar_backtest_python(df):
     """
-    Melhoria 1: Detecta NOME e TIMEFRAME da imagem.
+    Simula Mean Reversion nas últimas 2000 velas.
     """
-    prompt = """
-    Look at the chart header. 
-    1. Identify the Asset Name (e.g. Crash 1000 Index).
-    2. Identify the Timeframe (e.g. M1, M15, H1, 1 Minute).
-    Return Format: ASSET|TIMEFRAME
+    total_candles = len(df)
+    if total_candles < 100: return "Dados insuficientes."
+    
+    wins = 0
+    losses = 0
+    sinais = 0
+    
+    # Loop de simulação
+    for i in range(50, total_candles - 10):
+        row = df.iloc[i]
+        
+        # Cenário 1: Z-Score > 2 (Venda potencial)
+        if row['Z_Score'] > 2.0:
+            sinais += 1
+            # Verifica se preço retornou à média nas próximas 10 velas
+            outcome = "LOSS"
+            for future_i in range(i+1, min(i+11, total_candles)):
+                future_row = df.iloc[future_i]
+                if future_row['low'] <= future_row['EMA_20']:
+                    wins += 1
+                    outcome = "WIN"
+                    break
+            if outcome == "LOSS": losses += 1
+
+        # Cenário 2: Z-Score < -2 (Compra potencial)
+        elif row['Z_Score'] < -2.0:
+            sinais += 1
+            outcome = "LOSS"
+            for future_i in range(i+1, min(i+11, total_candles)):
+                future_row = df.iloc[future_i]
+                if future_row['high'] >= future_row['EMA_20']:
+                    wins += 1
+                    outcome = "WIN"
+                    break
+            if outcome == "LOSS": losses += 1
+
+    win_rate = (wins / sinais * 100) if sinais > 0 else 0
+    
+    return f"""
+    [DATA ARRAY INJECTION FOR PHASE 3: REALITY CHECK]
+    (Calculated over {total_candles} candles history)
+    - PATTERN FREQUENCY: {sinais} times detected in history.
+    - HISTORICAL SUCCESS: {wins} times target hit (Mean Reversion).
+    - HISTORICAL FAILURES: {losses} times failed.
+    - CALCULATED FAILURE RATE: {100 - win_rate:.1f}%
+    - CALCULATED WIN RATE: {win_rate:.1f}%
+    
+    INSTRUCTION: Use this data to fulfill Phase 3 'Virtual Backtest Check'.
     """
+
+def analisar_imagem(img, model, lista_ativos):
+    prompt = "Identify Asset Name and Timeframe from header. Return: ASSET|TIMEFRAME"
     try:
         response = model.generate_content([prompt, img])
         texto = response.text.upper().strip()
-        
-        if "|" in texto:
-            nome_raw, tf_raw = texto.split("|")
-        else:
-            nome_raw, tf_raw = texto, "M15" # Fallback
+        if "|" in texto: nome_raw, tf_raw = texto.split("|")
+        else: nome_raw, tf_raw = texto, "M15"
             
-        # Match Nome do Ativo
         nome_ativo = None
         codigo_ativo = None
-        nome_raw_clean = nome_raw.replace("INDEX", "").strip()
+        nome_clean = nome_raw.replace("INDEX", "").strip()
+        for k, v in lista_ativos.items():
+            k_clean = k.replace("INDEX", "").strip()
+            if nome_clean in k_clean or k_clean in nome_clean:
+                nome_ativo = k
+                codigo_ativo = v
+                if nome_clean == k_clean: break
         
-        for nome_oficial, codigo in lista_ativos.items():
-            nome_oficial_clean = nome_oficial.replace("INDEX", "").strip()
-            if nome_raw_clean in nome_oficial_clean or nome_oficial_clean in nome_raw_clean:
-                nome_ativo = nome_oficial
-                codigo_ativo = codigo
-                if nome_raw_clean == nome_oficial_clean: break
-        
-        # Match Timeframe
-        segundos = 3600 # Default H1
-        tf_label = "H1 (Default)"
-        
-        for key, val in TIMEFRAME_MAP.items():
-            if key in tf_raw.strip():
-                segundos = val
-                tf_label = f"{key} ({val}s)"
+        segundos = 3600
+        tf_label = "H1"
+        for k, v in TIMEFRAME_MAP.items():
+            if k in tf_raw:
+                segundos = v
+                tf_label = k
                 break
-                
         return nome_ativo, codigo_ativo, segundos, tf_label
-        
-    except Exception as e:
-        return None, None, 3600, str(e)
+    except: return None, None, 3600, "Erro IA"
+
+# --- FUNÇÃO TELEGRAM ---
+def enviar_telegram(token, chat_id, msg):
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+    except: pass
 
 # --- INTERFACE ---
-
-st.sidebar.header("⚙️ SI-QA SETTINGS")
-
-# Segredos / API Keys
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-else:
-    api_key = st.sidebar.text_input("Gemini API Key", type="password")
+st.sidebar.header("⚙️ SI-QA CONFIG")
+if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
+else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
 st.sidebar.divider()
-st.sidebar.subheader("📡 Telegram Radar")
 tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
-st.sidebar.divider()
-modo = st.sidebar.radio("Modo de Operação:", ["Análise Visual (Upload)", "Radar Automático 24/7"])
+modo = st.sidebar.radio("Modo:", ["Análise Visual + Backtest", "Radar Automático"])
 
-with st.spinner("Conectando Deriv..."):
+with st.spinner("Carregando Ativos..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
-
 if not LISTA_ATIVOS: st.stop()
 
-# ==========================================================
-# MODO 1: ANÁLISE VISUAL (MELHORIA 1 - DINÂMICO)
-# ==========================================================
-if modo == "Análise Visual (Upload)":
-    st.title("👁️ SI-QA: Dynamic Analysis")
-    st.markdown("### Detecta Ativo e Timeframe Automaticamente")
+# MODO 1: ANÁLISE + BACKTEST REAL
+if modo == "Análise Visual + Backtest":
+    st.title("🧬 SI-QA: Original Kernel + Reality Engine")
     
-    col1, col2, col3 = st.columns(3)
-    with col1: img_main = st.file_uploader("Gráfico Principal (Define a Matemática)", type=['png', 'jpg'])
-    with col2: img_h1 = st.file_uploader("Gráfico H1 (Contexto)", type=['png', 'jpg'])
-    with col3: img_h4 = st.file_uploader("Gráfico H4 (Estrutura)", type=['png', 'jpg'])
+    img = st.file_uploader("Upload Gráfico (M15/H1/H4)", type=['png', 'jpg'])
     
-    if st.button("EXECUTAR ANÁLISE", type="primary"):
-        if not api_key or not img_main:
-            st.error("API Key e Imagem Principal são obrigatórias.")
+    if st.button("INICIAR DECODIFICAÇÃO"):
+        if not api_key or not img:
+            st.error("Dados incompletos.")
             st.stop()
             
-        status = st.status("Iniciando Visão Computacional...", expanded=True)
+        status = st.status("Executando Protocolo SI-QA...", expanded=True)
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemini-3-flash-preview")
         
-        # 1. VISÃO DINÂMICA
-        status.write("👁️ Lendo Ativo e Timeframe da imagem...")
-        nome, codigo, segundos, tf_nome = analisar_imagem_completa(Image.open(img_main), model, LISTA_ATIVOS)
+        # 1. Visão
+        status.write("👁️ Fase 0: Identificando Ativo...")
+        nome, codigo, segundos, tf_nome = analisar_imagem(Image.open(img), model, LISTA_ATIVOS)
         
         if not nome:
             status.update(label="Erro", state="error")
-            st.error("Falha na leitura.")
+            st.error("Não identifiquei o ativo.")
             st.stop()
             
-        status.write(f"✅ Ativo: **{nome}** | Timeframe Visual: **{tf_nome}**")
+        status.write(f"✅ Ativo: {nome} | Timeframe: {tf_nome}")
         
-        # 2. DADOS PRECISOS
-        status.write(f"📡 Baixando dados matemáticos correspondentes ({segundos}s)...")
-        candles, erro = asyncio.run(get_deriv_data_dynamic(codigo, segundos))
-        
+        # 2. Dados Profundos (2000 velas)
+        status.write(f"📡 Baixando 2000 velas ({tf_nome}) para Backtest...")
+        candles, erro = asyncio.run(get_deep_history(codigo, segundos))
         if erro: st.error(erro); st.stop()
         
         df = pd.DataFrame(candles)
         df['epoch'] = pd.to_datetime(df['epoch'], unit='s')
-        df_full = calcular_indicadores(df)
+        df = calcular_indicadores(df)
         
-        # 3. GERAÇÃO
+        # 3. O Backtest Python
+        status.write("🧮 Fase 3: Rodando Simulação Estatística Real...")
+        relatorio_backtest = rodar_backtest_python(df)
+        
+        # 4. Injeção de Dados (Data Array para o Prompt Original)
+        # Aqui nós "enganamos" o prompt original entregando o resultado pronto do backtest
         prompt_injecao = f"""
-        TARGET ASSET: {nome}
-        DETECTED TIMEFRAME: {tf_nome}
-        CURRENT PRICE: {df_full.iloc[-1]['close']}
+        TARGET: {nome} ({tf_nome})
+        CURRENT PRICE: {df.iloc[-1]['close']}
+        Z-SCORE: {df.iloc[-1]['Z_Score']:.2f}
         
-        === MATCHING MATH DATA (LAST 15 CANDLES) ===
-        {df_full.tail(15).to_string()}
+        === DATA ARRAY FOR PHASE 3 (BACKTEST) ===
+        {relatorio_backtest}
         
-        TASK: Analyze using the specific logic for {tf_nome}.
+        === LIVE MARKET DATA (LAST 15 CANDLES) ===
+        {df.tail(15).to_string()}
+        
+        COMMAND: USE THE DATA ABOVE TO EXECUTE YOUR KERNEL LOGIC.
         """
         
-        inputs = [SYSTEM_PROMPT, prompt_injecao, Image.open(img_main)]
-        if img_h1: inputs.append(Image.open(img_h1))
-        if img_h4: inputs.append(Image.open(img_h4))
-        
-        status.write("🧠 SI-QA Decodificando...")
-        response = model.generate_content(inputs)
-        status.update(label="Sucesso", state="complete", expanded=False)
+        status.write("🧠 Fase Final: Decodificação SI-QA...")
+        resp = model.generate_content([SYSTEM_PROMPT, prompt_injecao, Image.open(img)])
+        status.update(label="Concluído", state="complete")
         
         st.divider()
-        st.markdown(response.text)
+        st.markdown(resp.text)
+        
+        with st.expander("Ver Relatório Bruto do Backtest (Python)"):
+            st.text(relatorio_backtest)
 
-# ==========================================================
-# MODO 2: RADAR AUTOMÁTICO (MELHORIA 2 - TELEGRAM)
-# ==========================================================
-elif modo == "Radar Automático 24/7":
-    st.title("📡 SI-QA: Silent Radar")
-    st.markdown("### Monitoramento Matemático em Segundo Plano")
+# MODO 2: RADAR
+elif modo == "Radar Automático":
+    st.title("📡 Radar de Probabilidade (Z-Score)")
+    alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
-    ativos_alvo = st.multiselect("Selecione Ativos para Monitorar:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX", "VOLATILITY 75 INDEX"])
-    intervalo = st.slider("Intervalo de Varredura (Segundos)", 60, 300, 60)
-    
-    if st.button("ATIVAR RADAR", type="primary"):
-        if not tg_token or not tg_chat:
-            st.error("Configure o Token e Chat ID do Telegram na barra lateral.")
-            st.stop()
-            
-        st.success("📡 Radar Ativo! Mantenha esta aba aberta. Verifique seu Telegram.")
-        enviar_telegram(tg_token, tg_chat, "🚨 SI-QA RADAR INICIADO 🚨\nMonitorando o mercado...")
+    if st.button("INICIAR RADAR"):
+        if not tg_token: st.error("Falta Telegram"); st.stop()
+        st.success("Radar Rodando... (Não feche esta aba)")
+        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
         
-        placeholder = st.empty()
-        
+        ph = st.empty()
         while True:
-            log_scan = []
-            for nome_ativo in ativos_alvo:
-                codigo = LISTA_ATIVOS[nome_ativo]
-                
-                # Baixa dados M15 para o Radar (Padrão de Alerta)
-                candles, erro = asyncio.run(get_deriv_data_dynamic(codigo, 900))
+            log = []
+            for nome in alvos:
+                codigo = LISTA_ATIVOS[nome]
+                # Baixa 2000 velas para ter Z-Score preciso
+                candles, _ = asyncio.run(get_deep_history(codigo, 900)) 
                 
                 if candles:
                     df = pd.DataFrame(candles)
                     df = calcular_indicadores(df)
-                    last = df.iloc[-1]
+                    z = df.iloc[-1]['Z_Score']
                     
-                    # --- LÓGICA DE ALERTA MATEMÁTICO (MATH GATES) ---
-                    # 1. Z-Score Extremo (Reversão)
-                    if abs(last['Z_Score']) > 2.8:
-                        msg = f"🚨 **ALERTA: {nome_ativo}**\nZ-Score Crítico: {last['Z_Score']:.2f}\nPossível Reversão Iminente!"
+                    if abs(z) > 2.8:
+                        msg = f"🚨 **{nome}**\nZ-Score Crítico: {z:.2f}\nProbabilidade de Reversão Alta!"
                         enviar_telegram(tg_token, tg_chat, msg)
-                        log_scan.append(f"{nome_ativo}: 🔴 ALERTA ENVIADO (Z-Score)")
-                    
-                    # 2. Rompimento de Bandas (Volatilidade)
-                    elif last['close'] > last['Upper'] or last['close'] < last['Lower']:
-                        msg = f"⚠️ **ATIVIDADE: {nome_ativo}**\nPreço rompeu Bandas de Bollinger.\nAlta Volatilidade."
-                        enviar_telegram(tg_token, tg_chat, msg)
-                        log_scan.append(f"{nome_ativo}: 🟡 Aviso Enviado")
-                        
+                        log.append(f"{nome}: 🔴 ALERTA (Z: {z:.2f})")
                     else:
-                        log_scan.append(f"{nome_ativo}: ...Monitorando (Z: {last['Z_Score']:.2f})")
-                
-                time.sleep(1) # Delay leve entre ativos
-            
-            placeholder.code("\n".join(log_scan))
-            time.sleep(intervalo)
+                        log.append(f"{nome}: ... (Z: {z:.2f})")
+                time.sleep(1)
+            ph.code("\n".join(log))
+            time.sleep(60)
