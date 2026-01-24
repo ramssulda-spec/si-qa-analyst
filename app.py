@@ -11,7 +11,7 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: TITAN Edition",
+    page_title="SI-QA: TITAN (Full Stack)",
     page_icon="🧬",
     layout="wide"
 )
@@ -39,44 +39,41 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE: SI-QA TITAN (PROTOCOLS A, B, C)
+# PROMPT MESTRE: SI-QA TITAN
 # ==============================================================================
 SYSTEM_PROMPT = """
 ( ROLE & SYSTEM KERNEL
 You are the "SI-QA TITAN", an Institutional Algorithm designed for the Deriv Synthetic Markets.
 You operate on a "Hierarchy of Truth":
-1. MATH (Python Data) is the absolute truth.
+1. MATH (Python Data & Backtest) is the absolute truth.
 2. MACRO STRUCTURE (H4 Chart) is the map.
 3. MICRO TRIGGER (M15 Chart) is the timing.
 
 >> DYNAMIC ASSET PROTOCOLS (YOU MUST OBEY THE DETECTED CLASS):
 
 <PROTOCOL_A: SPIKE_INDICES>
-(Target: Crash 300/500/1000 & Boom 300/500/1000)
-- PHYSICS: These assets have asymmetric volatility. Drops/Spikes happen in 1 tick.
-- RULE 1: NEVER trust "Overbought/Oversold" oscillators blindly. A Crash index can stay "Oversold" for 50 candles while trending down.
-- RULE 2: Trend Following (H4) is the only safe path.
-- TRIGGER: Look for "N" Patterns (Spike -> Small Retracement -> Spike) or Key Support levels on H4.
-- FORBIDDEN: Do not signal a reversal (catching a falling knife) unless price hits a massive H4 Support.
+(Target: Crash & Boom Indices)
+- PHYSICS: Asymmetric volatility. Drops/Spikes happen in 1 tick.
+- RULE: Trend Following (H4) is the only safe path.
+- TRIGGER: "N" Patterns or H4 Support/Resistance.
+- FORBIDDEN: Do not buy/sell against the spike unless price hits massive H4 Structure.
 
 <PROTOCOL_B: DISCRETE_INDICES>
 (Target: Step Index, Jump Indices)
-- PHYSICS: Price moves in rigid blocks/steps. EMAs are less effective here.
-- FOCUS: Horizontal Levels (Support/Resistance) and Breakouts.
-- TRIGGER: Wait for a candle to BREAK and CLOSE outside a consolidation box.
-- TRAP WARNING: Step Index loves "Fake Breakouts". Wait for the retest if possible.
+- PHYSICS: Price moves in rigid blocks. EMAs are less effective.
+- FOCUS: Horizontal Levels and Breakouts (Box Theory).
+- TRIGGER: Break and Close outside consolidation.
 
 <PROTOCOL_C: FLUID_INDICES>
-(Target: Volatility 10/25/50/75/100, Range Break)
-- PHYSICS: Standard Brownian Motion. Technical Analysis works perfectly here.
-- FOCUS: Market Structure (HH/HL), EMA 200 Trend, and Fibonacci Retracements.
-- TRIGGER: Z-Score deviation + RSI Divergence is the strongest signal.
+(Target: Volatility Indices, Range Break)
+- PHYSICS: Standard Brownian Motion.
+- TRIGGER: Z-Score deviation + RSI Divergence.
 
  CRITICAL INPUT PROTOCOL
 User provides:
 A) 3 Charts (M15, H1, H4).
 B) ASSET CLASS (Detected by Python).
-C) MATH DATA (Z-Score, Spikes, or Trend Data).
+C) BACKTEST DATA (Win Rate of the strategy).
 
  OUTPUT TERMINAL (Strict Format):
 
@@ -84,9 +81,9 @@ C) MATH DATA (Z-Score, Spikes, or Trend Data).
 [ASSET: {Asset} | PROTOCOL: {Protocol A/B/C}]
 
 >> HIERARCHY CHECK:
-   1. MACRO (H4): {Describe Structure - e.g., Bullish Order Block}
-   2. MATH DATA: {Interpret the Python Data provided}
-   3. MICRO (M15): {Describe the candle pattern}
+   1. MACRO (H4): {Describe Structure}
+   2. BACKTEST REALITY: {Win Rate}% (Is this safe?)
+   3. MICRO (M15): {Describe pattern}
 
 >> VERDICT MATRIX:
    - TREND ALIGNMENT: {Strong/Weak/Against}
@@ -94,13 +91,13 @@ C) MATH DATA (Z-Score, Spikes, or Trend Data).
 
 >> EXECUTION ORDER:
     ACTION: {BUY / SELL / WAIT}
-    TYPE: {SCALP (Catch Spike) / SWING (Trend) / DAY (Breakout)}
-    ENTRY ZONE: {Specific Price Area}
-    INVALIDATION POINT (SL): {Price where thesis fails}
-    TARGET (TP): {Next Liquidity Pool}
+    TYPE: {SCALP / SWING / DAY}
+    ENTRY ZONE: {Price Area}
+    SL: {Invalidation Price}
+    TP: {Target Price}
 
 >> INSTITUTIONAL NOTE:
-    {One sentence explaining the "Why". Example: "H4 Support holds, and Python detects abnormal spike volume."}
+    {Why? "Backtest confirms 70% edge + H4 Support."}
 )
 """
 
@@ -129,8 +126,8 @@ async def get_raw_data(symbol_code):
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
-            # Baixa M15 (Gatilho) e H4 (Macro)
-            req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 1000, "end": "latest", "style": "candles", "granularity": 900}
+            # Baixa 2000 velas de M15 para o Backtest Robusto
+            req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
             await websocket.send(json.dumps(req_m15)); res_m15 = await websocket.recv()
@@ -147,6 +144,7 @@ async def get_raw_data(symbol_code):
 
 def math_common(df):
     df['close'] = df['close'].astype(float)
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean() # Usado no Backtest
     df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     return df
 
@@ -174,58 +172,89 @@ def math_boom_crash(df, tipo):
         df['is_spike'] = df['body_size'] > threshold
     return df
 
+# --- MOTOR DE BACKTEST (REALITY ENGINE) ---
+# Este módulo testa a estratégia nos últimos 2000 candles
+
+def rodar_backtest(df, classe_ativo):
+    total = len(df)
+    if total < 500: return "Dados insuficientes para Backtest."
+    
+    wins = 0; losses = 0; sinais = 0
+    
+    # Lógica de Backtest dependendo da Classe
+    for i in range(50, total - 20):
+        row = df.iloc[i]
+        
+        # 1. Backtest para Volatility/Step (Reversão à Média)
+        if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
+            # Z-Score Extremo (>2) deve retornar à EMA 20
+            if 'Z_Score' in row and row['Z_Score'] > 2.0:
+                sinais += 1; outcome = "LOSS"
+                for future_i in range(i+1, min(i+16, total)):
+                    if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
+                        wins += 1; outcome = "WIN"; break
+                if outcome == "LOSS": losses += 1
+            elif 'Z_Score' in row and row['Z_Score'] < -2.0:
+                sinais += 1; outcome = "LOSS"
+                for future_i in range(i+1, min(i+16, total)):
+                    if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
+                        wins += 1; outcome = "WIN"; break
+                if outcome == "LOSS": losses += 1
+        
+        # 2. Backtest para Boom/Crash (Seguir Tendência)
+        # Se EMA200 sobe e preço toca EMA20 -> Sobe?
+        elif "PROTOCOL A" in classe_ativo:
+            trend_up = row['close'] > row['EMA_200']
+            pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001) # Perto da média
+            
+            if trend_up and pullback:
+                sinais += 1; outcome = "LOSS"
+                # Verifica se subiu nas próximas 5 velas
+                if df.iloc[min(i+5, total-1)]['close'] > row['close']:
+                    wins += 1; outcome = "WIN" # Simples Trend Following
+                else: losses += 1
+
+    win_rate = (wins / sinais * 100) if sinais > 0 else 0
+    
+    return f"""
+    [REALITY ENGINE REPORT]
+    - Strategy Tested: {'Mean Reversion' if 'PROTOCOL A' not in classe_ativo else 'Trend Following'}
+    - Sample: {total} candles
+    - Signals Found: {sinais}
+    - Historical Win Rate: {win_rate:.1f}%
+    """
+
 def processar_dados_inteligentes(nome_ativo, df_m15):
-    """O Cérebro Adaptativo"""
+    """O Cérebro Adaptativo + Backtest"""
     df_m15 = math_common(df_m15)
     info_extra = ""
     classe = ""
     
-    # 1. PROTOCOLO A: SPIKE
+    # CLASSIFICAÇÃO
     if "CRASH" in nome_ativo or "BOOM" in nome_ativo:
         classe = "PROTOCOL A: SPIKE INDICES"
         df_final = math_boom_crash(df_m15, nome_ativo)
         total_spikes = df_final['is_spike'].sum()
-        last_candle = df_final.iloc[-1]['body_size']
         trend = "BEARISH" if df_final.iloc[-1]['close'] < df_final.iloc[-1]['EMA_200'] else "BULLISH"
-        
-        info_extra = f"""
-        [SPIKE DATA]
-        - Trend (EMA 200): {trend}
-        - Spike Frequency (Last 1000 candles): {total_spikes}
-        - Current Candle Velocity: {last_candle:.4f}
-        """
+        info_extra = f"[SPIKE DATA]\nTrend: {trend}\nSpikes (Last 1000): {total_spikes}"
 
-    # 2. PROTOCOLO B: DISCRETE (STEP/JUMP)
     elif "STEP" in nome_ativo or "JUMP" in nome_ativo:
         classe = "PROTOCOL B: DISCRETE INDICES"
         df_final = math_volatility_step(df_m15)
-        # ATR para volatilidade
-        df_final['tr'] = np.maximum((df_final['high'] - df_final['low']), 
-                                    np.maximum(abs(df_final['high'] - df_final['close'].shift()), 
-                                               abs(df_final['low'] - df_final['close'].shift())))
+        # Calcula ATR
+        df_final['tr'] = np.maximum((df_final['high'] - df_final['low']), abs(df_final['high'] - df_final['close'].shift()))
         atr = df_final['tr'].rolling(14).mean().iloc[-1]
-        rsi = df_final.iloc[-1]['RSI']
-        
-        info_extra = f"""
-        [DISCRETE DATA]
-        - ATR (Volatility): {atr:.4f}
-        - RSI: {rsi:.2f}
-        - NOTE: Focus on Horizontal Breakouts (Boxes), ignore small wicks.
-        """
+        info_extra = f"[DISCRETE DATA]\nATR: {atr:.4f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
 
-    # 3. PROTOCOLO C: FLUID (V75, ETC)
     else: 
         classe = "PROTOCOL C: FLUID INDICES"
         df_final = math_volatility_step(df_m15)
-        z = df_final.iloc[-1]['Z_Score']
-        rsi = df_final.iloc[-1]['RSI']
-        info_extra = f"""
-        [MEAN REVERSION DATA]
-        - Z-Score: {z:.2f} (Extreme if > 2.0 or < -2.0)
-        - RSI: {rsi:.2f}
-        """
+        info_extra = f"[MEAN REVERSION DATA]\nZ-Score: {df_final.iloc[-1]['Z_Score']:.2f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
         
-    return info_extra, classe
+    # EXECUTA O BACKTEST COM O DATAFRAME JÁ PROCESSADO
+    relatorio_backtest = rodar_backtest(df_final, classe)
+    
+    return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
     prompt = "Read the Asset Name exactly. Return ONLY the name."
@@ -254,7 +283,7 @@ tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
 st.sidebar.divider()
-modo_operacao = st.sidebar.radio("Modo:", ["Análise Visual (TITAN)", "Radar Auto (Telegram)"])
+modo_operacao = st.sidebar.radio("Modo:", ["Análise Visual (TITAN + Backtest)", "Radar Auto (Telegram)"])
 
 with st.spinner("Conectando Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
@@ -263,7 +292,7 @@ if not LISTA_ATIVOS: st.stop()
 # ==========================================================
 # MODO 1: ANÁLISE VISUAL TITAN
 # ==========================================================
-if modo_operacao == "Análise Visual (TITAN)":
+if modo_operacao == "Análise Visual (TITAN + Backtest)":
     st.title("🧬 SI-QA: TITAN Adaptive")
     
     col1, col2, col3 = st.columns(3)
@@ -271,7 +300,6 @@ if modo_operacao == "Análise Visual (TITAN)":
     with col2: img_h1 = st.file_uploader("2. H1", type=['png', 'jpg'])
     with col3: img_h4 = st.file_uploader("3. H4", type=['png', 'jpg'])
     
-    # Seletor Manual (Fail-Safe)
     ativo_manual = st.selectbox("Seletor Manual (Backup):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
     
     if st.button("ATIVAR NÚCLEO TITAN"):
@@ -299,12 +327,12 @@ if modo_operacao == "Análise Visual (TITAN)":
         c_m15, c_h4, erro = asyncio.run(get_raw_data(codigo_ativo))
         if erro: st.error(erro); st.stop()
         
-        # 3. Processamento Adaptativo
-        status.write("🧠 Detectando Classe do Ativo...")
+        # 3. Processamento Adaptativo + BACKTEST
+        status.write("🧠 Rodando Reality Engine (Backtest)...")
         df_m15 = pd.DataFrame(c_m15)
-        relatorio_math, classe_ativo = processar_dados_inteligentes(nome_ativo, df_m15)
+        relatorio_math, classe_ativo, relatorio_backtest = processar_dados_inteligentes(nome_ativo, df_m15)
         
-        status.write(f"🧬 Protocolo Ativado: **{classe_ativo}**")
+        status.write(f"🧬 Protocolo: **{classe_ativo}**")
         
         # 4. Prompt Gemini 3.0
         try: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
@@ -324,6 +352,9 @@ if modo_operacao == "Análise Visual (TITAN)":
         === ADAPTIVE MATH DATA ===
         {relatorio_math}
         
+        === BACKTEST REALITY CHECK ===
+        {relatorio_backtest}
+        
         TASK: Execute analysis using ONLY the rules for {classe_ativo}.
         """
         inputs.append(prompt_injecao)
@@ -334,7 +365,11 @@ if modo_operacao == "Análise Visual (TITAN)":
             status.update(label="Sucesso", state="complete")
             st.divider()
             st.markdown(resp.text)
-            st.info(f"📊 **Dados Técnicos Usados:**\n{relatorio_math}")
+            
+            with st.expander("Ver Relatório Estatístico (Python)"):
+                st.text(relatorio_backtest)
+                st.text(relatorio_math)
+                
         except Exception as e:
             if "429" in str(e): st.warning("Cota Gemini 3.0 excedida. Aguarde 30s.")
             else: st.error(f"Erro: {e}")
@@ -361,22 +396,22 @@ elif modo_operacao == "Radar Auto (Telegram)":
                     
                     if c_m15:
                         df_m15 = pd.DataFrame(c_m15)
-                        # O Radar também é adaptativo agora!
-                        math_report, classe = processar_dados_inteligentes(nome, df_m15)
+                        # O Radar também usa a lógica adaptativa
+                        math_report, classe, _ = processar_dados_inteligentes(nome, df_m15)
                         
-                        # Simples lógica de alerta baseada na string de retorno
                         msg = ""
-                        
                         # Logica Crash/Boom
                         if "SPIKE" in classe:
-                            if "Trend (EMA 200): BULLISH" in math_report and "BOOM" in nome:
+                            if "Trend: BULLISH" in math_report and "BOOM" in nome:
                                 msg = f"🚀 **{nome}**\nProtocolo A: Tendência de Alta em BOOM"
-                            elif "Trend (EMA 200): BEARISH" in math_report and "CRASH" in nome:
+                            elif "Trend: BEARISH" in math_report and "CRASH" in nome:
                                 msg = f"🔻 **{nome}**\nProtocolo A: Tendência de Baixa em CRASH"
                         
                         # Logica Step/V75
-                        elif "Extreme" in math_report: # Z-Score > 2
-                            msg = f"⚡ **{nome}**\nProtocolo C: Z-Score Extremo (Reversão Possível)"
+                        elif "Z-Score" in math_report: 
+                            # Extrai Z-score do texto se possível, ou recalcula rapido
+                            if "Extreme" in math_report: # Já detectado na função
+                                msg = f"⚡ **{nome}**\nProtocolo C: Z-Score Extremo"
                         
                         if msg:
                             enviar_telegram(tg_token, tg_chat, msg)
@@ -387,5 +422,6 @@ elif modo_operacao == "Radar Auto (Telegram)":
                 time.sleep(1)
             ph.code("\n".join(log))
             time.sleep(60)
+
 
 
