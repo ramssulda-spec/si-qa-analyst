@@ -336,7 +336,7 @@ if modo_operacao == "Análise Visual (TITAN + Backtest)":
         
         # 4. Prompt Gemini 3.0
         try: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-        except: model_logic = genai.GenerativeModel("models/gemini-1.5-flash", safety_settings=SAFETY_SETTINGS)
+        except: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
         inputs = [SYSTEM_PROMPT]
         contexto = "CHARTS PROVIDED:\n"
@@ -422,6 +422,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
                 time.sleep(1)
             ph.code("\n".join(log))
             time.sleep(60)
+
 
 
 
