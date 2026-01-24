@@ -11,8 +11,8 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: Tri-Force Analyst",
-    page_icon="⚡",
+    page_title="SI-QA: Gold Edition",
+    page_icon="🏆",
     layout="wide"
 )
 
@@ -27,7 +27,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DE SEGURANÇA (Para evitar bloqueios em gráficos vermelhos) ---
+# --- SEGURANÇA (ANTI-BLOQUEIO) ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -177,7 +177,8 @@ def buscar_lista_ativos_deriv():
 
 async def get_triple_data(symbol_code):
     """
-    BAIXA DADOS DE M15, H1 e H4 SIMULTANEAMENTE
+    Baixa M15, H1 e H4 simultaneamente.
+    Usado tanto para Análise Visual quanto para o Radar Inteligente.
     """
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
@@ -187,17 +188,10 @@ async def get_triple_data(symbol_code):
             req_h1 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 100, "end": "latest", "style": "candles", "granularity": 3600}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
-            # Envia e Recebe M15
-            await websocket.send(json.dumps(req_m15))
-            res_m15 = await websocket.recv()
-            
-            # Envia e Recebe H1
-            await websocket.send(json.dumps(req_h1))
-            res_h1 = await websocket.recv()
-            
-            # Envia e Recebe H4
-            await websocket.send(json.dumps(req_h4))
-            res_h4 = await websocket.recv()
+            # Execução em sequência rápida
+            await websocket.send(json.dumps(req_m15)); res_m15 = await websocket.recv()
+            await websocket.send(json.dumps(req_h1)); res_h1 = await websocket.recv()
+            await websocket.send(json.dumps(req_h4)); res_h4 = await websocket.recv()
             
             d_m15 = json.loads(res_m15)
             d_h1 = json.loads(res_h1)
@@ -214,7 +208,7 @@ async def get_triple_data(symbol_code):
 def calcular_indicadores(df):
     df['close'] = df['close'].astype(float)
     df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Tendência Mestra
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean() # Mestra
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
     df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
@@ -234,104 +228,148 @@ def analisar_imagem(img, model, lista_ativos):
         return nome_ativo, codigo_ativo
     except: return None, None
 
+# --- FUNÇÕES TELEGRAM ---
+def enviar_telegram(token, chat_id, msg):
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+    except: pass
+
 # --- INTERFACE ---
-st.sidebar.header("⚙️ SI-QA CONFIG")
+st.sidebar.header("⚙️ SI-QA GOLD")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("Gemini API Key", type="password")
 
-st.title("⚡ SI-QA: Tri-Force Analyst")
-st.markdown("### Análise Fractal Simultânea (M15 + H1 + H4)")
-st.info("O sistema analisará os 3 tempos gráficos e decidirá automaticamente se o melhor trade é **Day Trade** ou **Swing Trade**.")
+st.sidebar.divider()
+tg_token = st.sidebar.text_input("Bot Token", type="password")
+tg_chat = st.sidebar.text_input("Chat ID")
 
-with st.spinner("Conectando..."):
+# SELETOR DE MODO - AQUI ESTÁ O QUE VOCÊ PEDIU
+st.sidebar.divider()
+modo_operacao = st.sidebar.radio(
+    "Selecionar Ferramenta:",
+    ["Análise Tri-Force (Visual)", "Radar Automático (Telegram)"]
+)
+
+with st.spinner("Conectando Servidores..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
-# ÁREA DE UPLOAD TRIPLO
-col1, col2, col3 = st.columns(3)
-with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
-with col2: img_h1 = st.file_uploader("2. H1 (Tendência)", type=['png', 'jpg'])
-with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
+# ==========================================================
+# MODO 1: ANÁLISE TRI-FORCE (VISUAL)
+# ==========================================================
+if modo_operacao == "Análise Tri-Force (Visual)":
+    st.title("⚡ SI-QA: Tri-Force Analysis")
+    st.markdown("### Upload de 3 Timeframes -> Decisão Automática")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1: img_m15 = st.file_uploader("1. M15 (Micro)", type=['png', 'jpg'])
+    with col2: img_h1 = st.file_uploader("2. H1 (Médio)", type=['png', 'jpg'])
+    with col3: img_h4 = st.file_uploader("3. H4 (Macro)", type=['png', 'jpg'])
+    
+    if st.button("ANALISAR AGORA"):
+        if not api_key: st.error("Falta API Key."); st.stop()
+        img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
+        if not img_p: st.error("Envie pelo menos uma imagem."); st.stop()
+        
+        status = st.status("Processando...", expanded=True)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
+        
+        # 1. Identificação
+        status.write("👁️ Lendo Ativo...")
+        nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
+        if not nome: status.update(label="Erro", state="error"); st.stop()
+        
+        # 2. Dados Triplos
+        status.write(f"📡 Baixando M15, H1, H4 de {nome}...")
+        c_m15, c_h1, c_h4, erro = asyncio.run(get_triple_data(codigo))
+        if erro: st.error(erro); st.stop()
+        
+        df_m15 = calcular_indicadores(pd.DataFrame(c_m15))
+        df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
+        df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
+        
+        # 3. Prompt
+        inputs = [SYSTEM_PROMPT]
+        contexto = "IMAGES:\n"
+        if img_m15: inputs.append(Image.open(img_m15)); contexto+="- M15 (Entry)\n"
+        if img_h1: inputs.append(Image.open(img_h1)); contexto+="- H1 (Trend)\n"
+        if img_h4: inputs.append(Image.open(img_h4)); contexto+="- H4 (Structure)\n"
+        
+        prompt_injecao = f"""
+        TARGET: {nome}
+        {contexto}
+        
+        === DATA INTELLIGENCE ===
+        [H4 MACRO]: Price {df_h4.iloc[-1]['close']} | Trend: {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
+        [M15 MICRO]: Z-Score {df_m15.iloc[-1]['Z_Score']:.2f}
+        
+        TASK:
+        1. Decide between Day Trade vs Swing Trade based on H4 Structure.
+        2. Generate the best signal.
+        """
+        inputs.append(prompt_injecao)
+        
+        try:
+            status.write("🧠 Decodificando...")
+            resp = model.generate_content(inputs)
+            status.update(label="Pronto", state="complete")
+            st.divider()
+            st.markdown(resp.text)
+        except Exception as e: st.error(f"Erro: {e}")
 
-if st.button("ANALISAR E DECIDIR MELHOR SINAL"):
-    if not api_key: st.error("Falta API Key."); st.stop()
+# ==========================================================
+# MODO 2: RADAR AUTOMÁTICO (TELEGRAM) - RESTAURADO!
+# ==========================================================
+elif modo_operacao == "Radar Automático (Telegram)":
+    st.title("📡 SI-QA: Radar Tri-Force")
+    st.markdown("Monitora a **Tendência do H4** e avisa entrada no **M15**.")
     
-    # Pega qualquer imagem para identificar o ativo
-    img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
-    if not img_p: st.error("Envie pelo menos uma imagem."); st.stop()
+    alvos = st.multiselect("Ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
+    
+    if st.button("ATIVAR MONITORAMENTO"):
+        if not tg_token or not tg_chat: st.error("Configure o Telegram na barra lateral!"); st.stop()
         
-    status = st.status("Iniciando Análise Tri-Dimensional...", expanded=True)
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
-    
-    # 1. Identificação
-    status.write("👁️ Identificando Ativo...")
-    nome, codigo = analisar_imagem(Image.open(img_p), model, LISTA_ATIVOS)
-    
-    if not nome: status.update(label="Erro Visão", state="error"); st.stop()
-    status.write(f"✅ Ativo: {nome}")
-    
-    # 2. Dados Triplos
-    status.write("📡 Baixando dados matemáticos de M15, H1 e H4...")
-    c_m15, c_h1, c_h4, erro = asyncio.run(get_triple_data(codigo))
-    if erro: st.error(erro); st.stop()
-    
-    df_m15 = calcular_indicadores(pd.DataFrame(c_m15))
-    df_h1 = calcular_indicadores(pd.DataFrame(c_h1))
-    df_h4 = calcular_indicadores(pd.DataFrame(c_h4))
-    
-    # 3. Prompt de Injeção Inteligente
-    inputs_gemini = [SYSTEM_PROMPT]
-    contexto = "IMAGES PROVIDED:\n"
-    if img_m15: inputs_gemini.append(Image.open(img_m15)); contexto+="- IMAGE 1: M15 (Gatilho Curto)\n"
-    if img_h1: inputs_gemini.append(Image.open(img_h1)); contexto+="- IMAGE 2: H1 (Estrutura Média)\n"
-    if img_h4: inputs_gemini.append(Image.open(img_h4)); contexto+="- IMAGE 3: H4 (Tendência Macro)\n"
-    
-    # Dados matemáticos resumidos para não estourar o prompt
-    prompt_injecao = f"""
-    TARGET: {nome}
-    
-    {contexto}
-    
-    === TRIPLE TIMEFRAME MATHEMATICS ===
-    [H4 - MACRO]
-    Price: {df_h4.iloc[-1]['close']}
-    EMA 200 (Long Trend): {df_h4.iloc[-1]['EMA_200']:.2f}
-    Z-Score: {df_h4.iloc[-1]['Z_Score']:.2f}
-    Trend Status: {"BULLISH" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BEARISH"}
-    
-    [H1 - STRUCTURE]
-    Price: {df_h1.iloc[-1]['close']}
-    Z-Score: {df_h1.iloc[-1]['Z_Score']:.2f}
-    
-    [M15 - ENTRY]
-    Price: {df_m15.iloc[-1]['close']}
-    Z-Score: {df_m15.iloc[-1]['Z_Score']:.2f}
-    
-    === CRITICAL TASK: AUTO-DECISION ===
-    1. Compare H4 Trend vs M15 Entry.
-    2. DECIDE THE BEST TRADE TYPE:
-       - IF H4 structure is dominant (e.g. hitting major support) -> CALL "SWING TRADE".
-       - IF H4 is flat but H1 is trending -> CALL "DAY TRADE".
-    3. Output the single best high-probability signal based on this confluence.
-    4. IGNORE M15 scalping signals that conflict with H4 trend.
-    """
-    
-    inputs_gemini.append(prompt_injecao)
-    
-    try:
-        status.write("🧠 Cruzando dados e decidindo estratégia...")
-        resp = model.generate_content(inputs_gemini)
-        status.update(label="Análise Pronta", state="complete")
-        st.divider()
-        st.markdown(resp.text)
+        st.success("Radar Ativo. Pode minimizar a janela.")
+        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-QA INICIADO")
         
-        # Mostra os dados técnicos para você conferir
-        with st.expander("Ver Dados Técnicos (Raio-X)"):
-            c1, c2, c3 = st.columns(3)
-            with c1: st.write("**M15 Z-Score:**", f"{df_m15.iloc[-1]['Z_Score']:.2f}")
-            with c2: st.write("**H1 Z-Score:**", f"{df_h1.iloc[-1]['Z_Score']:.2f}")
-            with c3: st.write("**H4 Trend:**", "ALTA" if df_h4.iloc[-1]['close'] > df_h4.iloc[-1]['EMA_200'] else "BAIXA")
+        ph = st.empty()
+        
+        while True:
+            log = []
+            for nome in alvos:
+                try:
+                    codigo = LISTA_ATIVOS[nome]
+                    # Baixa dados triplos (usaremos H4 e M15)
+                    c_m15, c_h1, c_h4, _ = asyncio.run(get_triple_data(codigo))
+                    
+                    if c_m15 and c_h4:
+                        df_mi = calcular_indicadores(pd.DataFrame(c_m15)) # M15
+                        df_ma = calcular_indicadores(pd.DataFrame(c_h4))  # H4
+                        
+                        # Lógica Tri-Force Simplificada para Radar
+                        z = df_mi.iloc[-1]['Z_Score'] # Gatilho M15
+                        trend_up = df_ma.iloc[-1]['close'] > df_ma.iloc[-1]['EMA_200'] # Tendência H4
+                        
+                        msg = ""
+                        # Compra: H4 Alta + M15 Barato
+                        if trend_up and z < -2.5:
+                            msg = f"🚀 **{nome}**\nSETUP: Tendência H4 Alta + M15 Sobrevendido\nZ-Score: {z:.2f}"
+                        
+                        # Venda: H4 Baixa + M15 Caro
+                        elif not trend_up and z > 2.5:
+                            msg = f"🔻 **{nome}**\nSETUP: Tendência H4 Baixa + M15 Sobrecomprado\nZ-Score: {z:.2f}"
+                            
+                        if msg:
+                            enviar_telegram(tg_token, tg_chat, msg)
+                            log.append(f"{nome}: SINAL ENVIADO ✅")
+                        else:
+                            dir = "Alta" if trend_up else "Baixa"
+                            log.append(f"{nome}: H4 {dir} | M15 Z {z:.2f}")
+                            
+                except: pass
+                time.sleep(1) # Delay entre ativos
             
-    except Exception as e:
-        st.error(f"Erro na geração: {e}")
+            ph.code("\n".join(log))
+            time.sleep(60) # Varredura a cada 1 minuto
