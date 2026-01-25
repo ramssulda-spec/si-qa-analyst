@@ -11,67 +11,115 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-QA: TITAN PRO (G3)",
+    page_title="SI-APATECO PRO",
     page_icon="💠",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# --- ESTILO VISUAL (CYBERPUNK / INSTITUCIONAL) ---
+# --- ESTILO VISUAL (NEXT-GEN UI / CSS AVANÇADO) ---
 st.markdown("""
 <style>
-    /* Fundo e Fonte */
-    .stApp {
-        background-color: #0E1117;
-        font-family: 'Roboto', sans-serif;
-    }
-    
-    /* Botões Modernos (Neon Green) */
-    .stButton>button {
-        background: linear-gradient(45deg, #004d00, #008000);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 15px 32px;
-        text-align: center;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 16px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(0, 255, 0, 0.2);
-        width: 100%;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 255, 0, 0.4);
-        background: linear-gradient(45deg, #006600, #009900);
+    /* Importando Fonte Futurista */
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;700&display=swap');
+
+    /* Animação de Entrada */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Cards e Containers */
-    div[data-testid="stExpander"] {
-        background-color: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 10px;
+    /* Fundo Global */
+    .stApp {
+        background-color: #050505;
+        background-image: radial-gradient(circle at 50% 0%, #1a2e1a 0%, #050505 60%);
+        font-family: 'Roboto', sans-serif;
+    }
+
+    /* Títulos Principais */
+    h1 {
+        font-family: 'Orbitron', sans-serif !important;
+        background: linear-gradient(90deg, #00ff88, #00b8ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        font-weight: 700 !important;
     }
     
-    /* Títulos */
-    h1 { color: #00ff00 !important; text-shadow: 0 0 10px rgba(0, 255, 0, 0.3); font-family: 'Orbitron', sans-serif; }
-    h2, h3 { color: #e6edf3 !important; }
+    h2, h3 {
+        color: #e0e0e0 !important;
+        font-family: 'Orbitron', sans-serif !important;
+        letter-spacing: 1px;
+    }
+
+    /* Cards e Containers (Glassmorphism) */
+    div[data-testid="stExpander"], div.stFileUploader {
+        background: rgba(20, 20, 25, 0.6);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        transition: transform 0.2s ease;
+        animation: fadeIn 0.6s ease-out;
+    }
     
-    /* Inputs */
-    .stTextInput>div>div>input {
-        background-color: #0d1117;
+    div[data-testid="stExpander"]:hover {
+        border-color: rgba(0, 255, 136, 0.3);
+    }
+
+    /* BOTÃO DE AÇÃO (MODERNO E ANIMADO) */
+    .stButton>button {
+        background: linear-gradient(135deg, #00b09b, #96c93d);
+        color: #000;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        padding: 16px 32px;
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        width: 100%;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stButton>button:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(0, 255, 136, 0.5);
+        background: linear-gradient(135deg, #00d4bb, #aee04d);
+    }
+
+    .stButton>button:active {
+        transform: translateY(1px) scale(0.98);
+        box-shadow: 0 2px 10px rgba(0, 255, 136, 0.3);
+    }
+
+    /* Inputs e Selects */
+    .stSelectbox>div>div>div, .stTextInput>div>div>input {
+        background-color: rgba(255, 255, 255, 0.05);
         color: white;
-        border: 1px solid #30363d;
-        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
     }
-    
-    /* Mensagens de Status */
-    .stSuccess { background-color: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; color: #00ff00; }
-    .stWarning { background-color: rgba(255, 204, 0, 0.1); border: 1px solid #ffcc00; color: #ffcc00; }
-    .stError { background-color: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; color: #ff0000; }
+
+    /* Sidebar Customizada */
+    [data-testid="stSidebar"] {
+        background-color: #0a0a0a;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Status Messages */
+    .stSuccess, .stInfo, .stWarning, .stError {
+        border-radius: 8px;
+        backdrop-filter: blur(5px);
+        font-weight: 500;
+        animation: fadeIn 0.4s ease-out;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -97,22 +145,22 @@ You operate on a "Hierarchy of Truth":
 >> DYNAMIC ASSET PROTOCOLS (YOU MUST OBEY THE DETECTED CLASS):
 
 <PROTOCOL_A: SPIKE_INDICES>
-(Target: Crash & Boom Indices)
+(Target: Crash 300/500/1000 & Boom 300/500/1000)
 - PHYSICS: Asymmetric volatility. Drops/Spikes happen in 1 tick.
-- RULE: Trend Following (H4) is the only safe path.
-- TRIGGER: "N" Patterns or H4 Support/Resistance.
-- FORBIDDEN: Do not buy/sell against the spike unless price hits massive H4 Structure.
+- RULE 1: NEVER trust "Overbought/Oversold" oscillators blindly. A Crash index can stay "Oversold" for 50 candles while trending down.
+- RULE 2: Trend Following (H4) is the only safe path.
+- TRIGGER: Look for "N" Patterns (Spike -> Small Retracement -> Spike) or Key Support levels on H4.
 
 <PROTOCOL_B: DISCRETE_INDICES>
 (Target: Step Index, Jump Indices)
-- PHYSICS: Price moves in rigid blocks. EMAs are less effective.
-- FOCUS: Horizontal Levels and Breakouts (Box Theory).
-- TRIGGER: Break and Close outside consolidation.
+- PHYSICS: Price moves in rigid blocks/steps. EMAs are less effective here.
+- FOCUS: Horizontal Levels (Support/Resistance) and Breakouts.
+- TRIGGER: Wait for a candle to BREAK and CLOSE outside a consolidation box.
 
 <PROTOCOL_C: FLUID_INDICES>
-(Target: Volatility Indices, Range Break)
-- PHYSICS: Standard Brownian Motion.
-- TRIGGER: Z-Score deviation + RSI Divergence.
+(Target: Volatility 10/25/50/75/100, Range Break)
+- PHYSICS: Standard Brownian Motion. Technical Analysis works perfectly here.
+- TRIGGER: Z-Score deviation + RSI Divergence is the strongest signal.
 
  CRITICAL INPUT PROTOCOL
 User provides:
@@ -122,7 +170,7 @@ C) BACKTEST DATA (Win Rate of the strategy).
 
  OUTPUT TERMINAL (Strict Format):
 
-/// SI-QA TITAN ANALYSIS ///
+/// SI-APATECO ANALYSIS ///
 [ASSET: {Asset} | PROTOCOL: {Protocol A/B/C}]
 
 >> HIERARCHY CHECK:
@@ -171,6 +219,7 @@ async def get_raw_data(symbol_code):
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as websocket:
+            # Baixa 2000 velas de M15 para o Backtest Robusto
             req_m15 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 2000, "end": "latest", "style": "candles", "granularity": 900}
             req_h4 = {"ticks_history": symbol_code, "adjust_start_time": 1, "count": 200, "end": "latest", "style": "candles", "granularity": 14400}
             
@@ -217,6 +266,8 @@ def math_boom_crash(df, tipo):
     if "CRASH" in tipo: df['is_spike'] = df['body_size'] < -threshold
     else: df['is_spike'] = df['body_size'] > threshold
     return df
+
+# --- MOTOR DE BACKTEST (REALITY ENGINE) ---
 
 def rodar_backtest(df, classe_ativo):
     total = len(df)
@@ -294,21 +345,21 @@ def enviar_telegram(token, chat_id, msg):
                      json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
-# --- INTERFACE PRINCIPAL ---
-st.sidebar.markdown("## ⚙️ Configuração Principal")
+# --- INTERFACE PRINCIPAL (VISUAL SI-APATECO) ---
+st.sidebar.markdown("## ⚙️ Configuração")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("🔑 Gemini API Key", type="password")
 
 st.sidebar.divider()
-st.sidebar.markdown("## 📡 Telegram Settings")
+st.sidebar.markdown("## 📡 Telegram")
 tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
 st.sidebar.divider()
-st.sidebar.markdown("## 🚀 Modo de Operação")
+st.sidebar.markdown("## 🚀 Módulo")
 modo_operacao = st.sidebar.radio(
-    "Selecione:",
-    ["Análise Visual (TITAN)", "Radar Auto (Telegram)"]
+    "Escolha o modo:",
+    ["Análise Visual (SI-APATECO)", "Radar Auto (Telegram)"]
 )
 
 with st.spinner("🔄 Conectando aos servidores Deriv..."):
@@ -316,11 +367,10 @@ with st.spinner("🔄 Conectando aos servidores Deriv..."):
 if not LISTA_ATIVOS: st.stop()
 
 # ==========================================================
-# MODO 1: ANÁLISE VISUAL TITAN
+# MODO 1: ANÁLISE VISUAL SI-APATECO
 # ==========================================================
-if modo_operacao == "Análise Visual (TITAN)":
-    st.markdown("<h1 style='text-align: center;'>🧬 SI-QA: TITAN Turbo (G3)</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8b949e;'>Intelligence Powered by <b>Gemini 3.0</b> & <b>Python Reality Engine</b></p>", unsafe_allow_html=True)
+if modo_operacao == "Análise Visual (SI-APATECO)":
+    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>💠 SI-APATECO</h1>", unsafe_allow_html=True)
     
     with st.container():
         st.markdown("### 📤 Upload dos Gráficos (Tri-Force)")
@@ -333,12 +383,12 @@ if modo_operacao == "Análise Visual (TITAN)":
     
     col_sel, col_btn = st.columns([2, 1])
     with col_sel:
-        ativo_manual = st.selectbox("🛡️ Seletor de Segurança (Caso a IA falhe na leitura):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
+        ativo_manual = st.selectbox("🛡️ Seletor de Segurança (Caso IA falhe):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
     
     with col_btn:
         st.write("") # Espaçamento
         st.write("") 
-        start_btn = st.button("🚀 INICIAR PROTOCOLO TITAN")
+        start_btn = st.button("🚀 INICIAR ANÁLISE")
     
     if start_btn:
         if not api_key: st.error("⚠️ Falta API Key."); st.stop()
@@ -473,6 +523,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
