@@ -10,10 +10,10 @@ import requests
 import time
 
 # ==============================================================================
-# 1. CONFIGURAÇÕES DA PÁGINA (QUANTUM V5.4 - ROBUST NET)
+# 1. CONFIGURAÇÕES DA PÁGINA (QUANTUM V5.5 - FIX PANDAS)
 # ==============================================================================
 st.set_page_config(
-    page_title="SI-APATECO QUANTUM V5.4",
+    page_title="SI-APATECO QUANTUM V5.5",
     page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -38,7 +38,6 @@ st.markdown("""
         letter-spacing: -1px;
     }
     
-    /* Metrics Highlighting */
     div[data-testid="stMetric"] {
         background-color: rgba(20, 20, 20, 0.8);
         border: 1px solid #333;
@@ -51,7 +50,6 @@ st.markdown("""
         font-family: 'Orbitron', sans-serif;
     }
 
-    /* Buttons */
     .stButton>button {
         background: linear-gradient(90deg, #00ff41, #008f24);
         color: black;
@@ -69,7 +67,6 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
     }
 
-    /* DataFrame Styles */
     .dataframe {
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 12px;
@@ -89,7 +86,7 @@ SAFETY_SETTINGS = [
 # 2. PROMPT MESTRE
 # ==============================================================================
 SYSTEM_PROMPT = """
-( ROLE: QUANTUM EXECUTION ALGORITHM v5.4
+( ROLE: QUANTUM EXECUTION ALGORITHM v5.5
 Your logic is LOCKED to the provided Python Data. You strictly forbid visual price guessing.
 
 DATA CONTEXT:
@@ -123,18 +120,15 @@ OUTPUT FORMAT (Markdown):
 # 3. REDE DERIV (SISTEMA DE FALHA-SEGURA MULTI-SERVIDOR)
 # ==============================================================================
 
-# Lista de servidores possíveis (Failover list)
 DERIV_SERVERS = [
-    "wss://ws.binaryws.com/websockets/v3?app_id=1089",      # Legado Estável
-    "wss://ws.derivws.com/websockets/v3?app_id=1089",       # Oficial Novo
-    "wss://blue.binaryws.com/websockets/v3?app_id=1089",    # Fallback Blue
-    "wss://green.binaryws.com/websockets/v3?app_id=1089"    # Fallback Green
+    "wss://ws.binaryws.com/websockets/v3?app_id=1089",      
+    "wss://ws.derivws.com/websockets/v3?app_id=1089",       
+    "wss://blue.binaryws.com/websockets/v3?app_id=1089",    
+    "wss://green.binaryws.com/websockets/v3?app_id=1089"    
 ]
 
 async def deriv_connect_attempt(url, message):
-    """Tenta conectar em UM url específico"""
     try:
-        # Ping interval None evita desconexões por falta de pong
         async with websockets.connect(url, ping_interval=None, close_timeout=10) as ws:
             await ws.send(json.dumps(message))
             response = await asyncio.wait_for(ws.recv(), timeout=20.0)
@@ -144,13 +138,9 @@ async def deriv_connect_attempt(url, message):
 
 @st.cache_data(ttl=3600)
 def get_deriv_assets():
-    """Tenta todos os servidores até conseguir a lista de ativos"""
     req = {"active_symbols": "brief", "product_type": "basic"}
-    
-    # Loop de tentativas
     for url in DERIV_SERVERS:
         data = asyncio.run(deriv_connect_attempt(url, req))
-        
         if data and 'active_symbols' in data:
             ativos = {}
             for x in data['active_symbols']:
@@ -158,38 +148,31 @@ def get_deriv_assets():
                     ativos[x['display_name'].upper()] = x['symbol']
             if ativos:
                 return ativos
-                
-    return None # Falhou em todos
+    return None 
 
 async def fetch_candles_safe(code):
-    """Baixa Histórico com resiliência de rede"""
     req_m15 = {"ticks_history": code, "style": "candles", "granularity": 900, "count": 1000, "adjust_start_time": 1, "end": "latest"}
     req_h4 = {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 200, "adjust_start_time": 1, "end": "latest"}
     
-    # Loop de tentativas para Candle Data
     for url in DERIV_SERVERS:
         try:
             async with websockets.connect(url, ping_interval=None) as ws:
-                # M15
                 await ws.send(json.dumps(req_m15))
                 res_m15 = await asyncio.wait_for(ws.recv(), timeout=20.0)
                 m15_data = json.loads(res_m15)
                 
-                # H4
                 await ws.send(json.dumps(req_h4))
                 res_h4 = await asyncio.wait_for(ws.recv(), timeout=20.0)
                 h4_data = json.loads(res_h4)
                 
                 if 'candles' in m15_data and 'candles' in h4_data:
                     return m15_data['candles'], h4_data['candles'], None
-                    
         except Exception:
-            continue # Tenta o proximo servidor
-            
-    return None, None, "Todos os servidores da Deriv falharam. Verifique firewall/internet."
+            continue
+    return None, None, "Falha de Conexão: Todos os servidores Deriv inatingíveis."
 
 # ==============================================================================
-# 4. MATH CORE
+# 4. MATH CORE (CORRIGIDO PARA PANDAS NOVO)
 # ==============================================================================
 
 def prepare_df(data):
@@ -217,11 +200,25 @@ def indicators(df):
     return df
 
 def find_swings(df, window=5):
-    df['is_low'] = df.iloc[window:-window]['low'].rolling(window=2*window+1, center=True).min() == df['low']
-    df['is_high'] = df.iloc[window:-window]['high'].rolling(window=2*window+1, center=True).max() == df['high']
+    """
+    Versão 5.5 (Correção Pandas Label Mismatch)
+    Calcula o rolling no DF inteiro primeiro para garantir alinhamento de índices.
+    """
+    # Cria as Series completas de rolling (center=True preenche as bordas com NaN ou mantém indice)
+    roll_min = df['low'].rolling(window=2*window+1, center=True).min()
+    roll_max = df['high'].rolling(window=2*window+1, center=True).max()
     
-    last_low = df[df['is_low'] == True]['low'].iloc[-1] if not df[df['is_low'] == True].empty else df['low'].min()
-    last_high = df[df['is_high'] == True]['high'].iloc[-1] if not df[df['is_high'] == True].empty else df['high'].max()
+    # Compara a coluna inteira com a coluna de rolling inteira (Índices idênticos)
+    df['is_low'] = df['low'] == roll_min
+    df['is_high'] = df['high'] == roll_max
+    
+    # Filtra os verdadeiros
+    valid_lows = df[df['is_low'] == True]
+    valid_highs = df[df['is_high'] == True]
+    
+    last_low = valid_lows['low'].iloc[-1] if not valid_lows.empty else df['low'].min()
+    last_high = valid_highs['high'].iloc[-1] if not valid_highs.empty else df['high'].max()
+    
     return last_low, last_high
 
 def detect_valid_fvg(df):
@@ -370,7 +367,7 @@ def quantum_processor(name, m15_data, h4_data):
     }
 
 # ==============================================================================
-# 7. UI / FRONTEND (COM GESTÃO DE CHAVE API)
+# 7. UI / FRONTEND
 # ==============================================================================
 
 st.sidebar.title("🔐 SI-APATECO KEY")
@@ -384,25 +381,17 @@ else:
     else: st.sidebar.warning("⚠️ Insira a Chave")
 
 st.sidebar.divider()
-st.sidebar.markdown("**CORE:** V5.4 (Network Robust)\n**Backtest:** Ativo")
+st.sidebar.markdown("**CORE:** V5.5 (Bug Fix)\n**Logic:** Robust Swing Calc")
 
-st.title("💠 SI-APATECO QUANTUM V5.4")
-st.caption("AI: Gemini 3 Pro (Experimental) | Network: Auto-Failover System")
+st.title("💠 SI-APATECO QUANTUM V5.5")
+st.caption("Correção Crítica: Pandas Series Label Mismatch Resolved")
 
-# TENTATIVA DE CARREGAMENTO COM RETRY VISUAL
-with st.spinner("Conectando à Rede Neural Deriv..."):
+with st.spinner("Inicializando Rede..."):
     assets = get_deriv_assets()
 
 if not assets:
-    st.error("""
-    ❌ **FALHA TOTAL DE CONEXÃO DERIV**
-    
-    1. O servidor `derivws` e `binaryws` foram bloqueados pela sua rede/região.
-    2. Sua conexão está instável.
-    3. Tente atualizar a página.
-    """)
-    if st.button("♻️ Tentar Reconexão Forçada"):
-        st.rerun()
+    st.error("❌ FALHA CONEXÃO DERIV. O Servidor está bloqueado nesta região/rede.")
+    if st.button("Tentar Reconectar"): st.rerun()
     st.stop()
 
 col1, col2 = st.columns([1, 2])
@@ -410,7 +399,7 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.markdown("### 1. ALVO")
     target = st.selectbox("Ativo", list(assets.keys()))
-    uploaded = st.file_uploader("Screenshot (Valid. Visual)", type=['png', 'jpg', 'jpeg'])
+    uploaded = st.file_uploader("Screenshot", type=['png', 'jpg', 'jpeg'])
     st.write("")
     run = st.button("RUN SYSTEM", use_container_width=True)
 
@@ -420,8 +409,6 @@ with col2:
         status = st.status("🛠️ PROCESSANDO...", expanded=True)
         
         status.write(f"📡 Buscando Candles: {target}...")
-        
-        # Chama a função Assíncrona via Wrapper Síncrono Seguro
         m15_raw, h4_raw, err = asyncio.run(fetch_candles_safe(assets[target]))
         
         if err: 
@@ -430,12 +417,13 @@ with col2:
             st.stop()
         
         status.write("🎲 Calculando Matemática do Mercado...")
+        # A CORREÇÃO DE ERRO FOI FEITA DENTRO DESTA CHAMADA:
         result = quantum_processor(target, m15_raw, h4_raw)
         
         status.write("🧠 Consultando Gemini 3 Pro...")
         status.update(label="ANÁLISE PRONTA", state="complete")
         
-        # VISUALIZAÇÃO
+        # DISPLAY
         st.subheader("📊 ESTATÍSTICA (500 CNDL)")
         b1, b2, b3 = st.columns(3)
         b1.metric("Win Rate", f"{result['WIN_RATE']}%")
@@ -456,9 +444,8 @@ with col2:
             resp = model.generate_content(full_prompt)
             st.markdown(resp.text)
         except Exception as e:
-            # FALLBACK
             if "Not Found" in str(e):
-                st.warning("⚠️ Modelo 'Pro' indisponível. Usando Flash 2.0...")
+                st.warning("⚠️ Usando Fallback Gemini 2.0...")
                 fallback = genai.GenerativeModel("gemini-2.0-flash", safety_settings=SAFETY_SETTINGS)
                 resp = fallback.generate_content(full_prompt)
                 st.markdown(resp.text)
