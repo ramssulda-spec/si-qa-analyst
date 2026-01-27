@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILO VISUAL (NEXT-GEN UI / CSS AVANÇADO) ---
+# --- ESTILO VISUAL (SI-APATECO NEXT-GEN UI) ---
 st.markdown("""
 <style>
     /* Importando Fonte Futurista */
@@ -29,7 +29,7 @@ st.markdown("""
         to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Fundo Global */
+    /* Fundo Global Cyberpunk Clean */
     .stApp {
         background-color: #050505;
         background-image: radial-gradient(circle at 50% 0%, #1a2e1a 0%, #050505 60%);
@@ -44,6 +44,7 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
         text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
         font-weight: 700 !important;
+        letter-spacing: 2px;
     }
     
     h2, h3 {
@@ -60,24 +61,24 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 12px;
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        transition: transform 0.2s ease;
+        transition: transform 0.2s ease, border-color 0.2s ease;
         animation: fadeIn 0.6s ease-out;
     }
     
     div[data-testid="stExpander"]:hover {
-        border-color: rgba(0, 255, 136, 0.3);
+        border-color: rgba(0, 255, 136, 0.4);
     }
 
     /* BOTÃO DE AÇÃO (MODERNO E ANIMADO) */
     .stButton>button {
-        background: linear-gradient(135deg, #00b09b, #96c93d);
+        background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%);
         color: #000;
         font-family: 'Orbitron', sans-serif;
         font-weight: bold;
         border: none;
         border-radius: 8px;
-        padding: 16px 32px;
-        font-size: 16px;
+        padding: 18px 32px;
+        font-size: 18px;
         text-transform: uppercase;
         letter-spacing: 2px;
         width: 100%;
@@ -90,8 +91,8 @@ st.markdown("""
 
     .stButton>button:hover {
         transform: translateY(-3px) scale(1.02);
-        box-shadow: 0 8px 25px rgba(0, 255, 136, 0.5);
-        background: linear-gradient(135deg, #00d4bb, #aee04d);
+        box-shadow: 0 8px 30px rgba(0, 255, 136, 0.6);
+        background: linear-gradient(135deg, #00d4bb 0%, #aee04d 100%);
     }
 
     .stButton>button:active {
@@ -106,11 +107,11 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
     }
-
-    /* Sidebar Customizada */
-    [data-testid="stSidebar"] {
-        background-color: #0a0a0a;
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    
+    /* Multiselect Tag */
+    .stMultiSelect span[data-baseweb="tag"] {
+        background-color: rgba(0, 255, 136, 0.2);
+        border: 1px solid rgba(0, 255, 136, 0.5);
     }
 
     /* Status Messages */
@@ -132,65 +133,67 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PROMPT MESTRE (TITAN PROTOCOLS)
+# PROMPT MESTRE (SMC & INSTITUTIONAL v2.0)
 # ==============================================================================
 SYSTEM_PROMPT = """
-( ROLE & SYSTEM KERNEL
-You are the "SI-QA TITAN", an Institutional Algorithm designed for the Deriv Synthetic Markets.
-You operate on a "Hierarchy of Truth":
-1. MATH (Python Data & Backtest) is the absolute truth.
-2. MACRO STRUCTURE (H4 Chart) is the map.
-3. MICRO TRIGGER (M15 Chart) is the timing.
+( ROLE & SYSTEM KERNEL v2.0
+You are "SI-APATECO PRIME", an Elite Quantitative Analyst for Deriv Markets.
+Your analysis combines Python Statistical Data with Institutional Price Action (SMC).
 
->> DYNAMIC ASSET PROTOCOLS (YOU MUST OBEY THE DETECTED CLASS):
+>> HIERARCHY OF TRUTH:
+1. MATH (ADX, Z-Score, Backtest) determines the REGIME (Trending vs Ranging).
+2. STRUCTURE (H4) determines the DIRECTION.
+3. SMC (Smart Money Concepts) determines the ENTRY.
 
-<PROTOCOL_A: SPIKE_INDICES>
-(Target: Crash 300/500/1000 & Boom 300/500/1000)
-- PHYSICS: Asymmetric volatility. Drops/Spikes happen in 1 tick.
-- RULE 1: NEVER trust "Overbought/Oversold" oscillators blindly. A Crash index can stay "Oversold" for 50 candles while trending down.
-- RULE 2: Trend Following (H4) is the only safe path.
-- TRIGGER: Look for "N" Patterns (Spike -> Small Retracement -> Spike) or Key Support levels on H4.
+>> DYNAMIC ASSET PROTOCOLS:
 
-<PROTOCOL_B: DISCRETE_INDICES>
-(Target: Step Index, Jump Indices)
-- PHYSICS: Price moves in rigid blocks/steps. EMAs are less effective here.
-- FOCUS: Horizontal Levels (Support/Resistance) and Breakouts.
-- TRIGGER: Wait for a candle to BREAK and CLOSE outside a consolidation box.
+<PROTOCOL_A: SPIKE_INDICES (Crash/Boom)>
+- PHYSICS: Asymmetric risk.
+- SMC RULE: Look for "Order Blocks" or "Breaker Blocks" at the origin of previous moves.
+- FILTER: If Python says "ADX > 30" in the opposite direction of the spike, SIGNAL IS INVALID (Do not catch a falling knife).
+- TRIGGER: Price tapping an H1/H4 Order Block + M15 Rejection candle.
 
-<PROTOCOL_C: FLUID_INDICES>
-(Target: Volatility 10/25/50/75/100, Range Break)
-- PHYSICS: Standard Brownian Motion. Technical Analysis works perfectly here.
-- TRIGGER: Z-Score deviation + RSI Divergence is the strongest signal.
+<PROTOCOL_B: DISCRETE_INDICES (Step/Jump)>
+- PHYSICS: Accumulation vs Distribution.
+- SMC RULE: Identify "Liquidity Sweeps" (Fakeouts) above/below consolidation boxes.
+- TRIGGER: Break of Structure (BOS) after a Liquidity Sweep.
+
+<PROTOCOL_C: FLUID_INDICES (Volatilities)>
+- PHYSICS: Brownian Motion.
+- QUANT RULE: Check Python Data "Strategy Lock". 
+  - If "FOLLOW TREND": Ignore Overbought/Oversold. Buy high, Sell higher.
+  - If "MEAN REVERSION": Short at Bollinger Upper Band + RSI > 70.
+- TRIGGER: Fair Value Gap (FVG) retest or Equilibrium of the range.
 
  CRITICAL INPUT PROTOCOL
 User provides:
-A) 3 Charts (M15, H1, H4).
-B) ASSET CLASS (Detected by Python).
-C) BACKTEST DATA (Win Rate of the strategy).
+A) Charts (Visual Price Action).
+B) MATH DATA (ADX, ATR, Z-Score, Bollinger Status).
+C) BACKTEST REALITY (Historical probability).
 
  OUTPUT TERMINAL (Strict Format):
 
-/// SI-APATECO ANALYSIS ///
-[ASSET: {Asset} | PROTOCOL: {Protocol A/B/C}]
+/// SI-APATECO PRIME VERDICT ///
+[ASSET: {Asset} | REGIME: {Trending/Ranging}]
 
->> HIERARCHY CHECK:
-   1. MACRO (H4): {Describe Structure}
-   2. BACKTEST REALITY: {Win Rate}% (Is this safe?)
-   3. MICRO (M15): {Describe pattern}
+>> QUANTITATIVE CHECK:
+   - TREND STRENGTH (ADX): {Value} (Is the trend exhausted?)
+   - STATISTICAL PROBABILITY: {Backtest Win Rate}%
 
->> VERDICT MATRIX:
-   - TREND ALIGNMENT: {Strong/Weak/Against}
-   - STATISTICAL EDGE: {High/Medium/Low}
+>> SMC ANALYSIS (Vision AI):
+   - STRUCTURE: {Bullish/Bearish Market Structure}
+   - LIQUIDITY: {Where is the money? e.g., "Equal Highs above"}
+   - INTEREST ZONE: {Order Block / FVG / Breaker Block}
 
->> EXECUTION ORDER:
-    ACTION: {BUY / SELL / WAIT}
-    TYPE: {SCALP / SWING / DAY}
-    ENTRY ZONE: {Price Area}
-    SL: {Invalidation Price}
-    TP: {Target Price}
+>> EXECUTION PLAN:
+    SIGNAL: {BUY / SELL / WAIT}
+    CONFIDENCE: {0-100}%
+    ENTRY ZONE: {Exact Price Area}
+    STOP LOSS: {Structural Level}
+    TAKE PROFIT: {Next Liquidity Pool}
 
->> INSTITUTIONAL NOTE:
-    {Why? "Backtest confirms 70% edge + H4 Support."}
+>> REASONING:
+    {Explain using SMC terms: "Price swept liquidity at low and rejected H4 Order Block with ADX supporting valid volatility."}
 )
 """
 
@@ -240,24 +243,47 @@ async def get_raw_data(symbol_code):
     except Exception as e: 
         return None, None, str(e)
 
-# --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS ---
+# --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS 2.0 (High Precision) ---
 
 def math_common(df):
     df['close'] = df['close'].astype(float)
-    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean() # Usado no Backtest
+    df['open'] = df['open'].astype(float)
+    df['high'] = df['high'].astype(float)
+    df['low'] = df['low'].astype(float)
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
     df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     return df
 
-def math_volatility_step(df):
+def math_advanced_indicators(df):
+    # 1. Bollinger Bands
     df['SMA_20'] = df['close'].rolling(window=20).mean()
     df['STD_20'] = df['close'].rolling(window=20).std()
-    df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
+    df['BB_Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
+    df['BB_Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
     
+    # 2. RSI & Z-Score
+    df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
     delta = df['close'].diff(1)
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
+
+    # 3. ADX (Average Directional Index) - Filtro de Ouro
+    # Cálculo manual otimizado para não depender de TA-Lib
+    df['tr'] = np.maximum((df['high'] - df['low']), abs(df['high'] - df['close'].shift()))
+    df['dm_plus'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), 
+                             np.maximum(df['high'] - df['high'].shift(), 0), 0)
+    df['dm_minus'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), 
+                              np.maximum(df['low'].shift() - df['low'], 0), 0)
+    
+    alpha = 1/14
+    df['ATR'] = df['tr'].ewm(alpha=alpha, adjust=False).mean()
+    df['DI_Plus'] = 100 * (df['dm_plus'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
+    df['DI_Minus'] = 100 * (df['dm_minus'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
+    df['DX'] = 100 * abs(df['DI_Plus'] - df['DI_Minus']) / (df['DI_Plus'] + df['DI_Minus'])
+    df['ADX'] = df['DX'].ewm(alpha=alpha, adjust=False).mean()
+    
     return df
 
 def math_boom_crash(df, tipo):
@@ -267,65 +293,101 @@ def math_boom_crash(df, tipo):
     else: df['is_spike'] = df['body_size'] > threshold
     return df
 
-# --- MOTOR DE BACKTEST (REALITY ENGINE) ---
+# --- MOTOR DE BACKTEST (REALITY ENGINE 2.0 - COM FILTRO ADX) ---
 
 def rodar_backtest(df, classe_ativo):
     total = len(df)
     if total < 500: return "Dados insuficientes para Backtest."
     wins = 0; losses = 0; sinais = 0
+    
     for i in range(50, total - 20):
         row = df.iloc[i]
+        adx_val = row['ADX'] if not pd.isna(row['ADX']) else 0
+        
+        # Estratégia Mean Reversion (Só funciona se ADX < 25)
         if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
-            if 'Z_Score' in row and row['Z_Score'] > 2.0:
-                sinais += 1; outcome = "LOSS"
-                for future_i in range(i+1, min(i+16, total)):
-                    if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
-                        wins += 1; outcome = "WIN"; break
-                if outcome == "LOSS": losses += 1
-            elif 'Z_Score' in row and row['Z_Score'] < -2.0:
-                sinais += 1; outcome = "LOSS"
-                for future_i in range(i+1, min(i+16, total)):
-                    if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
-                        wins += 1; outcome = "WIN"; break
-                if outcome == "LOSS": losses += 1
+            if adx_val < 30: # Filtro: Mercado Lateral
+                if row['Z_Score'] > 2.0: # Venda
+                    sinais += 1; outcome = "LOSS"
+                    for future_i in range(i+1, min(i+16, total)):
+                        if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
+                            wins += 1; outcome = "WIN"; break
+                    if outcome == "LOSS": losses += 1
+                elif row['Z_Score'] < -2.0: # Compra
+                    sinais += 1; outcome = "LOSS"
+                    for future_i in range(i+1, min(i+16, total)):
+                        if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
+                            wins += 1; outcome = "WIN"; break
+                    if outcome == "LOSS": losses += 1
+        
+        # Estratégia Trend Following (Só funciona se ADX > 20)
         elif "PROTOCOL A" in classe_ativo:
             trend_up = row['close'] > row['EMA_200']
-            pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001)
-            if trend_up and pullback:
-                sinais += 1; outcome = "LOSS"
-                if df.iloc[min(i+5, total-1)]['close'] > row['close']:
-                    wins += 1; outcome = "WIN" 
-                else: losses += 1
+            if trend_up and adx_val > 20: # Filtro: Tendência existe
+                pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001)
+                if pullback:
+                    sinais += 1; outcome = "LOSS"
+                    if df.iloc[min(i+5, total-1)]['close'] > row['close']:
+                        wins += 1; outcome = "WIN" 
+                    else: losses += 1
+
     win_rate = (wins / sinais * 100) if sinais > 0 else 0
     return f"""
-    [REALITY ENGINE REPORT]
-    - Strategy Tested: {'Mean Reversion' if 'PROTOCOL A' not in classe_ativo else 'Trend Following'}
-    - Sample: {total} candles
-    - Signals Found: {sinais}
-    - Historical Win Rate: {win_rate:.1f}%
+    [REALITY ENGINE 2.0]
+    - Strategy Type: {'Mean Reversion (Range)' if 'PROTOCOL A' not in classe_ativo else 'Trend Following (Spike)'}
+    - ADX Filter Used: Yes
+    - Samples Analyzed: {total} candles
+    - Valid Signals: {sinais}
+    - Precision Rate: {win_rate:.1f}%
     """
 
 def processar_dados_inteligentes(nome_ativo, df_m15):
     df_m15 = math_common(df_m15)
+    df_m15 = math_advanced_indicators(df_m15)
+    
     info_extra = ""
     classe = ""
+    
+    # Diagnóstico de Regime
+    adx_atual = df_m15.iloc[-1]['ADX']
+    regime = "TRENDING (Strong)" if adx_atual > 25 else "RANGING (Weak)"
+    
     if "CRASH" in nome_ativo or "BOOM" in nome_ativo:
         classe = "PROTOCOL A: SPIKE INDICES"
         df_final = math_boom_crash(df_m15, nome_ativo)
         total_spikes = df_final['is_spike'].sum()
         trend = "BEARISH" if df_final.iloc[-1]['close'] < df_final.iloc[-1]['EMA_200'] else "BULLISH"
-        info_extra = f"[SPIKE DATA]\nTrend: {trend}\nSpikes (Last 1000): {total_spikes}"
+        
+        info_extra = f"""
+        [SPIKE DATA]
+        - Market Regime: {regime} (ADX: {adx_atual:.2f})
+        - Macro Trend: {trend}
+        - Spikes (Last 1000): {total_spikes}
+        """
+        
     elif "STEP" in nome_ativo or "JUMP" in nome_ativo:
         classe = "PROTOCOL B: DISCRETE INDICES"
-        df_final = math_volatility_step(df_m15)
-        df_final['tr'] = np.maximum((df_final['high'] - df_final['low']), abs(df_final['high'] - df_final['close'].shift()))
-        atr = df_final['tr'].rolling(14).mean().iloc[-1]
-        info_extra = f"[DISCRETE DATA]\nATR: {atr:.4f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
+        atr = df_m15.iloc[-1]['ATR']
+        info_extra = f"""
+        [DISCRETE DATA]
+        - Volatility (ATR): {atr:.4f}
+        - Trend Strength: {adx_atual:.2f}
+        - RSI: {df_m15.iloc[-1]['RSI']:.2f}
+        """
     else: 
         classe = "PROTOCOL C: FLUID INDICES"
-        df_final = math_volatility_step(df_m15)
-        info_extra = f"[MEAN REVERSION DATA]\nZ-Score: {df_final.iloc[-1]['Z_Score']:.2f}\nRSI: {df_final.iloc[-1]['RSI']:.2f}"
-    relatorio_backtest = rodar_backtest(df_final, classe)
+        # Lógica de Bloqueio de Estratégia
+        sugestao = "FOLLOW TREND (Pullbacks)" if adx_atual > 25 else "MEAN REVERSION (Extremes)"
+        
+        info_extra = f"""
+        [FLUID DATA]
+        - Market Regime: {regime}
+        - Strategy Lock: {sugestao}
+        - Z-Score Deviation: {df_m15.iloc[-1]['Z_Score']:.2f}
+        - Bollinger Band: {'Touching Upper' if df_m15.iloc[-1]['close'] > df_m15.iloc[-1]['BB_Upper'] else ('Touching Lower' if df_m15.iloc[-1]['close'] < df_m15.iloc[-1]['BB_Lower'] else 'Inside')}
+        """
+        
+    relatorio_backtest = rodar_backtest(df_m15, classe)
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
@@ -345,13 +407,13 @@ def enviar_telegram(token, chat_id, msg):
                      json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
-# --- INTERFACE PRINCIPAL (VISUAL SI-APATECO) ---
-st.sidebar.markdown("## ⚙️ Configuração")
+# --- INTERFACE PRINCIPAL ---
+st.sidebar.markdown("## ⚙️ Acesso Neural")
 if "GEMINI_API_KEY" in st.secrets: api_key = st.secrets["GEMINI_API_KEY"]
 else: api_key = st.sidebar.text_input("🔑 Gemini API Key", type="password")
 
 st.sidebar.divider()
-st.sidebar.markdown("## 📡 Telegram")
+st.sidebar.markdown("## 📡 Rede Tática")
 tg_token = st.sidebar.text_input("Bot Token", type="password")
 tg_chat = st.sidebar.text_input("Chat ID")
 
@@ -362,7 +424,7 @@ modo_operacao = st.sidebar.radio(
     ["Análise Visual (SI-APATECO)", "Radar Auto (Telegram)"]
 )
 
-with st.spinner("🔄 Conectando aos servidores Deriv..."):
+with st.spinner("🔄 Estabelecendo Link Deriv..."):
     LISTA_ATIVOS = buscar_lista_ativos_deriv()
 if not LISTA_ATIVOS: st.stop()
 
@@ -370,68 +432,67 @@ if not LISTA_ATIVOS: st.stop()
 # MODO 1: ANÁLISE VISUAL SI-APATECO
 # ==========================================================
 if modo_operacao == "Análise Visual (SI-APATECO)":
-    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>💠 SI-APATECO</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-bottom: 20px;'>💠 SI-APATECO <span style='font-size: 15px; color: #00ff88; vertical-align: top;'>PRO</span></h1>", unsafe_allow_html=True)
     
     with st.container():
-        st.markdown("### 📤 Upload dos Gráficos (Tri-Force)")
+        st.markdown("### 📤 Upload Tri-Force (SMC Data)")
         col1, col2, col3 = st.columns(3)
-        with col1: img_m15 = st.file_uploader("📸 1. M15 (Gatilho)", type=['png', 'jpg'])
-        with col2: img_h1 = st.file_uploader("📸 2. H1 (Tendência)", type=['png', 'jpg'])
-        with col3: img_h4 = st.file_uploader("📸 3. H4 (Macro)", type=['png', 'jpg'])
+        with col1: img_m15 = st.file_uploader("📸 1. M15 (Entry Trigger)", type=['png', 'jpg'])
+        with col2: img_h1 = st.file_uploader("📸 2. H1 (Structure)", type=['png', 'jpg'])
+        with col3: img_h4 = st.file_uploader("📸 3. H4 (Liquidity)", type=['png', 'jpg'])
     
     st.divider()
     
     col_sel, col_btn = st.columns([2, 1])
     with col_sel:
-        ativo_manual = st.selectbox("🛡️ Seletor de Segurança (Caso IA falhe):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
+        ativo_manual = st.selectbox("🛡️ Override Manual (Segurança):", ["Automático (IA)"] + list(LISTA_ATIVOS.keys()))
     
     with col_btn:
         st.write("") # Espaçamento
         st.write("") 
-        start_btn = st.button("🚀 INICIAR ANÁLISE")
+        start_btn = st.button("🚀 EXECUTAR ANÁLISE")
     
     if start_btn:
         if not api_key: st.error("⚠️ Falta API Key."); st.stop()
         img_p = img_m15 if img_m15 else (img_h1 if img_h1 else img_h4)
         if not img_p: st.error("⚠️ Envie pelo menos uma imagem."); st.stop()
         
-        status = st.status("🧠 Inicializando Neural Engine (G3)...", expanded=True)
+        status = st.status("🧠 Inicializando Core Neural (Gemini 3.0)...", expanded=True)
         genai.configure(api_key=api_key)
         
-        # 1. Identificação - USANDO GEMINI 3 FLASH PARA VISÃO
+        # 1. Identificação - USANDO GEMINI 3 FLASH PREVIEW
         nome_ativo = None; codigo_ativo = None
         if ativo_manual != "Automático (IA)":
             nome_ativo = ativo_manual; codigo_ativo = LISTA_ATIVOS[ativo_manual]
             status.write(f"🛡️ Modo Manual Ativado: **{nome_ativo}**")
         else:
-            # AQUI ESTÁ A MUDANÇA: Usando 3-flash-preview para visão
             try: model_vision = genai.GenerativeModel("models/gemini-3-flash-preview")
             except: model_vision = genai.GenerativeModel("models/gemini-3-flash-preview")
             
-            status.write("👁️ Vision AI (G3) lendo gráfico...")
+            status.write("👁️ Vision AI escaneando ativo...")
             try:
                 nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
             except Exception: pass
             
             if not nome_ativo: status.update(label="Erro de Leitura", state="warning"); st.warning("⚠️ IA não leu o nome. Use o seletor manual acima."); st.stop()
         
-        status.write(f"✅ Ativo Confirmado: **{nome_ativo}**")
+        status.write(f"✅ Target Confirmado: **{nome_ativo}**")
         
         # 2. Dados
-        status.write("📡 Baixando dados institucionais (Deriv API)...")
+        status.write("📡 Extraindo dados institucionais (Deriv API)...")
         c_m15, c_h4, erro = asyncio.run(get_raw_data(codigo_ativo))
         if erro: 
             status.update(label="Erro Conexão", state="error")
             st.error(f"❌ Erro de Rede: {erro}"); st.stop()
         
         # 3. Processamento
-        status.write("🧮 Executando 'Reality Engine' (Backtest)...")
+        status.write("🧮 Calculando ADX, Bollinger e Backtest...")
         df_m15 = pd.DataFrame(c_m15)
         relatorio_math, classe_ativo, relatorio_backtest = processar_dados_inteligentes(nome_ativo, df_m15)
         
-        status.write(f"🧬 Protocolo Detectado: **{classe_ativo}**")
+        status.write(f"🧬 Protocolo: **{classe_ativo}**")
         
-        # 4. Prompt Gemini - USANDO APENAS GEMINI 3
+        # 4. Prompt Gemini - USANDO GEMINI 3 PRO PREVIEW (MAIS INTELIGENTE)
         try: model_logic = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
         except: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
@@ -446,25 +507,25 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
         DETECTED CLASS: {classe_ativo}
         {contexto}
         
-        === ADAPTIVE MATH DATA ===
+        === QUANTITATIVE DATA (TRUTH) ===
         {relatorio_math}
         
-        === BACKTEST REALITY CHECK ===
+        === HISTORICAL REALITY (BACKTEST) ===
         {relatorio_backtest}
         
-        TASK: Execute analysis using ONLY the rules for {classe_ativo}.
+        TASK: Synthesize the Math Data with SMC visual concepts to form a high-precision trade idea.
         """
         inputs.append(prompt_injecao)
         
         try:
-            status.write("🤖 Gerando Veredito Final (Gemini 3.0)...")
+            status.write("🤖 Gerando Veredito SMC (SI-APATECO)...")
             resp = model_logic.generate_content(inputs)
             status.update(label="Análise Concluída", state="complete")
             
             st.divider()
             st.markdown(resp.text)
             
-            with st.expander("📊 Ver Dados Matemáticos (Raio-X)"):
+            with st.expander("📊 Ver Dados do Motor Matemático"):
                 st.code(relatorio_backtest, language="text")
                 st.code(relatorio_math, language="text")
                 
@@ -473,18 +534,18 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
             else: st.error(f"❌ Erro IA: {e}")
 
 # ==========================================================
-# MODO 2: RADAR AUTOMÁTICO
+# MODO 2: RADAR AUTOMÁTICO (COM FILTRO ADX)
 # ==========================================================
 elif modo_operacao == "Radar Auto (Telegram)":
     st.markdown("<h1 style='text-align: center;'>📡 Radar Adaptativo (24/7)</h1>", unsafe_allow_html=True)
-    st.info("Este módulo monitora o mercado em tempo real e envia alertas no Telegram.")
+    st.info("Este módulo monitora o mercado e só avisa se o ADX confirmar a força do movimento.")
     
-    alvos = st.multiselect("🎯 Selecione os ativos para monitorar:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
+    alvos = st.multiselect("🎯 Selecione os ativos:", list(LISTA_ATIVOS.keys()), default=["CRASH 1000 INDEX"])
     
     if st.button("🟢 ATIVAR VIGILÂNCIA"):
         if not tg_token: st.error("Falta Telegram Token."); st.stop()
         st.success("Radar Ativo! Pode minimizar esta aba.")
-        enviar_telegram(tg_token, tg_chat, "📡 RADAR TITAN INICIADO")
+        enviar_telegram(tg_token, tg_chat, "📡 RADAR SI-APATECO INICIADO")
         
         ph = st.empty()
         log_container = []
@@ -500,19 +561,20 @@ elif modo_operacao == "Radar Auto (Telegram)":
                         math_report, classe, _ = processar_dados_inteligentes(nome, df_m15)
                         
                         msg = ""
+                        # Filtro Simples para Alerta
                         if "SPIKE" in classe:
                             if "Trend: BULLISH" in math_report and "BOOM" in nome:
-                                msg = f"🚀 **{nome}**\nProtocolo A: Tendência de Alta (Boom)"
+                                msg = f"🚀 **{nome}**\nProtocolo A: Tendência de Alta Confirmada"
                             elif "Trend: BEARISH" in math_report and "CRASH" in nome:
-                                msg = f"🔻 **{nome}**\nProtocolo A: Tendência de Baixa (Crash)"
-                        elif "Z-Score" in math_report: 
-                            if "Extreme" in math_report:
-                                msg = f"⚡ **{nome}**\nProtocolo C: Z-Score Extremo"
+                                msg = f"🔻 **{nome}**\nProtocolo A: Tendência de Baixa Confirmada"
+                        elif "Strategy Lock: MEAN REVERSION" in math_report: 
+                             if "Touching Upper" in math_report or "Touching Lower" in math_report:
+                                msg = f"⚡ **{nome}**\nProtocolo C: Possível Reversão (Bollinger)"
                         
                         timestamp = time.strftime("%H:%M:%S")
                         if msg:
                             enviar_telegram(tg_token, tg_chat, msg)
-                            log_container.insert(0, f"[{timestamp}] {nome}: 🚨 ALERTA ENVIADO")
+                            log_container.insert(0, f"[{timestamp}] {nome}: 🚨 ALERTA")
                         else:
                             log_container.insert(0, f"[{timestamp}] {nome}: Monitorando...")
                             
