@@ -613,3 +613,4 @@ elif modo_operacao == "Radar Auto (Telegram)":
 
 
 
+
