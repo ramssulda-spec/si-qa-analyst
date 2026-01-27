@@ -243,7 +243,61 @@ async def get_raw_data(symbol_code):
     except Exception as e: 
         return None, None, str(e)
 
+# ==============================================================================
 # --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS 2.0 (High Precision) ---
+# ==============================================================================
+
+def math_common(df):
+    """Garante que as colunas sejam float e numéricas"""
+    cols = ['open', 'high', 'low', 'close', 'epoch']
+    for col in cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+def math_advanced_indicators(df):
+    """Calcula os indicadores técnicos necessários para o backtest e sinal"""
+    # 1. EMAs
+    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
+    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
+    
+    # 2. Bollinger Bands
+    df['BB_Mid'] = df['close'].rolling(window=20).mean()
+    df['BB_Std'] = df['close'].rolling(window=20).std()
+    df['BB_Upper'] = df['BB_Mid'] + (2 * df['BB_Std'])
+    df['BB_Lower'] = df['BB_Mid'] - (2 * df['BB_Std'])
+    
+    # 3. Z-Score (Para medir sobrecompra/sobrevenda relativa à volatilidade)
+    df['Z_Score'] = (df['close'] - df['BB_Mid']) / (df['BB_Std'] + 1e-9)
+    
+    # 4. ATR (Para volatilidade)
+    high_low = df['high'] - df['low']
+    high_close = np.abs(df['high'] - df['close'].shift())
+    low_close = np.abs(df['low'] - df['close'].shift())
+    ranges = pd.concat([high_low, high_close, low_close], axis=1)
+    true_range = np.max(ranges, axis=1)
+    df['ATR'] = true_range.rolling(14).mean()
+
+    # 5. ADX (Cálculo básico)
+    plus_dm = df['high'].diff()
+    minus_dm = df['low'].diff()
+    plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0.0)
+    minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), -minus_dm, 0.0) # usando a logica -minus_dm apenas como referencia positiva
+    
+    tr_rolling = true_range.rolling(14).sum()
+    plus_di = 100 * (pd.Series(plus_dm).rolling(14).sum() / tr_rolling)
+    minus_di = 100 * (pd.Series(minus_dm).abs().rolling(14).sum() / tr_rolling)
+    
+    dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di + 1e-9)) * 100
+    df['ADX'] = dx.rolling(14).mean()
+    
+    # Remover dados vazios do início (aquecimento)
+    df.dropna(inplace=True)
+    return df
+
+def math_boom_crash(df, nome_ativo):
+    """Função reservada para ajustes futuros específicos de indices spike"""
+    return df
 
 def rodar_backtest_pro(df, classe_ativo):
     total = len(df)
@@ -383,7 +437,6 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
         df_final = df_m15
         info_extra = f"Regime: {regime} | Z-Score: {df_m15.iloc[-1]['Z_Score']:.2f}"
         
-    # ESTA É A LINHA QUE ESTAVA COM ERRO:
     relatorio_backtest = rodar_backtest_pro(df_final, classe)
     
     return info_extra, classe, relatorio_backtest
@@ -458,7 +511,7 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
         status = st.status("🧠 Inicializando Core Neural (Gemini 3.0)...", expanded=True)
         genai.configure(api_key=api_key)
         
-        # 1. Identificação - USANDO GEMINI 3 FLASH PREVIEW
+        # 1. Identificação
         nome_ativo = None; codigo_ativo = None
         if ativo_manual != "Automático (IA)":
             nome_ativo = ativo_manual; codigo_ativo = LISTA_ATIVOS[ativo_manual]
@@ -490,7 +543,7 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
         
         status.write(f"🧬 Protocolo: **{classe_ativo}**")
         
-        # 4. Prompt Gemini - USANDO GEMINI 3 PRO PREVIEW (MAIS INTELIGENTE)
+        # 4. Prompt Gemini
         try: model_logic = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
         except: model_logic = genai.GenerativeModel("models/gemini-3-flash-preview", safety_settings=SAFETY_SETTINGS)
         
@@ -583,6 +636,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
