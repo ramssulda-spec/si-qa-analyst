@@ -295,14 +295,120 @@ def math_boom_crash(df, tipo):
 
 # --- MOTOR DE BACKTEST (REALITY ENGINE 2.0 - COM FILTRO ADX) ---
 
-def rodar_backtest(df, classe_ativo):
+def rodar_backtest_pro(df, classe_ativo):
     total = len(df)
-    if total < 500: return "Dados insuficientes para Backtest."
-    wins = 0; losses = 0; sinais = 0
+    if total < 500: return "Dados insuficientes para Backtest Robusto."
     
-    for i in range(50, total - 20):
+    # Métricas
+    wins = 0
+    losses = 0
+    total_trades = 0
+    consecutive_loss = 0
+    max_consecutive_loss = 0
+    profit_accumulator = 0 # Para calcular Expectativa Matemática
+    
+    # Configuração de Risco (Simulação)
+    risk_reward_ratio = 1.5 # Busca ganhar 1.5x o que arrisca
+    atr_multiplier_sl = 2.0 # Stop Loss = 2x ATR
+    
+    for i in range(100, total - 50): # Margem segura
         row = df.iloc[i]
-        adx_val = row['ADX'] if not pd.isna(row['ADX']) else 0
+        
+        # --- LÓGICA DE SINAL (GATILHOS) ---
+        sinal = None # 'BUY' ou 'SELL'
+        
+        # Lógica para BOOM/CRASH (Spikes)
+        if "PROTOCOL A" in classe_ativo:
+            # Compra em Crash (Contra tendência - Perigoso, ignorar) ou Favor da Trend
+            # Vamos testar apenas Trend Following (Segurança)
+            if "BOOM" in classe_ativo and row['close'] > row['EMA_200']:
+                # Pullback na média curta
+                if row['low'] <= row['EMA_20'] and row['close'] > row['EMA_20']:
+                    sinal = 'BUY'
+            elif "CRASH" in classe_ativo and row['close'] < row['EMA_200']:
+                if row['high'] >= row['EMA_20'] and row['close'] < row['EMA_20']:
+                    sinal = 'SELL'
+                    
+        # Lógica para VOLATILITY/STEP (Reversão com Filtro ADX)
+        elif "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
+            adx = row['ADX'] if not pd.isna(row['ADX']) else 0
+            
+            # Se mercado lateral (ADX < 25), opera reversão (Z-Score)
+            if adx < 25:
+                if row['Z_Score'] > 2.0: sinal = 'SELL'
+                elif row['Z_Score'] < -2.0: sinal = 'BUY'
+            
+            # Se mercado tendência (ADX > 25), opera rompimento (Bollinger)
+            elif adx > 25:
+                # Exemplo simples de Trend Follow
+                if row['close'] > row['BB_Upper']: sinal = 'BUY'
+                elif row['close'] < row['BB_Lower']: sinal = 'SELL'
+
+        # --- SIMULAÇÃO DO TRADE (EVENT DRIVEN) ---
+        if sinal:
+            total_trades += 1
+            entry_price = row['close']
+            atr = row['ATR'] if not pd.isna(row['ATR']) else (entry_price * 0.001)
+            
+            # Definindo SL e TP Dinâmicos
+            if sinal == 'BUY':
+                sl_price = entry_price - (atr * atr_multiplier_sl)
+                tp_price = entry_price + (atr * atr_multiplier_sl * risk_reward_ratio)
+            else: # SELL
+                sl_price = entry_price + (atr * atr_multiplier_sl)
+                tp_price = entry_price - (atr * atr_multiplier_sl * risk_reward_ratio)
+            
+            # Caminhando no futuro para ver o resultado
+            outcome = "OPEN"
+            for future_i in range(i+1, min(i+100, total)): # Olha até 100 velas à frente
+                f_row = df.iloc[future_i]
+                
+                if sinal == 'BUY':
+                    if f_row['low'] <= sl_price: outcome = "LOSS"; break
+                    if f_row['high'] >= tp_price: outcome = "WIN"; break
+                else: # SELL
+                    if f_row['high'] >= sl_price: outcome = "LOSS"; break
+                    if f_row['low'] <= tp_price: outcome = "WIN"; break
+            
+            # Contabilização
+            if outcome == "WIN":
+                wins += 1
+                profit_accumulator += (risk_reward_ratio) # Ganhou 1.5R
+                consecutive_loss = 0
+            elif outcome == "LOSS":
+                losses += 1
+                profit_accumulator -= 1.0 # Perdeu 1.0R
+                consecutive_loss += 1
+                if consecutive_loss > max_consecutive_loss: max_consecutive_loss = consecutive_loss
+
+    # --- CÁLCULO DAS MÉTRICAS AVANÇADAS ---
+    win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+    profit_factor = "N/A" # Evitar divisão por zero
+    if losses > 0:
+        # Simplificação: Como usamos Risco fixo, Profit Factor ≈ (Wins * Reward) / (Losses * 1)
+        gross_profit = wins * risk_reward_ratio
+        gross_loss = losses * 1.0
+        pf_value = gross_profit / gross_loss
+        profit_factor = f"{pf_value:.2f}"
+    
+    expected_value = (profit_accumulator / total_trades) if total_trades > 0 else 0
+    
+    # Classificação da Estratégia
+    status_msg = "🔴 UNPROFITABLE"
+    if expected_value > 0.2: status_msg = "🟡 MARGINAL"
+    if expected_value > 0.5: status_msg = "🟢 PROFITABLE"
+    if expected_value > 1.0: status_msg = "💎 HOLY GRAIL"
+
+    return f"""
+    [REALITY ENGINE v3.0 - SIMULATION]
+    - Sample Size: {total_trades} trades found in history
+    - Win Rate: {win_rate:.1f}%
+    - Risk/Reward Used: 1:{risk_reward_ratio}
+    - Profit Factor: {profit_factor} ( > 1.5 is Good)
+    - Max Consecutive Losses: {max_consecutive_loss} (Risk Warning)
+    - Mathematical Expectancy: {expected_value:.2f}R per trade
+    >> VERDICT: {status_msg}
+    """
         
         # Estratégia Mean Reversion (Só funciona se ADX < 25)
         if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
@@ -387,7 +493,7 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
         - Bollinger Band: {'Touching Upper' if df_m15.iloc[-1]['close'] > df_m15.iloc[-1]['BB_Upper'] else ('Touching Lower' if df_m15.iloc[-1]['close'] < df_m15.iloc[-1]['BB_Lower'] else 'Inside')}
         """
         
-    relatorio_backtest = rodar_backtest(df_m15, classe)
+    relatorio_backtest = rodar_backtest_pro(df_final, classe)
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
@@ -585,6 +691,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
