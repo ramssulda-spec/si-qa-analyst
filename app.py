@@ -311,27 +311,28 @@ def rodar_backtest_pro(df, classe_ativo):
     risk_reward_ratio = 1.5 # Busca ganhar 1.5x o que arrisca
     atr_multiplier_sl = 2.0 # Stop Loss = 2x ATR
     
-    for i in range(100, total - 50): # Margem segura
+    # --- SUBSTITUA APENAS ESTE BLOCO DENTRO DA FUNÇÃO rodar_backtest_pro ---
+
+    for i in range(100, total - 50): # Início do loop
         row = df.iloc[i]
+        adx_val = row['ADX'] if not pd.isna(row['ADX']) else 0
+        sinal = None # Reset do sinal para esta vela
         
-        # --- LÓGICA DE SINAL (GATILHOS) ---
-        sinal = None # 'BUY' ou 'SELL'
+        # --- O ERRO ESTAVA NESTE ALINHAMENTO ABAIXO ---
+        if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
+            if adx_val < 25: # Mercado Lateral
+                if row['Z_Score'] > 2.0: sinal = 'SELL'
+                elif row['Z_Score'] < -2.0: sinal = 'BUY'
+            
+            elif adx_val > 25: # Mercado em Tendência
+                if row['close'] > row['BB_Upper']: sinal = 'BUY'
+                elif row['close'] < row['BB_Lower']: sinal = 'SELL'
         
-        # Lógica para BOOM/CRASH (Spikes)
-        if "PROTOCOL A" in classe_ativo:
-            # Compra em Crash (Contra tendência - Perigoso, ignorar) ou Favor da Trend
-            # Vamos testar apenas Trend Following (Segurança)
-            if "BOOM" in classe_ativo and row['close'] > row['EMA_200']:
-                # Pullback na média curta
-                if row['low'] <= row['EMA_20'] and row['close'] > row['EMA_20']:
+        elif "PROTOCOL A" in classe_ativo:
+            # Lógica para Boom/Crash
+            if row['close'] > row['EMA_200'] and adx_val > 20:
+                if abs(row['close'] - row['SMA_20']) < (row['close'] * 0.001):
                     sinal = 'BUY'
-            elif "CRASH" in classe_ativo and row['close'] < row['EMA_200']:
-                if row['high'] >= row['EMA_20'] and row['close'] < row['EMA_20']:
-                    sinal = 'SELL'
-                    
-        # Lógica para VOLATILITY/STEP (Reversão com Filtro ADX)
-        elif "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
-            adx = row['ADX'] if not pd.isna(row['ADX']) else 0
             
             # Se mercado lateral (ADX < 25), opera reversão (Z-Score)
             if adx < 25:
@@ -691,6 +692,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
