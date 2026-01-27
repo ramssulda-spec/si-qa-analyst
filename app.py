@@ -11,7 +11,7 @@ import time
 
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(
-    page_title="SI-APATECO PRO v3.0",
+    page_title="SI-APATECO PRO v3.1",
     page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -207,7 +207,7 @@ async def get_raw_data(symbol_code):
         return None, None, str(e)
 
 # ==============================================================================
-# --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS 3.0 (CORRIGIDO E OTIMIZADO) ---
+# --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS 3.0 ---
 # ==============================================================================
 
 def math_common(df):
@@ -232,7 +232,6 @@ def math_advanced_indicators(df_m15, df_h4):
     Calcula M15 e importa a tendência do H4 para contexto MTF (Multi-Timeframe).
     """
     # 1. PROCESSAMENTO H4 (CONTEXTO MACRO)
-    # A IA precisa saber se o H4 está em tendência para validar o M15
     df_h4['EMA_50'] = df_h4['close'].ewm(span=50, adjust=False).mean()
     df_h4.dropna(inplace=True)
     
@@ -273,7 +272,7 @@ def math_advanced_indicators(df_m15, df_h4):
     dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di + 1e-9)) * 100
     df_m15['ADX'] = dx.rolling(14).mean()
 
-    # Injeta a tendência do H4 em cada linha do M15 (para facilitar o backtest)
+    # Injeta a tendência do H4 em cada linha do M15
     df_m15['MACRO_TREND'] = macro_trend
     
     df_m15.dropna(inplace=True)
@@ -297,37 +296,30 @@ def rodar_backtest_pro(df, classe_ativo):
         
         # 1. SPIKES (Protocolo A)
         if "PROTOCOL A" in classe_ativo:
-            # Só COMPRA Boom se Macro for Bullish
             if "BOOM" in classe_ativo and macro == "BULLISH":
-                 # Gatilho: Pullback na média ou sobrevenda
                  if row['close'] > row['EMA_200'] and row['RSI'] < 40: 
                      sinal = 'BUY'
             
-            # Só VENDE Crash se Macro for Bearish
             elif "CRASH" in classe_ativo and macro == "BEARISH":
-                # Gatilho: Repique técnico ou sobrecompra
                 if row['close'] < row['EMA_200'] and row['RSI'] > 60:
                     sinal = 'SELL'
 
-        # 2. VOLATILIDADE/STEP (Mean Reversion vs Trend)
+        # 2. VOLATILIDADE/STEP
         else:
             adx = row['ADX']
-            # Mercado Lateral (Range)
             if adx < 25:
                 if row['close'] > row['BB_Upper'] and row['RSI'] > 70: sinal = 'SELL'
                 if row['close'] < row['BB_Lower'] and row['RSI'] < 30: sinal = 'BUY'
-            
-            # Mercado em Tendência (Trend Follow com filtro H4)
             elif adx > 25:
-                if macro == "BULLISH" and row['close'] > row['BB_Upper']: sinal = 'BUY' # Rompimento
-                if macro == "BEARISH" and row['close'] < row['BB_Lower']: sinal = 'SELL' # Rompimento
+                if macro == "BULLISH" and row['close'] > row['BB_Upper']: sinal = 'BUY'
+                if macro == "BEARISH" and row['close'] < row['BB_Lower']: sinal = 'SELL'
 
         # --- EXECUÇÃO VIRTUAL ---
         if sinal:
             entry = row['close']
             atr = row['ATR']
             
-            # STOP LOSS DINÂMICO INTELIGENTE (2.5x ATR para dar respiro ao ruído)
+            # SL Dinâmico 2.5x ATR
             atr_mult = 2.5
             
             if sinal == 'BUY':
@@ -337,7 +329,6 @@ def rodar_backtest_pro(df, classe_ativo):
                 sl = entry + (atr * atr_mult)
                 tp = entry - (atr * atr_mult * risk_reward)
             
-            # Validar Resultado Futuro
             total_trades += 1
             outcome = "OPEN"
             
@@ -370,27 +361,21 @@ def rodar_backtest_pro(df, classe_ativo):
     """
 
 def processar_dados_inteligentes(nome_ativo, c_m15_raw, c_h4_raw):
-    """
-    Função principal orquestradora.
-    """
-    # Converte dados raw para DF
     df_m15 = pd.DataFrame(c_m15_raw)
     df_h4 = pd.DataFrame(c_h4_raw)
     
     df_m15 = math_common(df_m15)
     df_h4 = math_common(df_h4)
     
-    # Processa indicadores com a nova lógica MTF
+    # Processa indicadores
     df_final = math_advanced_indicators(df_m15, df_h4)
     
     if len(df_final) == 0:
         return "N/A", "Unknown", "Insufficient Data"
     
-    # Snapshot Atual
     last = df_final.iloc[-1]
     info_extra = f"Bias(H4): {last['MACRO_TREND']} | RSI: {last['RSI']:.1f} | ADX: {last['ADX']:.1f}"
     
-    # Classificação
     if "CRASH" in nome_ativo or "BOOM" in nome_ativo: 
         classe = "PROTOCOL A: SPIKE INDICES"
     elif "STEP" in nome_ativo: 
@@ -401,6 +386,23 @@ def processar_dados_inteligentes(nome_ativo, c_m15_raw, c_h4_raw):
     relatorio_backtest = rodar_backtest_pro(df_final, classe)
     
     return info_extra, classe, relatorio_backtest
+
+def tentar_ler_ativo(img, model, lista_ativos):
+    prompt = "Read the Asset Name exactly from the chart header (e.g., Crash 1000 Index). Return ONLY the name."
+    try:
+        response = model.generate_content([prompt, img])
+        nome_raw = response.text.upper().strip().replace("INDEX", "").strip()
+        for k, v in lista_ativos.items():
+            k_clean = k.replace("INDEX", "").strip()
+            if nome_raw in k_clean or k_clean in nome_raw: return k, v
+        return None, None
+    except: return None, None
+
+def enviar_telegram(token, chat_id, msg):
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                     json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}, timeout=5)
+    except: pass
 
 # --- INTERFACE PRINCIPAL ---
 
@@ -466,8 +468,9 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
                 nome_ativo, codigo_ativo = tentar_ler_ativo(Image.open(img_p), model_vision, LISTA_ATIVOS)
             except Exception: pass
             
+            # --- CORREÇÃO APLICADA AQUI: state='error' ---
             if not nome_ativo: 
-                status.update(label="Erro de Leitura", state="warning")
+                status.update(label="Erro de Leitura", state="error") 
                 st.warning("⚠️ IA não leu o nome. Use o seletor manual acima."); st.stop()
         
         status.write(f"✅ Target Confirmado: **{nome_ativo}**")
@@ -478,10 +481,8 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
         if erro: 
             status.update(label="Erro Conexão", state="error"); st.error(f"❌ Erro de Rede: {erro}"); st.stop()
         
-        # 3. Processamento Matemático V3
+        # 3. Processamento Matemático
         status.write("🧮 Rodando Motor Matemático (MTF & RSI)...")
-        
-        # AQUI FOI FEITA A CORREÇÃO DE ARGUMENTOS
         math_info, classe_ativo, backtest_info = processar_dados_inteligentes(nome_ativo, c_m15, c_h4)
         
         status.write(f"🧬 Protocolo: **{classe_ativo}**")
@@ -527,7 +528,10 @@ if modo_operacao == "Análise Visual (SI-APATECO)":
                 st.code(math_info, language="text")
                 
         except Exception as e:
-            if "429" in str(e): st.warning("⚠️ Limite Gemini atingido. Aguarde 30s."); status.update(label="Pausa", state="warning")
+            # --- CORREÇÃO APLICADA AQUI TAMBÉM ---
+            if "429" in str(e): 
+                st.warning("⚠️ Limite Gemini atingido. Aguarde 30s.")
+                status.update(label="Pausa (Rate Limit)", state="error")
             else: st.error(f"❌ Erro IA: {e}")
 
 # ==========================================================
@@ -554,7 +558,6 @@ elif modo_operacao == "Radar Auto (Telegram)":
                     c_m15, c_h4, _ = asyncio.run(get_raw_data(codigo))
                     
                     if c_m15 and c_h4:
-                        # CORREÇÃO: PASSANDO AMBOS OS TIMEFRAMES
                         m_info, classe, _ = processar_dados_inteligentes(nome, c_m15, c_h4)
                         
                         msg = ""
@@ -587,6 +590,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(60)
+
 
 
 
