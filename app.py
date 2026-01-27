@@ -367,46 +367,25 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
     info_extra = ""
     classe = ""
     
-    # Diagnóstico de Regime
     adx_atual = df_m15.iloc[-1]['ADX']
-    regime = "TRENDING (Strong)" if adx_atual > 25 else "RANGING (Weak)"
+    regime = "TRENDING" if adx_atual > 25 else "RANGING"
     
     if "CRASH" in nome_ativo or "BOOM" in nome_ativo:
         classe = "PROTOCOL A: SPIKE INDICES"
         df_final = math_boom_crash(df_m15, nome_ativo)
-        total_spikes = df_final['is_spike'].sum()
-        trend = "BEARISH" if df_final.iloc[-1]['close'] < df_final.iloc[-1]['EMA_200'] else "BULLISH"
-        
-        info_extra = f"""
-        [SPIKE DATA]
-        - Market Regime: {regime} (ADX: {adx_atual:.2f})
-        - Macro Trend: {trend}
-        - Spikes (Last 1000): {total_spikes}
-        """
-        
+        info_extra = f"Regime: {regime} | ADX: {adx_atual:.2f}"
     elif "STEP" in nome_ativo or "JUMP" in nome_ativo:
         classe = "PROTOCOL B: DISCRETE INDICES"
-        atr = df_m15.iloc[-1]['ATR']
-        info_extra = f"""
-        [DISCRETE DATA]
-        - Volatility (ATR): {atr:.4f}
-        - Trend Strength: {adx_atual:.2f}
-        - RSI: {df_m15.iloc[-1]['RSI']:.2f}
-        """
+        df_final = df_m15
+        info_extra = f"Regime: {regime} | ADX: {adx_atual:.2f}"
     else: 
         classe = "PROTOCOL C: FLUID INDICES"
-        # Lógica de Bloqueio de Estratégia
-        sugestao = "FOLLOW TREND (Pullbacks)" if adx_atual > 25 else "MEAN REVERSION (Extremes)"
+        df_final = df_m15
+        info_extra = f"Regime: {regime} | Z-Score: {df_m15.iloc[-1]['Z_Score']:.2f}"
         
-        info_extra = f"""
-        [FLUID DATA]
-        - Market Regime: {regime}
-        - Strategy Lock: {sugestao}
-        - Z-Score Deviation: {df_m15.iloc[-1]['Z_Score']:.2f}
-        - Bollinger Band: {'Touching Upper' if df_m15.iloc[-1]['close'] > df_m15.iloc[-1]['BB_Upper'] else ('Touching Lower' if df_m15.iloc[-1]['close'] < df_m15.iloc[-1]['BB_Lower'] else 'Inside')}
-        """
-        
-   relatorio_backtest = rodar_backtest_pro(df_m15, classe)
+    # ESTA É A LINHA QUE ESTAVA COM ERRO:
+    relatorio_backtest = rodar_backtest_pro(df_final, classe)
+    
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
@@ -604,6 +583,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
