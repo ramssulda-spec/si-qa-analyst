@@ -406,7 +406,7 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
         - Bollinger Band: {'Touching Upper' if df_m15.iloc[-1]['close'] > df_m15.iloc[-1]['BB_Upper'] else ('Touching Lower' if df_m15.iloc[-1]['close'] < df_m15.iloc[-1]['BB_Lower'] else 'Inside')}
         """
         
-   relatorio_backtest = rodar_backtest_pro(df_final, classe)
+   relatorio_backtest = rodar_backtest_pro(df_m15, classe)
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
@@ -604,6 +604,7 @@ elif modo_operacao == "Radar Auto (Telegram)":
             if len(log_container) > 10: log_container = log_container[:10]
             ph.code("\n".join(log_container))
             time.sleep(30)
+
 
 
 
