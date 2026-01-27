@@ -245,56 +245,6 @@ async def get_raw_data(symbol_code):
 
 # --- NÚCLEOS MATEMÁTICOS ADAPTATIVOS 2.0 (High Precision) ---
 
-def math_common(df):
-    df['close'] = df['close'].astype(float)
-    df['open'] = df['open'].astype(float)
-    df['high'] = df['high'].astype(float)
-    df['low'] = df['low'].astype(float)
-    df['EMA_20'] = df['close'].ewm(span=20, adjust=False).mean()
-    df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
-    return df
-
-def math_advanced_indicators(df):
-    # 1. Bollinger Bands
-    df['SMA_20'] = df['close'].rolling(window=20).mean()
-    df['STD_20'] = df['close'].rolling(window=20).std()
-    df['BB_Upper'] = df['SMA_20'] + (df['STD_20'] * 2)
-    df['BB_Lower'] = df['SMA_20'] - (df['STD_20'] * 2)
-    
-    # 2. RSI & Z-Score
-    df['Z_Score'] = (df['close'] - df['SMA_20']) / df['STD_20']
-    delta = df['close'].diff(1)
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-
-    # 3. ADX (Average Directional Index) - Filtro de Ouro
-    # Cálculo manual otimizado para não depender de TA-Lib
-    df['tr'] = np.maximum((df['high'] - df['low']), abs(df['high'] - df['close'].shift()))
-    df['dm_plus'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), 
-                             np.maximum(df['high'] - df['high'].shift(), 0), 0)
-    df['dm_minus'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), 
-                              np.maximum(df['low'].shift() - df['low'], 0), 0)
-    
-    alpha = 1/14
-    df['ATR'] = df['tr'].ewm(alpha=alpha, adjust=False).mean()
-    df['DI_Plus'] = 100 * (df['dm_plus'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
-    df['DI_Minus'] = 100 * (df['dm_minus'].ewm(alpha=alpha, adjust=False).mean() / df['ATR'])
-    df['DX'] = 100 * abs(df['DI_Plus'] - df['DI_Minus']) / (df['DI_Plus'] + df['DI_Minus'])
-    df['ADX'] = df['DX'].ewm(alpha=alpha, adjust=False).mean()
-    
-    return df
-
-def math_boom_crash(df, tipo):
-    df['body_size'] = df['close'] - df['open']
-    threshold = df['body_size'].std() * 2
-    if "CRASH" in tipo: df['is_spike'] = df['body_size'] < -threshold
-    else: df['is_spike'] = df['body_size'] > threshold
-    return df
-
-# --- MOTOR DE BACKTEST (REALITY ENGINE 2.0 - COM FILTRO ADX) ---
-
 def rodar_backtest_pro(df, classe_ativo):
     total = len(df)
     if total < 500: return "Dados insuficientes para Backtest Robusto."
@@ -311,28 +261,27 @@ def rodar_backtest_pro(df, classe_ativo):
     risk_reward_ratio = 1.5 # Busca ganhar 1.5x o que arrisca
     atr_multiplier_sl = 2.0 # Stop Loss = 2x ATR
     
-    # --- SUBSTITUA APENAS ESTE BLOCO DENTRO DA FUNÇÃO rodar_backtest_pro ---
-
-    for i in range(100, total - 50): # Início do loop
+    for i in range(100, total - 50): # Margem segura
         row = df.iloc[i]
-        adx_val = row['ADX'] if not pd.isna(row['ADX']) else 0
-        sinal = None # Reset do sinal para esta vela
         
-        # --- O ERRO ESTAVA NESTE ALINHAMENTO ABAIXO ---
-        if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
-            if adx_val < 25: # Mercado Lateral
-                if row['Z_Score'] > 2.0: sinal = 'SELL'
-                elif row['Z_Score'] < -2.0: sinal = 'BUY'
-            
-            elif adx_val > 25: # Mercado em Tendência
-                if row['close'] > row['BB_Upper']: sinal = 'BUY'
-                elif row['close'] < row['BB_Lower']: sinal = 'SELL'
+        # --- LÓGICA DE SINAL (GATILHOS) ---
+        sinal = None # 'BUY' ou 'SELL'
         
-        elif "PROTOCOL A" in classe_ativo:
-            # Lógica para Boom/Crash
-            if row['close'] > row['EMA_200'] and adx_val > 20:
-                if abs(row['close'] - row['SMA_20']) < (row['close'] * 0.001):
+        # Lógica para BOOM/CRASH (Spikes)
+        if "PROTOCOL A" in classe_ativo:
+            # Compra em Crash (Contra tendência - Perigoso, ignorar) ou Favor da Trend
+            # Vamos testar apenas Trend Following (Segurança)
+            if "BOOM" in classe_ativo and row['close'] > row['EMA_200']:
+                # Pullback na média curta
+                if row['low'] <= row['EMA_20'] and row['close'] > row['EMA_20']:
                     sinal = 'BUY'
+            elif "CRASH" in classe_ativo and row['close'] < row['EMA_200']:
+                if row['high'] >= row['EMA_20'] and row['close'] < row['EMA_20']:
+                    sinal = 'SELL'
+                    
+        # Lógica para VOLATILITY/STEP (Reversão com Filtro ADX)
+        elif "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
+            adx = row['ADX'] if not pd.isna(row['ADX']) else 0
             
             # Se mercado lateral (ADX < 25), opera reversão (Z-Score)
             if adx < 25:
@@ -410,43 +359,6 @@ def rodar_backtest_pro(df, classe_ativo):
     - Mathematical Expectancy: {expected_value:.2f}R per trade
     >> VERDICT: {status_msg}
     """
-        
-        # Estratégia Mean Reversion (Só funciona se ADX < 25)
-        if "PROTOCOL B" in classe_ativo or "PROTOCOL C" in classe_ativo:
-            if adx_val < 30: # Filtro: Mercado Lateral
-                if row['Z_Score'] > 2.0: # Venda
-                    sinais += 1; outcome = "LOSS"
-                    for future_i in range(i+1, min(i+16, total)):
-                        if df.iloc[future_i]['low'] <= df.iloc[future_i]['EMA_20']:
-                            wins += 1; outcome = "WIN"; break
-                    if outcome == "LOSS": losses += 1
-                elif row['Z_Score'] < -2.0: # Compra
-                    sinais += 1; outcome = "LOSS"
-                    for future_i in range(i+1, min(i+16, total)):
-                        if df.iloc[future_i]['high'] >= df.iloc[future_i]['EMA_20']:
-                            wins += 1; outcome = "WIN"; break
-                    if outcome == "LOSS": losses += 1
-        
-        # Estratégia Trend Following (Só funciona se ADX > 20)
-        elif "PROTOCOL A" in classe_ativo:
-            trend_up = row['close'] > row['EMA_200']
-            if trend_up and adx_val > 20: # Filtro: Tendência existe
-                pullback = abs(row['close'] - row['EMA_20']) < (row['close'] * 0.001)
-                if pullback:
-                    sinais += 1; outcome = "LOSS"
-                    if df.iloc[min(i+5, total-1)]['close'] > row['close']:
-                        wins += 1; outcome = "WIN" 
-                    else: losses += 1
-
-    win_rate = (wins / sinais * 100) if sinais > 0 else 0
-    return f"""
-    [REALITY ENGINE 2.0]
-    - Strategy Type: {'Mean Reversion (Range)' if 'PROTOCOL A' not in classe_ativo else 'Trend Following (Spike)'}
-    - ADX Filter Used: Yes
-    - Samples Analyzed: {total} candles
-    - Valid Signals: {sinais}
-    - Precision Rate: {win_rate:.1f}%
-    """
 
 def processar_dados_inteligentes(nome_ativo, df_m15):
     df_m15 = math_common(df_m15)
@@ -494,7 +406,7 @@ def processar_dados_inteligentes(nome_ativo, df_m15):
         - Bollinger Band: {'Touching Upper' if df_m15.iloc[-1]['close'] > df_m15.iloc[-1]['BB_Upper'] else ('Touching Lower' if df_m15.iloc[-1]['close'] < df_m15.iloc[-1]['BB_Lower'] else 'Inside')}
         """
         
-    relatorio_backtest = rodar_backtest_pro(df_final, classe)
+   relatorio_backtest = rodar_backtest_pro(df_final, classe)
     return info_extra, classe, relatorio_backtest
 
 def tentar_ler_ativo(img, model, lista_ativos):
