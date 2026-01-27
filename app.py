@@ -10,10 +10,10 @@ import requests
 import time
 
 # ==============================================================================
-# 1. CONFIGURAÇÕES DA PÁGINA (QUANTUM AESTHETIC)
+# 1. CONFIGURAÇÕES DA PÁGINA (QUANTUM AESTHETIC V5.2)
 # ==============================================================================
 st.set_page_config(
-    page_title="SI-APATECO QUANTUM V5.1",
+    page_title="SI-APATECO QUANTUM V5.2",
     page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -92,7 +92,7 @@ SAFETY_SETTINGS = [
 # 2. PROMPT MESTRE (CONTROLADO PELOS DADOS)
 # ==============================================================================
 SYSTEM_PROMPT = """
-( ROLE: QUANTUM EXECUTION ALGORITHM v5.1
+( ROLE: QUANTUM EXECUTION ALGORITHM v5.2 (Gemini 3 Pro)
 Your logic is LOCKED to the provided Python Data. You strictly forbid visual price guessing.
 You act as the Interpreter of the Math Core.
 
@@ -116,7 +116,7 @@ OUTPUT FORMAT (Markdown):
 | **TP 1** | **{MATH_TP1}** | *Risk 1:1.5* |
 | **TP 2** | **{MATH_TP2}** | *Liquidity Target* |
 
-### 🧠 REASONING CORE:
+### 🧠 REASONING CORE (GEMINI 3 ENGINE):
 - **Bias Alignment:** The H4 Macro Trend is {MACRO_TREND}. M15 RSI is {RSI_VAL}.
 - **Historical Proof:** Over the last 500 candles, this logic generated a Net Profit of **{NET_PROFIT}R**.
 - **Execution Context:** {Synthesize why the Math + Visual Context supports the trade}.
@@ -151,11 +151,11 @@ async def fetch_candles(code):
     uri = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
     try:
         async with websockets.connect(uri) as ws:
-            # M15: Baixa 1000 velas (Suficiente para indicadores + Backtest robusto)
+            # M15: Baixa 1000 velas
             await ws.send(json.dumps({"ticks_history": code, "style": "candles", "granularity": 900, "count": 1000, "adjust_start_time": 1, "end": "latest"}))
             m15 = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
             
-            # H4: Baixa 200 velas para Tendência Macro
+            # H4: Baixa 200 velas
             await ws.send(json.dumps({"ticks_history": code, "style": "candles", "granularity": 14400, "count": 200, "adjust_start_time": 1, "end": "latest"}))
             h4 = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
             
@@ -184,7 +184,6 @@ def indicators(df):
     df['EMA_50'] = df['close'].ewm(span=50, adjust=False).mean()
     df['EMA_200'] = df['close'].ewm(span=200, adjust=False).mean()
     
-    # ATR para Volatilidade
     df['tr0'] = abs(df['high'] - df['low'])
     df['tr1'] = abs(df['high'] - df['close'].shift())
     df['tr2'] = abs(df['low'] - df['close'].shift())
@@ -194,7 +193,7 @@ def indicators(df):
     return df
 
 def find_swings(df, window=5):
-    """Encontra Pontos Estruturais (Pivôs) para SL Técnico"""
+    """Encontra Pontos Estruturais (Pivôs)"""
     df['is_low'] = df.iloc[window:-window]['low'].rolling(window=2*window+1, center=True).min() == df['low']
     df['is_high'] = df.iloc[window:-window]['high'].rolling(window=2*window+1, center=True).max() == df['high']
     
@@ -203,13 +202,11 @@ def find_swings(df, window=5):
     return last_low, last_high
 
 def detect_valid_fvg(df):
-    """Detector de Fair Value Gaps Não-Mitigados"""
+    """Detector de FVG Validado"""
     fvgs = []
-    # Olha os últimos 40 candles
     recent = df.tail(40).reset_index(drop=True)
     
     for i in range(len(recent)-2, 2, -1):
-        # Bearish (Resistência)
         if recent.iloc[i-2]['low'] > recent.iloc[i]['high']:
             top = recent.iloc[i-2]['low']; bot = recent.iloc[i]['high']
             is_open = True
@@ -217,7 +214,6 @@ def detect_valid_fvg(df):
                 if recent.iloc[j]['high'] >= bot: is_open = False; break
             if is_open: fvgs.append({'type': 'BEARISH', 'price': (top+bot)/2}); break
         
-        # Bullish (Suporte)
         elif recent.iloc[i-2]['high'] < recent.iloc[i]['low']:
             top = recent.iloc[i]['low']; bot = recent.iloc[i-2]['high']
             is_open = True
@@ -228,59 +224,39 @@ def detect_valid_fvg(df):
     return fvgs[0] if fvgs else None
 
 # ==============================================================================
-# 5. BACKTEST ENGINE V5.1 (A NOVIDADE CRUCIAL)
+# 5. BACKTEST ENGINE V5.1
 # ==============================================================================
 
 def run_quantum_backtest(df, asset_name):
-    """
-    Simula a estratégia no passado recente (500 velas) para calcular probabilidade.
-    """
+    """Simulação Histórica Recente"""
     trades = 0; wins = 0; losses = 0
-    profit_r = 0.0 # Saldo em Unidades de Risco (Ex: ganhou 1.5R ou perdeu 1.0R)
-    
+    profit_r = 0.0
     total = len(df)
     
-    # Loop de simulação
     for i in range(100, total - 50):
         row = df.iloc[i]
         signal_bt = None
-        
-        # Filtro Simplificado para Velocidade: 
-        # No backtest usamos EMA200 local como proxy da Tendência
         trend_bullish = row['close'] > row['EMA_200']
         trend_bearish = row['close'] < row['EMA_200']
         rsi = row['RSI']
         
-        # LÓGICA DO SIMULADOR (Reflete a lógica principal)
         if "BOOM" in asset_name:
-             # Em Boom, Backtest só compra
              if trend_bullish and rsi < 40: signal_bt = 'BUY'
         elif "CRASH" in asset_name:
-             # Em Crash, Backtest só vende
              if trend_bearish and rsi > 60: signal_bt = 'SELL'
         else:
-             # Outros
              if trend_bullish and rsi < 35: signal_bt = 'BUY'
              if trend_bearish and rsi > 65: signal_bt = 'SELL'
         
         if signal_bt:
-            entry = row['close']
-            atr = row['ATR']
+            entry = row['close']; atr = row['ATR']
+            sl_dist = atr * 2.0; tp_dist = atr * 3.0
             
-            # SL e TP Técnicos Dinâmicos
-            sl_dist = atr * 2.0
-            tp_dist = atr * 3.0 # Risco Retorno 1:1.5
+            if signal_bt == 'BUY': sl = entry - sl_dist; tp = entry + tp_dist
+            else: sl = entry + sl_dist; tp = entry - tp_dist
             
-            if signal_bt == 'BUY':
-                sl = entry - sl_dist
-                tp = entry + tp_dist
-            else:
-                sl = entry + sl_dist
-                tp = entry - tp_dist
-            
-            # Caminha para o futuro para ver se deu Gain ou Loss
             result = "OPEN"
-            for f in range(i+1, min(i+60, total)): # Verifica próximas 60 velas
+            for f in range(i+1, min(i+60, total)):
                 nxt = df.iloc[f]
                 if signal_bt == 'BUY':
                     if nxt['low'] <= sl: result = "LOSS"; break
@@ -291,11 +267,9 @@ def run_quantum_backtest(df, asset_name):
             
             if result != "OPEN":
                 trades += 1
-                if result == "WIN": 
-                    wins += 1; profit_r += 1.5
-                else: 
-                    losses += 1; profit_r -= 1.0
-                i = f # Pula para frente para não abrir trades sobrepostos
+                if result == "WIN": wins += 1; profit_r += 1.5
+                else: losses += 1; profit_r -= 1.0
+                i = f
                 
     win_rate = (wins / trades * 100) if trades > 0 else 0
     return {
@@ -305,26 +279,24 @@ def run_quantum_backtest(df, asset_name):
     }
 
 # ==============================================================================
-# 6. ORQUESTRADOR CENTRAL (MATH + BACKTEST + SIGNAL)
+# 6. ORQUESTRADOR
 # ==============================================================================
 
 def quantum_processor(name, m15_data, h4_data):
     df_m15 = indicators(prepare_df(m15_data))
     df_h4 = indicators(prepare_df(h4_data))
     
-    # [1] Executar Backtest Primeiro (Validação Histórica)
+    # 1. Backtest
     bt_stats = run_quantum_backtest(df_m15, name)
     
-    # [2] Analise de Tempo Real (Agora)
+    # 2. Analise Atual
     current_price = df_m15.iloc[-1]['close']
     current_rsi = df_m15.iloc[-1]['RSI']
     atr_val = df_m15.iloc[-1]['ATR']
     
-    # Bias Macro (H4)
     h4_last = df_h4.iloc[-1]
     bias = "BULLISH" if h4_last['close'] > h4_last['EMA_50'] else "BEARISH"
     
-    # Estrutura (M15)
     swing_low, swing_high = find_swings(df_m15)
     smart_zone = detect_valid_fvg(df_m15)
     
@@ -333,31 +305,23 @@ def quantum_processor(name, m15_data, h4_data):
     sl_p = current_price; tp1_p = current_price; tp2_p = current_price
     fvg_txt = "NONE DETECTED"
 
-    # --- LÓGICA DE DECISÃO FINAL ---
-    
-    # > PROTOCOLO BOOM
+    # PROTOCOLO BOOM
     if "BOOM" in name:
-        if bias == "BULLISH": # A favor da tendência
+        if bias == "BULLISH":
             confluence = False
-            
-            # Motivos para entrar: FVG ou RSI Sobrevendido
             if smart_zone and smart_zone['type'] == 'BULLISH':
                 entry_p = smart_zone['price']; confluence = True
                 fvg_txt = f"Gap Suporte @ {entry_p:.2f}"
-            
             if current_rsi < 45: confluence = True
             
             if confluence:
                 signal = "STRONG BUY (TREND)"
-                sl_p = swing_low - (atr_val * 0.5) # Stop Estrutural
+                sl_p = swing_low - (atr_val * 0.5)
                 risk = entry_p - sl_p
-                
-                # Proteção contra SL muito curto ou muito longo
                 if risk < atr_val: sl_p = entry_p - (atr_val*1.5); risk = entry_p - sl_p
-                
                 tp1_p = entry_p + (risk * 2.0); tp2_p = entry_p + (risk * 4.0)
 
-    # > PROTOCOLO CRASH
+    # PROTOCOLO CRASH
     elif "CRASH" in name:
          if bias == "BEARISH":
             confluence = False
@@ -371,10 +335,9 @@ def quantum_processor(name, m15_data, h4_data):
                 sl_p = swing_high + (atr_val * 0.5)
                 risk = sl_p - entry_p
                 if risk < atr_val: sl_p = entry_p + (atr_val*1.5); risk = sl_p - entry_p
-                
                 tp1_p = entry_p - (risk * 2.0); tp2_p = entry_p - (risk * 4.0)
     
-    # > PROTOCOLO VOLATILITY
+    # OUTROS
     else:
         if bias == "BULLISH":
             if smart_zone and smart_zone['type'] == 'BULLISH': 
@@ -398,7 +361,6 @@ def quantum_processor(name, m15_data, h4_data):
                 if risk < atr_val: risk = atr_val*1.5; sl_p = entry_p + risk
                 tp1_p = entry_p - (risk*1.5); tp2_p = entry_p - (risk*3.0)
 
-    # Retorna o Pacote de Dados Completo (Atual + Backtest)
     return {
         "ASSET_NAME": name,
         "MACRO_TREND": bias,
@@ -410,95 +372,110 @@ def quantum_processor(name, m15_data, h4_data):
         "MATH_SL": round(sl_p, 2),
         "MATH_TP1": round(tp1_p, 2),
         "MATH_TP2": round(tp2_p, 2),
-        # DADOS DO BACKTEST
         "WIN_RATE": bt_stats['WIN_RATE'],
         "TOTAL_TRADES": bt_stats['TOTAL_TRADES'],
         "NET_PROFIT": bt_stats['NET_PROFIT']
     }
 
 # ==============================================================================
-# 7. UI / FRONTEND (TELA FINAL)
+# 7. UI / FRONTEND (CORRIGIDO PARA ST.SECRETS)
 # ==============================================================================
 
+# --- Sidebar Logic Reformulada ---
 st.sidebar.title("🔐 SI-APATECO KEY")
-if "GEMINI_API_KEY" in st.secrets: api = st.secrets["GEMINI_API_KEY"]
-else: api = st.sidebar.text_input("Cole API Gemini", type="password")
+
+# Tenta carregar do Secrets primeiro
+api_key = None
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    st.sidebar.success("✅ API Key: Carregada (Secrets)")
+else:
+    # Fallback para Input Manual
+    api_key = st.sidebar.text_input("Cole API Gemini", type="password")
+    if api_key:
+        st.sidebar.success("✅ API Key: Manual")
+    else:
+        st.sidebar.warning("⚠️ Insira a Chave")
 
 st.sidebar.divider()
 st.sidebar.markdown("""
-**CORE:** V5.1 (Math + Backtest)
-**Backtest:** Últimas 500 Velas
-**Mode:** Precision Execution
+**CORE:** V5.2
+**Model:** Gemini 3 Pro (Preview)
+**Backtest:** Ativo
 """)
 
-st.title("💠 SI-APATECO QUANTUM V5.1")
-st.caption("Engine V5.1 includes: FVG Detector, Swing Structures & Real-Time Backtesting.")
+st.title("💠 SI-APATECO QUANTUM V5.2")
+st.caption("AI Model set to: `models/gemini-3-pro-preview`")
 
 assets = get_deriv_assets()
-if not assets: st.error("Erro Conexão API. Recarregue a página."); st.stop()
+if not assets: st.error("Erro Conexão API Deriv. Recarregue."); st.stop()
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.markdown("### 1. ALVO")
+    st.markdown("### 1. CONFIG")
     target = st.selectbox("Ativo", list(assets.keys()))
-    uploaded = st.file_uploader("Screenshot (Validação Visual)", type=['png', 'jpg', 'jpeg'])
-    
+    uploaded = st.file_uploader("Screenshot (Valid. Visual)", type=['png', 'jpg', 'jpeg'])
     st.write("")
     run = st.button("RUN SYSTEM", use_container_width=True)
 
 with col2:
-    if run and uploaded and api:
+    if run and uploaded and api_key:
         st.divider()
-        status = st.status("🛠️ PROCESSANDO NÚCLEOS...", expanded=True)
+        status = st.status("🛠️ PROCESSANDO...", expanded=True)
         
-        # 1. DOWNLOAD
-        status.write(f"📡 Baixando histórico {target} (M15 & H4)...")
+        status.write(f"📡 Baixando histórico {target}...")
         m15_raw, h4_raw, err = asyncio.run(fetch_candles(assets[target]))
         if err: status.update(state="error", label="Erro API"); st.stop()
         
-        # 2. CÁLCULO E BACKTEST
-        status.write("🎲 Executando Backtest nas últimas 500 velas...")
+        status.write("🎲 Rodando Motor Quant + Backtest...")
         result = quantum_processor(target, m15_raw, h4_raw)
         
-        status.write("🧠 Validando Sinais em Tempo Real...")
-        time.sleep(0.5)
+        status.write("🧠 Validando com Gemini 3 Pro...")
+        
+        # --- CARREGANDO RESULTADOS ---
         status.update(label="EXECUÇÃO CONCLUÍDA", state="complete")
         
-        # --- EXIBIÇÃO ---
-        
-        # PAINEL DO BACKTEST (ESTATÍSTICA)
-        st.subheader("📊 DESEMPENHO HISTÓRICO RECENTE")
+        # PAINEL DO BACKTEST
+        st.subheader("📊 HISTÓRICO (500 VELAS)")
         b1, b2, b3 = st.columns(3)
-        b1.metric("Win Rate", f"{result['WIN_RATE']}%", delta_color="normal")
-        b2.metric("Lucro Líquido (R)", f"{result['NET_PROFIT']}R")
-        b3.metric("Trades Testados", f"{result['TOTAL_TRADES']}")
+        b1.metric("Probabilidade", f"{result['WIN_RATE']}%", delta_color="normal")
+        b2.metric("Saldo (R)", f"{result['NET_PROFIT']}R")
+        b3.metric("Amostragem", f"{result['TOTAL_TRADES']}")
         
-        if result['WIN_RATE'] < 45:
-            st.error("⚠️ ALERTA DE RISCO: O Backtest indica baixa performance recente neste ativo.")
-        elif result['WIN_RATE'] > 60:
-            st.success("✅ ALTA PROBABILIDADE: Histórico recente favorável.")
-        
-        # PAINEL TÁTICO (DADOS MATEMÁTICOS)
+        # PAINEL TÁTICO
         st.divider()
         st.subheader(f"GRID TÁTICO: {result['FINAL_DECISION']}")
         st.dataframe([result], use_container_width=True)
         
-        # SINTESE IA
+        # SINTESE IA (GEMINI 3 PRO PREVIEW)
         st.divider()
-        st.subheader("🤖 ANÁLISE QUANTUM (GEMINI)")
+        st.subheader("🤖 ANÁLISE QUANTUM (GEMINI 3)")
         
-        genai.configure(api_key=api)
-        model = genai.GenerativeModel("gemini-2.0-flash", safety_settings=SAFETY_SETTINGS)
+        genai.configure(api_key=api_key)
         
+        # MODELO ATUALIZADO AQUI
         try:
+            model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
+            
             full_prompt = [SYSTEM_PROMPT, f"DATA_PACKET: {json.dumps(result)}", Image.open(uploaded)]
             resp = model.generate_content(full_prompt)
             st.markdown(resp.text)
+            
         except Exception as e:
-            st.error(f"Erro IA: {e}")
+            # Fallback seguro caso o modelo experimental falhe
+            if "Not Found" in str(e) or "400" in str(e) or "404" in str(e):
+                st.warning("⚠️ 'gemini-3-pro-preview' não encontrado ou sem acesso. Tentando Fallback para 'gemini-1.5-pro'...")
+                try:
+                    fallback_model = genai.GenerativeModel("gemini-1.5-pro", safety_settings=SAFETY_SETTINGS)
+                    resp = fallback_model.generate_content(full_prompt)
+                    st.markdown(resp.text)
+                except Exception as e2:
+                    st.error(f"Erro Crítico IA: {e2}")
+            else:
+                st.error(f"Erro IA: {e}")
             
     elif run and not uploaded:
-        st.warning("⚠️ Preciso do print do gráfico para cruzar com os dados matemáticos.")
-    elif run and not api:
-        st.error("⚠️ Falta a API Key do Gemini.")
+        st.warning("⚠️ Preciso do print do gráfico.")
+    elif run and not api_key:
+        st.error("⚠️ API Key não detectada. Configure no Secrets ou na Lateral.")
