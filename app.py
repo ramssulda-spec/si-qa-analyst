@@ -10,70 +10,69 @@ import requests
 import time
 
 # ==============================================================================
-# 1. CONFIGURAÇÕES VISUAIS (SYNTHETIC ORACLE V9.0)
+# 1. VISUAL (SI-APATECO BLACK BOX V10)
 # ==============================================================================
 st.set_page_config(
-    page_title="SI-APATECO ORACLE V9",
-    page_icon="🔮",
+    page_title="SI-APATECO V10 ENDGAME",
+    page_icon="♟️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Red+Hat+Mono:wght@300;700&family=Syncopate:wght@700&display=swap');
     
+    /* Ambiente Black Box */
     .stApp {
-        background-color: #020202;
-        background-image: linear-gradient(180deg, #0a0f1c 0%, #000000 100%);
-        color: #d1d5db;
-        font-family: 'Space Mono', monospace;
+        background-color: #000000;
+        background-image: linear-gradient(135deg, #0a0a0a 25%, #000000 100%);
+        color: #dcdcdc;
+        font-family: 'Red Hat Mono', monospace;
     }
     
     h1, h2, h3 {
-        font-family: 'Orbitron', sans-serif !important;
-        background: linear-gradient(to right, #6366f1, #a855f7, #ec4899);
+        font-family: 'Syncopate', sans-serif !important;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        background: -webkit-linear-gradient(0deg, #c471ed, #f64f59);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        letter-spacing: -1px;
     }
     
-    /* Metrics Custom */
+    /* Metrics estilo Dashboard Financeiro */
     div[data-testid="stMetric"] {
-        background-color: #0f1115;
-        border: 1px solid #1f2937;
-        border-radius: 8px;
-        padding: 10px;
+        background: #050505;
+        border-left: 4px solid #f64f59;
+        padding: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.5);
     }
     div[data-testid="stMetricValue"] {
-        font-family: 'Orbitron', sans-serif;
-        color: #e5e7eb !important;
+        font-family: 'Red Hat Mono', monospace;
+        font-weight: 700;
+        font-size: 1.5rem !important;
+        color: #fff !important;
     }
     
-    .stFileUploader { background: #080808; border: 1px dashed #374151; }
-
-    /* Button Gradient */
     .stButton>button {
-        background: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
+        background: linear-gradient(90deg, #12c2e9, #c471ed, #f64f59);
         color: white;
-        font-family: 'Orbitron';
-        font-weight: 800;
         border: none;
-        padding: 16px 32px;
+        padding: 15px 30px;
         text-transform: uppercase;
-        border-radius: 6px;
-        transition: 0.3s;
+        font-family: 'Syncopate', sans-serif;
+        font-weight: bold;
+        transition: 0.3s ease;
+        border-radius: 0px;
     }
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px rgba(147, 51, 234, 0.4);
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(246, 79, 89, 0.4);
     }
-    
-    .dataframe { font-family: 'Space Mono', monospace !important; font-size: 0.8rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIG SEGURANÇA ---
+# --- SEGURANÇA ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -82,51 +81,43 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# 2. PROMPT SPECALISTA EM SINTÉTICOS (V9)
+# 2. PROMPT "BLACK BOX" (LÓGICA SMC INSTITUCIONAL)
 # ==============================================================================
 SYSTEM_PROMPT = """
-( ROLE: SI-APATECO ORACLE V9 [Model: Gemini 3 Pro]
-You are a Specialist in DERIV SYNTHETIC INDICES.
-You ignore fundamental news. You focus ONLY on Algorithmic Price Action.
+( ROLE: SI-APATECO "BLACK BOX" [Gemini 3 Pro]
+Your Objective: Analyze Mathematical Liquidity & Structure to output High Probability Trades.
+Ignore all News. Synthetic Indices follow Algo-Patterns only.
 
-INPUTS:
-1. **MATH JSON (THE LAW):** 
-   - Trends, RSI Divergences (Critical), FVGs, Backtest Stats.
-2. **VISUAL TRI-FORCE:** M15 (Entry), H1 (Structure), H4 (Trend).
+INPUT DATA (Source of Truth):
+1. **SWEEP STATUS:** Has price just grabbed liquidity (false breakout)? This is a massive confirmation.
+2. **ZONE (FIBONACCI):** Premium (Sell Only) vs Discount (Buy Only).
+3. **DIVERGENCE:** RSI Disagreement.
 
-**SYNTHETIC MARKET RULES:**
-1. **BOOM/CRASH:**
-   - Look for "SPIKE" setups based on Divergence or FVG Support/Resistance.
-   - Ignore standard candlestick patterns; look for rejection wicks at math levels.
-2. **VOLATILITY/STEP:**
-   - Respect RSI Divergence strictly.
-   - Trend is Valid only if H4 and M15 align.
+OUTPUT FORMAT (Markdown):
 
-**OUTPUT PROTOCOL:**
+## ♟️ ALGORITHM VERDICT: [ {FINAL_DECISION} ]
+**Asset:** {ASSET_NAME} | **Algo-Confidence:** {WIN_RATE}%
 
-## 🔮 ORACLE V9 VERDICT: [ {FINAL_DECISION} ]
-**Asset:** {ASSET_NAME} | **Probability:** {WIN_RATE}%
+### 🕶️ INSTITUTIONAL DATA
+*   **Liquidity Sweep:** {SWEEP_DETECTED} (Hunt Logic)
+*   **Fibonacci Zone:** Trading in **{FIB_ZONE}** (Favors {FIB_FAVORS})
+*   **Macro Bias (H4):** {MACRO_TREND}
 
-### 🌀 ALGORITHMIC CONFLUENCE
-*   **Trend Matrix:** H4 is {MACRO_TREND}. Structure is {STRUCTURE_BIAS}.
-*   **RSI Divergence:** {DIVERGENCE_STATUS} (Significant reversal signal if present).
-*   **Trigger:** Price is at **{FVG_DETECTED}**.
-
-### 📉 EXECUTION BLOCK
-| Parameter | Price Level | Type |
+### 🎯 EXECUTION MATRIX
+| Order Type | Price Level | Logic |
 | :--- | :--- | :--- |
-| **Action** | **{FINAL_DECISION}** | *{AGGRESSIVE/CONSERVATIVE}* |
-| **Entry** | **{MATH_ENTRY}** | *FVG/Imbalance* |
-| **Stop Loss** | **{MATH_SL}** | *Struct Low/High - Volatility Adjusted* |
-| **TP 1** | **{MATH_TP1}** | *Scalp (1:1.5)* |
-| **TP 2** | **{MATH_TP2}** | *Swing (1:3.0)* |
+| **ENTRY** | **{MATH_ENTRY}** | *{ENTRY_TYPE}* |
+| **STOP LOSS** | **{MATH_SL}** | *Protected by Sweep/Structure* |
+| **TARGET 1** | **{MATH_TP1}** | *1:2 RR* |
+| **TARGET 2** | **{MATH_TP2}** | *Run Liquidity* |
 
-*Synthesis:* {Briefly explain why the Math (Divergence/Structure) confirms the visual setup}.
+### 🧬 STRATEGY SYNTHESIS:
+{Synthesize the data: E.g., "Although Trend is Bearish, we are in deep Discount and just Swept Liquidity Lows with Bullish Divergence. A counter-trend Reversal is highly probable." OR "Trend is Bearish, we are in Premium, and price tapped a Bearish FVG. Continuation Short."}
 )
 """
 
 # ==============================================================================
-# 3. REDE DERIV ROBUSTA (MÚLTIPLOS SERVIDORES)
+# 3. CONECTIVIDADE BLINDADA
 # ==============================================================================
 DERIV_SERVERS = [
     "wss://ws.binaryws.com/websockets/v3?app_id=1089",      
@@ -139,12 +130,11 @@ async def connect_socket(url, msg):
     try:
         async with websockets.connect(url, ping_interval=None, close_timeout=10) as ws:
             await ws.send(json.dumps(msg))
-            # Timeout estendido para evitar falha em redes lentas
-            return json.loads(await asyncio.wait_for(ws.recv(), timeout=20.0))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=15.0))
     except: return None
 
 @st.cache_data(ttl=3600)
-def get_assets_list():
+def get_assets():
     req = {"active_symbols": "brief", "product_type": "basic"}
     for url in DERIV_SERVERS:
         data = asyncio.run(connect_socket(url, req))
@@ -154,8 +144,7 @@ def get_assets_list():
 
 async def fetch_data_safe(code):
     req_m15 = {"ticks_history": code, "style": "candles", "granularity": 900, "count": 1000, "adjust_start_time": 1, "end": "latest"}
-    req_h4 = {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 300, "adjust_start_time": 1, "end": "latest"}
-    
+    req_h4 = {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 250, "adjust_start_time": 1, "end": "latest"}
     for url in DERIV_SERVERS:
         try:
             async with websockets.connect(url, ping_interval=None) as ws:
@@ -163,326 +152,306 @@ async def fetch_data_safe(code):
                 await ws.send(json.dumps(req_h4)); h4 = json.loads(await asyncio.wait_for(ws.recv(), 15))
                 if 'candles' in m15 and 'candles' in h4: return m15['candles'], h4['candles'], None
         except: continue
-    return None, None, "FALHA CRÍTICA DE REDE: Nenhum servidor respondeu."
+    return None, None, "FALHA TOTAL DE REDE (BLOQUEIO)."
 
 # ==============================================================================
-# 4. QUANTUM MATH CORE V9 (SYNTHETIC SPECIALIZED)
+# 4. MATH CORE (V10 FEATURES: SWEEP + PRICING)
 # ==============================================================================
 
-def clean_data(data):
+def prep_df(data):
     df = pd.DataFrame(data)
-    cols = ['open','high','low','close','epoch']
-    for c in cols: df[c] = pd.to_numeric(df[c], errors='coerce')
+    for c in ['open','high','low','close']: df[c] = pd.to_numeric(df[c], errors='coerce')
     return df
 
-def indicators(df):
-    # RSI (Index Strength)
+def indicators_v10(df):
     delta = df['close'].diff()
-    gain = (delta.where(delta>0,0)).rolling(14).mean()
-    loss = (-delta.where(delta<0,0)).rolling(14).mean()
-    rs = gain/(loss+1e-9)
-    df['RSI'] = 100 - (100/(1+rs))
+    gain = (delta.where(delta>0,0)).rolling(14).mean(); loss = (-delta.where(delta<0,0)).rolling(14).mean()
+    df['RSI'] = 100 - (100/(1 + (gain/(loss+1e-9))))
     
-    # Médias Institucionais
-    df['EMA_20'] = df['close'].ewm(span=20).mean() # Média Curta (H1 Proxy no H4)
     df['EMA_50'] = df['close'].ewm(span=50).mean()
     df['EMA_200'] = df['close'].ewm(span=200).mean()
     
-    # ATR puro (Sem filtro de notícias, apenas Volatilidade do Algoritmo)
-    df['tr0'] = abs(df['high'] - df['low'])
-    df['tr1'] = abs(df['high'] - df['close'].shift())
-    df['tr2'] = abs(df['low'] - df['close'].shift())
-    df['ATR'] = df[['tr0', 'tr1', 'tr2']].max(axis=1).rolling(14).mean()
+    # ATR Institucional
+    df['tr'] = df[['high','low','close']].apply(lambda x: max(x['high']-x['low'], abs(x['high']-x['close']), abs(x['low']-x['close'])), axis=1)
+    df['ATR'] = df['tr'].rolling(14).mean()
     
     df.dropna(inplace=True)
     return df
 
-def detect_rsi_divergence(df, window=15):
-    """
-    DETECTA DIVERGÊNCIAS RSI x PREÇO
-    Fundamental para Volatility e Step Indices.
-    - Regular Bearish: Preço faz High, RSI faz Lower High (Reversão para Venda)
-    - Regular Bullish: Preço faz Low, RSI faz Higher Low (Reversão para Compra)
-    """
-    price = df['close']
-    rsi = df['RSI']
+def get_fib_pricing(df, lookback=50):
+    """SMC: Compra em Discount (<50%), Vende em Premium (>50%)"""
+    high = df['high'].tail(lookback).max()
+    low = df['low'].tail(lookback).min()
+    mid = (high + low) / 2
+    curr = df.iloc[-1]['close']
     
-    # Pega os ultimos picos
-    recent_idx = range(len(df)-window, len(df))
-    
-    # Simples lógica de comparação de Slope das ultimas 10 velas
-    price_slope = price.iloc[-1] - price.iloc[-10]
-    rsi_slope = rsi.iloc[-1] - rsi.iloc[-10]
-    
-    status = "NONE"
-    
-    # Divergência de Alta (Preço cai, RSI sobe)
-    if price_slope < 0 and rsi_slope > 5:
-        status = "BULLISH DIVERGENCE (REVERSAL)"
-    
-    # Divergência de Baixa (Preço sobe, RSI cai)
-    elif price_slope > 0 and rsi_slope < -5:
-        status = "BEARISH DIVERGENCE (REVERSAL)"
-        
-    return status
+    zone = "PREMIUM 🔴" if curr > mid else "DISCOUNT 🟢"
+    favors = "SHORT" if curr > mid else "LONG"
+    return zone, favors
 
-def get_structure_bias(df_m15):
-    """Verifica a estrutura local (BOS)"""
-    last_low = df_m15['low'].tail(20).min()
-    last_high = df_m15['high'].tail(20).max()
-    curr = df_m15.iloc[-1]['close']
+def detect_liquidity_sweep(df):
+    """
+    Detecta 'Turtle Soup': O preço violou um fundo/topo anterior
+    mas fechou o corpo DENTRO da estrutura (Rejeição/Wick).
+    """
+    recent = df.tail(10)
+    last = recent.iloc[-1]
     
-    if curr > last_high: return "BULLISH BREAK"
-    if curr < last_low: return "BEARISH BREAK"
-    return "RANGING/CONSOLIDATION"
+    # Varrer Liquidez de Baixa (Bullish Sweep)
+    prev_low = df['low'].iloc[-20:-5].min()
+    bullish_sweep = (last['low'] < prev_low) and (last['close'] > prev_low)
+    
+    # Varrer Liquidez de Alta (Bearish Sweep)
+    prev_high = df['high'].iloc[-20:-5].max()
+    bearish_sweep = (last['high'] > prev_high) and (last['close'] < prev_high)
+    
+    if bullish_sweep: return "BULLISH SWEEP (Liquidity Grabbed) 🐂"
+    if bearish_sweep: return "BEARISH SWEEP (Liquidity Grabbed) 🐻"
+    return "NONE (Inside Range)"
 
-def detect_fvg(df):
-    fvgs = []
-    # Olha ultimos 50 candles
-    rc = df.tail(50).reset_index(drop=True)
+def detect_rsi_div(df):
+    p = df['close'].tail(15).values; r = df['RSI'].tail(15).values
+    # Logica simplificada robusta de Slope Divergence
+    if (p[-1] < p[0]) and (r[-1] > r[0]): return "BULLISH DIV (STRONG)"
+    if (p[-1] > p[0]) and (r[-1] < r[0]): return "BEARISH DIV (STRONG)"
+    return "NEUTRAL"
+
+def get_fvg(df):
+    rc = df.tail(40).reset_index(drop=True)
+    fvg = None
     for i in range(len(rc)-2, 2, -1):
-        # Bearish
         if rc.iloc[i-2]['low'] > rc.iloc[i]['high']:
-            # Verifica se nao foi mitigado
-            gap_zone = (rc.iloc[i-2]['low'] + rc.iloc[i]['high']) / 2
-            is_valid = True
-            for j in range(i+1, len(rc)):
-                if rc.iloc[j]['high'] >= gap_zone: is_valid=False; break
-            if is_valid: fvgs.append({'type':'BEARISH', 'price': gap_zone})
-
-        # Bullish
+            mitigated = False
+            mid = (rc.iloc[i-2]['low'] + rc.iloc[i]['high'])/2
+            for j in range(i+1, len(rc)): 
+                if rc.iloc[j]['high'] >= mid: mitigated=True
+            if not mitigated: fvg = {'type':'BEARISH', 'p':mid}; break
+            
         elif rc.iloc[i-2]['high'] < rc.iloc[i]['low']:
-            gap_zone = (rc.iloc[i-2]['high'] + rc.iloc[i]['low']) / 2
-            is_valid = True
-            for j in range(i+1, len(rc)):
-                if rc.iloc[j]['low'] <= gap_zone: is_valid=False; break
-            if is_valid: fvgs.append({'type':'BULLISH', 'price': gap_zone})
-    
-    # Retorna o mais proximo do preço atual
-    return fvgs[-1] if fvgs else None
+            mitigated = False
+            mid = (rc.iloc[i-2]['high'] + rc.iloc[i]['low'])/2
+            for j in range(i+1, len(rc)): 
+                if rc.iloc[j]['low'] <= mid: mitigated=True
+            if not mitigated: fvg = {'type':'BULLISH', 'p':mid}; break
+    return fvg
 
 # ==============================================================================
-# 5. BACKTEST ENGINE V9 (SYNTHETIC PENALTY SYSTEM)
+# 5. BACKTEST ALIGNMENT ENGINE (V10)
 # ==============================================================================
-def backtest_v9(df, asset_name):
-    trades=0; wins=0; balance=0
-    
-    for i in range(150, len(df)-60):
-        row = df.iloc[i]
+def run_backtest(df, name):
+    trades=0; wins=0; bal=0
+    for i in range(100, len(df)-60):
+        row=df.iloc[i]
         
-        # Filtros de Indicies
-        # Em indices sinteticos, "Mean Reversion" no Bollinger funciona muito bem
-        # Trend Following funciona em quebra de EMA200
+        # Simulando Regra de Ouro (Discount/Premium)
+        local_high = df['high'].iloc[i-50:i].max()
+        local_low = df['low'].iloc[i-50:i].min()
+        mid = (local_high+local_low)/2
+        is_discount = row['close'] < mid
+        is_premium = row['close'] > mid
         
         sig = None
+        trend = row['close'] > row['EMA_200']
         
-        trend_up = row['close'] > row['EMA_200']
-        trend_down = row['close'] < row['EMA_200']
-        
-        if "BOOM" in asset_name:
-            # Boom só opera Compra
-            if trend_up and row['RSI'] < 40: sig='BUY' # Pullback Trend
-            
-        elif "CRASH" in asset_name:
-            # Crash só opera Venda
-            if trend_down and row['RSI'] > 60: sig='SELL' # Pullback Trend
-            
+        # Boom Logic: Compra na tendência e em Discount ou Sobrevenda
+        if "BOOM" in name:
+            if trend and (row['RSI'] < 40 or is_discount): sig='BUY'
+        # Crash Logic: Venda na tendência e em Premium ou Sobrecompra
+        elif "CRASH" in name:
+            if not trend and (row['RSI'] > 60 or is_premium): sig='SELL'
         else:
-            # Volatility: Segue a tendencia ou RSI Divergence (simulado aqui por niveis extremos)
-            if trend_up and row['RSI'] < 30: sig='BUY'
-            if trend_down and row['RSI'] > 70: sig='SELL'
-
+            if trend and is_discount and row['RSI'] < 40: sig='BUY'
+            if not trend and is_premium and row['RSI'] > 60: sig='SELL'
+            
         if sig:
-            ent = row['close']
-            atr = row['ATR']
+            ent = row['close']; atr = row['ATR']
+            sl = ent - 2*atr if sig=='BUY' else ent + 2*atr
+            tp = ent + 4*atr if sig=='BUY' else ent - 4*atr
             
-            # SL Adaptativo V9 (Sem noticias, apenas Volatilidade Pura)
-            # Para Indices, SL fixo de 2.0x ATR costuma ser seguro para evitar stop hunting pequeno
-            sl_dist = atr * 2.0
-            tp_dist = atr * 4.0 # 1:2 Risk Reward padrão institucional
-            
-            sl = ent - sl_dist if sig=='BUY' else ent + sl_dist
-            tp = ent + tp_dist if sig=='BUY' else ent - tp_dist
-            
-            outcome = "OPEN"
-            for f in range(i+1, min(i+60, len(df))): # Verifica proxima hora
+            res="OPEN"
+            for f in range(i+1, min(i+60, len(df))):
                 nx = df.iloc[f]
                 if sig=='BUY':
-                    if nx['low'] <= sl: outcome='LOSS'; break
-                    if nx['high'] >= tp: outcome='WIN'; break
+                    if nx['low']<=sl: res='LOSS'; break
+                    if nx['high']>=tp: res='WIN'; break
                 else:
-                    if nx['high'] >= sl: outcome='LOSS'; break
-                    if nx['low'] <= tp: outcome='WIN'; break
+                    if nx['high']>=sl: res='LOSS'; break
+                    if nx['low']<=tp: res='WIN'; break
             
-            if outcome != 'OPEN':
+            if res!='OPEN':
                 trades+=1
-                if outcome=='WIN': wins+=1; balance+=2.0 # Ganhou 2R
-                else: balance-=1.0 # Perdeu 1R
-                i=f 
-                
-    wr = (wins/trades*100) if trades>0 else 0
-    return {"WR": round(wr,1), "N": trades, "P": round(balance,2)}
+                if res=='WIN': wins+=1; bal+=2
+                else: bal-=1
+                i=f
+    
+    return {"WR": round((wins/trades*100) if trades>0 else 0, 1), "N": trades, "P": round(bal, 2)}
 
 # ==============================================================================
-# 6. NEURAL ORACLE (PROCESSAMENTO)
+# 6. BLACK BOX CORE
 # ==============================================================================
-def run_oracle_v9(name, m15_raw, h4_raw):
-    m15 = indicators(clean_data(m15_raw))
-    h4 = indicators(clean_data(h4_raw))
-    bt = backtest_v9(m15, name)
+def black_box_logic(name, m15_raw, h4_raw):
+    m15 = indicators_v10(prep_df(m15_raw))
+    h4 = indicators_v10(prep_df(h4_raw))
+    bt = run_backtest(m15, name)
     
     curr = m15.iloc[-1]
     
-    # 1. H4 Bias (Macro)
-    h4_bias = "BULLISH" if h4.iloc[-1]['close'] > h4.iloc[-1]['EMA_50'] else "BEARISH"
+    # 1. H4 Trend
+    bias_h4 = "BULLISH" if h4.iloc[-1]['close'] > h4.iloc[-1]['EMA_50'] else "BEARISH"
     
-    # 2. Local Structure
-    struct_bias = get_structure_bias(m15)
-    div_status = detect_rsi_divergence(m15)
-    fvg = detect_fvg(m15)
+    # 2. SMC Checkpoint
+    zone, zone_favors = get_fib_pricing(m15)
+    sweep = detect_liquidity_sweep(m15)
+    div = detect_rsi_div(m15)
+    fvg = get_fvg(m15)
     
-    sig="HOLD"; entry=curr['close']; sl=curr['close']; tp1=curr['close']; tp2=curr['close']
-    fvg_msg = "No Clean FVG"
+    sig = "WAIT / MONITOR"
+    entry=curr['close']; sl=curr['close']; tp1=curr['close']; tp2=curr['close']
+    type_txt = "Market Price"
 
-    # LOGICA DE CONFLUENCIA FINAL
-    
-    # Lógica Boom/Crash
-    if "BOOM" in name or "CRASH" in name:
-        if "BOOM" in name:
-            # Só compra se: H4 for Alta, ou H4 for Baixa mas tiver Divergência Bullish clara
-            valid_buy = (h4_bias == "BULLISH") or ("BULLISH" in div_status)
-            if valid_buy and curr['RSI'] < 50:
-                sig = "BUY (SPIKE)"
-                entry = fvg['price'] if (fvg and fvg['type']=='BULLISH') else curr['close']
-                sl = entry - (curr['ATR']*1.5) # ATR Padding
-                if fvg: fvg_msg = f"FVG Support @ {entry:.2f}"
+    # LOGICA ENDGAME
+    # Se BOOM -> Procura Spike. Confluências: Bias Bull, Zona Discount, Sweep de baixa ou Div.
+    if "BOOM" in name:
+        buy_score = 0
+        if bias_h4 == "BULLISH": buy_score += 1
+        if zone_favors == "LONG": buy_score += 1
+        if "BULLISH" in sweep: buy_score += 2 # Peso alto p/ Sweep
+        if "BULLISH" in div: buy_score += 1
+        
+        if buy_score >= 3:
+            sig = "STRONG BUY 🟢"
+            # O Stop tem que ficar atrás do Sweep
+            sl_base = curr['low'] - (curr['ATR']*1) 
+            if "BULLISH" in sweep: # Aumenta precisão do SL
+                # Busca a minima dos ultimos 5 candles para proteger
+                sl_base = m15['low'].tail(5).min() - (curr['ATR']*0.2)
+            
+            entry = fvg['p'] if (fvg and fvg['type']=='BULLISH') else curr['close']
+            type_txt = "Limit FVG" if fvg else "Market (Discount)"
+            sl = sl_base
+            tp1 = entry + (abs(entry-sl)*2)
+            tp2 = entry + (abs(entry-sl)*5)
+
+    # Se CRASH -> Procura Drop
+    elif "CRASH" in name:
+        sell_score = 0
+        if bias_h4 == "BEARISH": sell_score += 1
+        if zone_favors == "SHORT": sell_score += 1
+        if "BEARISH" in sweep: sell_score += 2
+        if "BEARISH" in div: sell_score += 1
+        
+        if sell_score >= 3:
+            sig = "STRONG SELL 🔴"
+            sl_base = curr['high'] + (curr['ATR']*1)
+            if "BEARISH" in sweep:
+                sl_base = m15['high'].tail(5).max() + (curr['ATR']*0.2)
                 
-        if "CRASH" in name:
-            valid_sell = (h4_bias == "BEARISH") or ("BEARISH" in div_status)
-            if valid_sell and curr['RSI'] > 50:
-                sig = "SELL (DROP)"
-                entry = fvg['price'] if (fvg and fvg['type']=='BEARISH') else curr['close']
-                sl = entry + (curr['ATR']*1.5)
-                if fvg: fvg_msg = f"FVG Resist @ {entry:.2f}"
-                
-    # Lógica Volatility
+            entry = fvg['p'] if (fvg and fvg['type']=='BEARISH') else curr['close']
+            type_txt = "Limit FVG" if fvg else "Market (Premium)"
+            sl = sl_base
+            tp1 = entry - (abs(entry-sl)*2)
+            tp2 = entry - (abs(entry-sl)*5)
+
+    # Outros indices
     else:
-        # Tendência Pura + FVG
-        if h4_bias == "BULLISH" and struct_bias != "BEARISH BREAK":
-            if fvg and fvg['type'] == 'BULLISH':
-                sig = "BUY (TREND)"
-                entry = fvg['price']; fvg_msg = f"Order Block @ {entry:.2f}"
-                sl = entry - (curr['ATR']*2.0)
-            elif "BULLISH" in div_status:
-                sig = "BUY (REVERSAL)"
-                sl = curr['low'] - curr['ATR']
-
-        elif h4_bias == "BEARISH" and struct_bias != "BULLISH BREAK":
-            if fvg and fvg['type'] == 'BEARISH':
-                sig = "SELL (TREND)"
-                entry = fvg['price']; fvg_msg = f"Order Block @ {entry:.2f}"
-                sl = entry + (curr['ATR']*2.0)
-            elif "BEARISH" in div_status:
-                sig = "SELL (REVERSAL)"
-                sl = curr['high'] + curr['ATR']
-
-    # Targets (RR 1.5 e 3.0)
-    risk = abs(entry - sl)
-    if risk < (curr['ATR']*0.1): risk = curr['ATR'] # Evitar SL Zero
-    
-    if "BUY" in sig: tp1=entry+(risk*1.5); tp2=entry+(risk*3.0)
-    elif "SELL" in sig: tp1=entry-(risk*1.5); tp2=entry-(risk*3.0)
-
+        # Volatility: Reversão em Sweep ou Tendência em FVG
+        if zone_favors == "LONG" and ("BULLISH" in sweep or "BULLISH" in div):
+            sig = "BUY REVERSAL"
+            entry = curr['close']; sl = m15['low'].tail(10).min()
+            type_txt = "Sniper Sweep"
+            tp1 = entry + abs(entry-sl)*1.5; tp2 = entry + abs(entry-sl)*3
+        elif zone_favors == "SHORT" and ("BEARISH" in sweep or "BEARISH" in div):
+            sig = "SELL REVERSAL"
+            entry = curr['close']; sl = m15['high'].tail(10).max()
+            type_txt = "Sniper Sweep"
+            tp1 = entry - abs(entry-sl)*1.5; tp2 = entry - abs(entry-sl)*3
+            
     return {
-        "ASSET_NAME": name, "MACRO_TREND": h4_bias,
-        "STRUCTURE_BIAS": struct_bias, "DIVERGENCE_STATUS": div_status,
-        "FVG_DETECTED": fvg_msg, "FINAL_DECISION": sig,
-        "MATH_ENTRY": round(entry, 2), "MATH_SL": round(sl, 2),
-        "MATH_TP1": round(tp1, 2), "MATH_TP2": round(tp2, 2),
+        "ASSET_NAME": name, "MACRO_TREND": bias_h4,
+        "SWEEP_DETECTED": sweep, "FIB_ZONE": zone, "FIB_FAVORS": zone_favors,
+        "FINAL_DECISION": sig, "ENTRY_TYPE": type_txt,
+        "MATH_ENTRY": round(entry,2), "MATH_SL": round(sl,2),
+        "MATH_TP1": round(tp1,2), "MATH_TP2": round(tp2,2),
         "WIN_RATE": bt['WR'], "NET_PROFIT": bt['P']
     }
 
 # ==============================================================================
-# 7. FRONTEND V9
+# 7. UI FRONTEND
 # ==============================================================================
 
-st.sidebar.title("🔐 CHAVE ORACLE")
-if "GEMINI_API_KEY" in st.secrets: api = st.secrets["GEMINI_API_KEY"]; st.sidebar.success("✅ Segura (Secrets)")
-else: api = st.sidebar.text_input("Cole API Gemini", type="password")
+st.sidebar.title("🗝️ ACCESS KEY")
+if "GEMINI_API_KEY" in st.secrets: api = st.secrets["GEMINI_API_KEY"]; st.sidebar.success("Linked")
+else: api = st.sidebar.text_input("Enter Key", type="password")
 
 st.sidebar.divider()
-st.sidebar.info("""
-**ORACLE ENGINE V9.0**
-- 🛡️ **No Fundamentals:** Pure Tech.
-- 📐 **RSI Divergence:** Auto-Detect.
-- 🧱 **Structure Lock:** H4+M15 Sync.
-""")
+st.sidebar.info("V10 ENGINE FEATURES:\n- Liquidity Sweep Hunting\n- Fibonacci Pricing Model\n- Smart SL Protection")
 
-st.title("🔮 SI-APATECO ORACLE (V9)")
-st.caption("Focus: Synthetic Indices Pure Algorithmic Patterns (No News Noise)")
+st.title("♟️ SI-APATECO 'BLACK BOX' (V10)")
+st.caption("Architecture: SMC Institutional Logic (Sweep + Pricing) + Gemini 3 Pro Vision")
 
-with st.spinner("Sincronizando com RNG da Deriv..."):
-    assets = get_assets_list()
+with st.spinner("Inicializando Rede Neural..."):
+    assets = get_assets()
 
 if not assets:
-    st.error("❌ ERRO: Servidores Deriv inacessíveis. Sua rede pode estar bloqueando WebSockets.")
-    if st.button("♻️ Tentar Novamente"): st.rerun()
+    st.error("🔴 REDE DERIV DESCONECTADA. Verifique sua conexão.")
+    if st.button("RECONECTAR"): st.rerun()
     st.stop()
 
-# Main UI
-c_in, c_res = st.columns([1, 2])
+col_main, col_data = st.columns([1, 2])
 
-with c_in:
-    target = st.selectbox("Selecione o Índice", list(assets.keys()))
-    st.markdown("---")
-    st.write("📸 **SMC Tri-Force Prints:**")
-    u1 = st.file_uploader("1. M15 (Entry)", type=['png','jpg'], key='1')
-    u2 = st.file_uploader("2. H1 (Struct)", type=['png','jpg'], key='2')
-    u3 = st.file_uploader("3. H4 (Trend)", type=['png','jpg'], key='3')
-    st.markdown("---")
-    run = st.button("👁️ CONSULTAR ORÁCULO", use_container_width=True)
+with col_main:
+    st.subheader("📡 INPUT STREAM")
+    target = st.selectbox("ATIVO", list(assets.keys()))
+    st.divider()
+    st.caption("UPLOAD CHART TRIAD (M15, H1, H4)")
+    u1 = st.file_uploader("M15 (Trigger)", type=['png','jpg'], key='1')
+    u2 = st.file_uploader("H1 (Context)", type=['png','jpg'], key='2')
+    u3 = st.file_uploader("H4 (Trend)", type=['png','jpg'], key='3')
+    
+    st.write("")
+    run = st.button("EXECUTE ALGORITHM", use_container_width=True)
 
-with c_res:
+with col_data:
     if run:
-        if not api: st.error("⚠️ API Key ausente."); st.stop()
+        if not api: st.error("⚠️ KEY REQUIRED"); st.stop()
         imgs = [Image.open(x) for x in [u1,u2,u3] if x]
-        if not imgs: st.warning("⚠️ Mínimo 1 print (M15) necessário."); st.stop()
-
-        box = st.status("🔮 ORÁCULO CALCULANDO...", expanded=True)
+        if not imgs: st.warning("⚠️ IMAGE REQUIRED (Min: M15)"); st.stop()
         
-        box.write(f"📡 API: Extraindo dados algorítmicos de {target}...")
+        status = st.status("⚙️ PROCESSING BLACK BOX DATA...", expanded=True)
+        
+        status.write(f"1. Fetching Institutional Data for {target}...")
         m15, h4, err = asyncio.run(fetch_data_safe(assets[target]))
-        if err: box.update(state='error', label='Erro'); st.error(err); st.stop()
+        if err: status.update(state="error", label="API ERROR"); st.error(err); st.stop()
         
-        box.write("🧮 MATH: Detectando Divergências RSI & Order Blocks...")
-        data = run_oracle_v9(target, m15, h4)
+        status.write("2. Calculating Liquidity Sweeps & Equilibrium Zones...")
+        res = black_box_logic(target, m15, h4)
         
-        box.write("🧠 AI: Sintetizando Padrões (Gemini 3 Pro)...")
+        status.write("3. Gemini 3 Pro: Synthesizing Alpha...")
         genai.configure(api_key=api)
         try:
             model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
-            resp = model.generate_content([SYSTEM_PROMPT, f"MATH_JSON: {json.dumps(data)}"] + imgs)
-            ai_out = resp.text
-            box.update(label="PREVISÃO CONCLUÍDA", state="complete")
-        except Exception as e:
-             st.warning(f"Erro AI Principal: {e}. Tentando fallback...")
-             try:
-                 fallback = genai.GenerativeModel("gemini-1.5-pro", safety_settings=SAFETY_SETTINGS)
-                 resp = fallback.generate_content([SYSTEM_PROMPT, f"MATH_JSON: {json.dumps(data)}"] + imgs)
-                 ai_out = resp.text
-                 box.update(label="PREVISÃO (FALLBACK)", state="complete")
-             except: st.error("Erro Fatal IA"); st.stop()
-             
+            payload = [SYSTEM_PROMPT, f"MATH_DATA: {json.dumps(res)}"] + imgs
+            resp = model.generate_content(payload)
+            txt = resp.text
+            status.update(label="EXECUTION READY", state="complete")
+        except:
+             try: # Fallback silencioso
+                 fbm = genai.GenerativeModel("gemini-1.5-pro")
+                 payload = [SYSTEM_PROMPT, f"MATH_DATA: {json.dumps(res)}"] + imgs
+                 txt = fbm.generate_content(payload).text
+                 status.update(label="READY (Fallback)", state="complete")
+             except Exception as e: st.error(f"AI ERROR: {e}"); st.stop()
+
         # DASHBOARD
-        st.subheader(f"📊 PROBABILIDADE: {data['WIN_RATE']}%")
-        
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Bias H4", data['MACRO_TREND'])
-        k2.metric("RSI Div", "DETECTADA" if "DIVERGENCE" in data['DIVERGENCE_STATUS'] else "---")
-        k3.metric("Trigger", data['FVG_DETECTED'].split('@')[0])
-        k4.metric("Exp. Profit", f"{data['NET_PROFIT']}R")
+        k1.metric("Win Rate", f"{res['WIN_RATE']}%")
+        k2.metric("Profit Factor", f"{res['NET_PROFIT']}R")
+        k3.metric("Bias", res['MACRO_TREND'])
+        k4.metric("Sweep", "YES" if "SWEEP" in res['SWEEP_DETECTED'] else "NO")
         
-        st.success(f"DECISÃO TÉCNICA: **{data['FINAL_DECISION']}**")
-        st.dataframe([data], use_container_width=True)
+        st.info(f"💎 ZONA DE PREÇO: **{res['FIB_ZONE']}** | DETECÇÃO DE VARREDURA: **{res['SWEEP_DETECTED']}**")
+        st.dataframe([res], use_container_width=True)
+        
         st.divider()
-        st.markdown(ai_out)
+        st.subheader("🧠 VEREDITO ESTRATÉGICO")
+        st.markdown(txt)
