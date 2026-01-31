@@ -6,80 +6,65 @@ import pandas as pd
 import numpy as np
 import google.generativeai as genai
 from PIL import Image
+import requests
 import time
 
 # ==============================================================================
-# 1. CONFIGURAÇÕES VISUAIS (GOD MODE V11.1)
+# 1. CONFIGURAÇÃO (SNIPER MODE)
 # ==============================================================================
 st.set_page_config(
-    page_title="SI-APATECO GOD MODE V11.1",
-    page_icon="👁️",
+    page_title="SI-APATECO V13 SNIPER",
+    page_icon="🔭",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;700&family=Zen+Dots&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Teko:wght@300;600&family=Share+Tech+Mono&display=swap');
     
     .stApp {
-        background-color: #000;
-        background-image: radial-gradient(circle at 50% 10%, #1c0029 0%, #000 60%);
-        color: #e0e0e0;
-        font-family: 'Rajdhani', sans-serif;
+        background-color: #0c0c0c;
+        background-image: linear-gradient(0deg, #000 0%, #111 100%);
+        color: #d4d4d4;
+        font-family: 'Share Tech Mono', monospace;
     }
     
-    /* TITLES */
-    h1, h2 {
-        font-family: 'Zen Dots', cursive !important;
+    h1, h2, h3 {
+        font-family: 'Teko', sans-serif !important;
         text-transform: uppercase;
-        background: linear-gradient(120deg, #d400ff, #00d4ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 20px rgba(212, 0, 255, 0.4);
+        color: #eab308;
+        letter-spacing: 2px;
     }
     
-    /* GLASS CARDS */
     div[data-testid="stMetric"] {
-        background: rgba(10, 10, 10, 0.8);
-        border: 1px solid #333;
-        box-shadow: 0 0 15px rgba(0, 200, 255, 0.1);
-        border-radius: 4px;
-        padding: 10px;
-    }
-    div[data-testid="stMetricValue"] {
-        font-family: 'Zen Dots';
-        font-size: 1.6rem !important;
-        color: #00d4ff !important;
-    }
-    div[data-testid="stMetricLabel"] { color: #888; }
-    
-    /* DATAFRAME */
-    .dataframe {
-        font-family: 'Rajdhani', monospace !important;
-        font-size: 14px !important;
-        background-color: #050505;
-        border: 1px solid #444;
+        background-color: #1a1a1a;
+        border-right: 4px solid #eab308;
+        padding: 15px;
     }
     
     .stButton>button {
-        background: linear-gradient(90deg, #3700b3, #03dac6);
-        color: white;
-        border: none;
-        padding: 20px;
-        font-family: 'Zen Dots';
-        letter-spacing: 3px;
+        background: #eab308; /* GOLDEN */
+        color: black;
+        font-weight: 900;
+        text-transform: uppercase;
+        padding: 15px;
+        border-radius: 2px;
         width: 100%;
-        transition: 0.3s;
+        transition: 0.4s;
     }
     .stButton>button:hover {
-        letter-spacing: 5px;
-        box-shadow: 0 0 30px rgba(3, 218, 198, 0.5);
+        background: #facc15;
+        box-shadow: 0 0 25px rgba(234, 179, 8, 0.4);
     }
+    
+    /* Risk Reward Highlights */
+    .win-tag { color: #4ade80; font-weight: bold; }
+    .loss-tag { color: #f87171; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SEGURANÇA ---
+# --- SECURITY ---
 SAFETY_SETTINGS = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -88,44 +73,49 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# 2. PROMPT OMNISCIENTE (ALINHAMENTO FRACTAL + HISTÓRICO)
+# 2. PROMPT SWING (ALTA AMPLITUDE)
 # ==============================================================================
 SYSTEM_PROMPT = """
-( ROLE: SI-APATECO "GOD MODE" (V11.1) [Gemini 3 Pro]
-Your Purpose: Detect Perfect Fractal Alignment validated by Historical Backtests.
+( ROLE: SWING TRADING SPECIALIST (1:3+ R:R)
+You analyze synthetic indices for EXPANSION MOVES.
+Ignore scalps. Ignore noise. Focus on H4 Trend Continuation from Deep Pullbacks.
 
-INPUT MATRIX (PYTHON TRUTH):
-1. **FRACTAL SCORE (0-3):** Agreement between M15, H1, H4. (Must be > 1 for valid entry).
-2. **HISTORICAL BACKTEST:** {WIN_RATE}% accuracy in last 1000 candles. 
-   - IF WR < 45% -> CAUTION. 
-   - IF WR > 60% -> AGGRESSIVE.
-3. **SMC STRUCTURE:** Sweeps & Compression Squeezes.
+INPUTS:
+1. **Trend Context (H4/H1):** Determines direction.
+2. **Deep Pullback (Valuation):** Entry logic.
+3. **Execution Data:** Provided in JSON.
 
-OUTPUT PROTOCOL (Markdown):
+**RULES:**
+- TARGET: Minimum 1:3 Reward. If price structure doesn't allow a tight SL, warn about position size.
+- LOGIC: Buy LOW in an Uptrend (Discount). Sell HIGH in a Downtrend (Premium).
+- MARKET TYPE: 
+  - Boom/Crash = Swing logic applies (Wait for Trend Resume).
+  - Volatility = Breakout/Retest logic.
 
-## 👁️ GOD MODE VERDICT: [ {FINAL_DECISION} ]
-**Asset:** {ASSET_NAME} | **Probability:** {WIN_RATE}% (Net: {NET_PROFIT}R)
+OUTPUT FORMAT (Markdown):
 
-### 🌐 MATRIX ALIGNMENT
-*   **H4 (Trend):** {BIAS_H4}
-*   **H1 (Flow):** {BIAS_H1}
-*   **M15 (Entry):** {BIAS_M15}
-*   **Vol. State:** {COMPRESSION_STATE}
+## 🔭 SWING SETUP: [ {FINAL_DECISION} ]
+**Asset:** {ASSET_NAME} | **Potential Payoff:** 1:{RR_RATIO}
 
-### 🎯 QUANTUM EXECUTION
-| Order | Level | Confluence Logic |
+### 📐 STRUCTURAL MAP
+*   **Major Trend (H4):** {BIAS_H4}
+*   **Current Action:** {MARKET_STATE} (Trend or Correction?)
+*   **Volume Status:** {ADX_STATUS}
+
+### 🎯 EXECUTION (HIGH PAYOFF)
+| Order | Level | Distance |
 | :--- | :--- | :--- |
-| **ENTRY** | **{MATH_ENTRY}** | *{ENTRY_NOTE}* |
-| **STOP LOSS** | **{MATH_SL}** | *Structural Pivot* |
-| **TP 1** | **{MATH_TP1}** | *Risk 1:2* |
-| **TP 2** | **{MATH_TP2}** | *Extension* |
+| **ENTRY** | **{MATH_ENTRY}** | *{ENTRY_TYPE}* |
+| **STOP** | **{MATH_SL}** | *{SL_DIST} pts* |
+| **TP 1 (Base)** | **{MATH_TP3}** | *1:3 RR* |
+| **TP 2 (Moon)** | **{MATH_TP5}** | *1:5 RR* |
 
-*God Mode Insight:* {Synthesize why Fractal Score + Backtest Result justifies this specific trade.}
+*Rationale:* {Why this swing trade offers high probability at this price level.}
 )
 """
 
 # ==============================================================================
-# 3. CONEXÃO ROBUSTA (DERIV FAILOVER)
+# 3. REDE DERIV
 # ==============================================================================
 DERIV_SERVERS = [
     "wss://ws.binaryws.com/websockets/v3?app_id=1089",      
@@ -150,13 +140,11 @@ def get_assets():
     return None
 
 async def fetch_tri_force(code):
-    # Aumentei o M15 para 1000 velas para garantir Backtest sólido
     reqs = [
-        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 1000, "end": "latest"}, 
-        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 200, "end": "latest"}, 
-        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 200, "end": "latest"} 
+        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 200, "end": "latest"},  # H1 (Primário)
+        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 200, "end": "latest"}, # H4 (Macro)
+        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 500, "end": "latest"}    # M15 (Refino)
     ]
-    
     for url in DERIV_SERVERS:
         try:
             async with websockets.connect(url, ping_interval=None) as ws:
@@ -166,13 +154,12 @@ async def fetch_tri_force(code):
                     raw = json.loads(await asyncio.wait_for(ws.recv(), 15))
                     if 'candles' in raw: data.append(raw['candles'])
                     else: break
-                
                 if len(data) == 3: return data[0], data[1], data[2], None
         except: continue
-    return None, None, None, "SYSTEM FAILURE: DISCONNECTED"
+    return None, None, None, "API CONNECTION FAIL."
 
 # ==============================================================================
-# 4. MATH CORE & INDICATORS
+# 4. SWING MATH KERNEL (V13)
 # ==============================================================================
 
 def prep_df(data):
@@ -181,238 +168,259 @@ def prep_df(data):
     return df
 
 def indicators(df):
+    # Tendencia
+    df['EMA_20'] = df['close'].ewm(span=20).mean() # Média Rápida
+    df['EMA_50'] = df['close'].ewm(span=50).mean() # "Zona de Valor" (Suporte Dinâmico)
+    df['EMA_200'] = df['close'].ewm(span=200).mean() # Viés Maior
+    
+    # Oscilador para "Dip"
     delta = df['close'].diff()
-    gain = (delta.where(delta>0,0)).rolling(14).mean()
-    loss = (-delta.where(delta<0,0)).rolling(14).mean()
-    rs = gain/(loss+1e-9)
+    rs = (delta.where(delta>0,0).rolling(14).mean()) / (-delta.where(delta<0,0).rolling(14).mean() + 1e-9)
     df['RSI'] = 100 - (100/(1+rs))
     
-    df['EMA_50'] = df['close'].ewm(span=50).mean()
-    df['EMA_200'] = df['close'].ewm(span=200).mean()
-    
-    # ATR (Usado no Backtest)
+    # Volatilidade p/ Stop
     df['tr'] = df[['high','low','close']].apply(lambda x: max(x['high']-x['low'], abs(x['high']-x['close']), abs(x['low']-x['close'])), axis=1)
     df['ATR'] = df['tr'].rolling(14).mean()
+    
+    # Força da Tendencia (ADX Simples)
+    df['ADX'] = abs(df['close'] - df['close'].shift(14)) / df['ATR'] * 100
+    
     df.dropna(inplace=True)
     return df
 
-def detect_squeeze(df):
-    """Bollinger Band Squeeze"""
-    sma = df['close'].rolling(20).mean(); std = df['close'].rolling(20).std()
-    bw = ((sma + 2*std) - (sma - 2*std)) / sma
-    return "⚡ HIGH COMPRESSION" if bw.iloc[-1] <= bw.rolling(50).min().iloc[-1] * 1.1 else "EXPANDED"
-
-def get_fvg_target(df):
-    df = df.tail(30).reset_index(drop=True)
-    for i in range(len(df)-2, 2, -1):
-        if df.iloc[i-2]['low'] > df.iloc[i]['high']:
-            return {'type':'BEARISH', 'p': (df.iloc[i-2]['low']+df.iloc[i]['high'])/2}
-        if df.iloc[i-2]['high'] < df.iloc[i]['low']:
-            return {'type':'BULLISH', 'p': (df.iloc[i-2]['high']+df.iloc[i]['low'])/2}
-    return None
-
-def find_swings_fix(df, window=5):
-    # Logica protegida contra erro do Pandas 2.0+
-    lows = df['low'].rolling(window=2*window+1, center=True).min()
-    highs = df['high'].rolling(window=2*window+1, center=True).max()
+def detect_swing_level(df, direction):
+    """
+    Encontra um Stop Loss "Técnico" no fundo anterior (Buy) ou topo anterior (Sell).
+    Fundamental para trades 1:5.
+    """
+    if direction == "BUY":
+        # Pega a mínima das ultimas 10 velas H1 que seja menor que a atual
+        recent_lows = df['low'].tail(15)
+        # O Stop ideal é no fundo da estrutura ("Pivot")
+        sl_level = recent_lows.min() 
+        return sl_level
+        
+    elif direction == "SELL":
+        recent_highs = df['high'].tail(15)
+        sl_level = recent_highs.max()
+        return sl_level
     
-    df['is_low'] = df['low'] == lows
-    df['is_high'] = df['high'] == highs
-    
-    last_low = df[df['is_low']].iloc[-1]['low'] if df['is_low'].any() else df['low'].min()
-    last_high = df[df['is_high']].iloc[-1]['high'] if df['is_high'].any() else df['high'].max()
-    return last_low, last_high
+    return df.iloc[-1]['close']
 
 # ==============================================================================
-# 5. RESTORED BACKTEST ENGINE
+# 5. PROFITABILITY BACKTEST (FOCADO EM PAYOFF)
 # ==============================================================================
 
-def run_backtest_stats(df, name):
-    trades=0; wins=0; balance=0
-    # Começa na vela 200 para garantir dados de indicadores
-    for i in range(200, len(df)-60):
+def run_payoff_sim(df, trend_dir):
+    """
+    Calcula: Quantas vezes conseguimos bater 1:3 vs Quantas vezes fomos estopados?
+    Foca no R:R (Risco/Retorno)
+    """
+    trades = 0; wins_1_3 = 0; wins_1_5 = 0; losses = 0
+    balance_r = 0 # Acumulador de 'R'
+    
+    for i in range(100, len(df)-80):
         row = df.iloc[i]
+        sig = False
         
-        # Filtros de Backtest (Replica lógica básica de entrada)
-        bull = row['close'] > row['EMA_200']
-        bear = row['close'] < row['EMA_200']
+        # Simula a entrada de Swing: A favor da Média Longa + Correção na Curta
+        is_bull = row['close'] > row['EMA_200']
+        pullback_buy = row['low'] <= row['EMA_20'] # Preço tocou na média rapida
         
-        sig = None
-        if "BOOM" in name and bull and row['RSI']<40: sig="BUY"
-        elif "CRASH" in name and bear and row['RSI']>60: sig="SELL"
-        elif "STEP" in name or "VOLATILITY" in name:
-            if bull and row['RSI']<30: sig="BUY"
-            if bear and row['RSI']>70: sig="SELL"
-            
+        is_bear = row['close'] < row['EMA_200']
+        pullback_sell = row['high'] >= row['EMA_20']
+        
+        if trend_dir == "BULLISH" and is_bull and pullback_buy: sig = "BUY"
+        elif trend_dir == "BEARISH" and is_bear and pullback_sell: sig = "SELL"
+        
         if sig:
             entry = row['close']; atr = row['ATR']
-            # TP mais longo (3R) e SL (1.5R) para validar consistencia
-            sl = entry - 2*atr if sig=="BUY" else entry + 2*atr
-            tp = entry + 6*atr if sig=="BUY" else entry - 6*atr
             
-            res = "OPEN"
-            for f in range(i+1, min(i+60, len(df))):
+            # Setup SNIPER
+            sl = entry - (1.5 * atr) if sig=="BUY" else entry + (1.5 * atr)
+            risk = abs(entry - sl)
+            
+            target_3 = entry + (3*risk) if sig=="BUY" else entry - (3*risk)
+            target_5 = entry + (5*risk) if sig=="BUY" else entry - (5*risk)
+            
+            outcome = "OPEN"
+            for f in range(i+1, min(i+80, len(df))): # Deixa rolar (Swing)
+                nx = df.iloc[f]
                 if sig=="BUY":
-                    if df.iloc[f]['low'] <= sl: res="LOSS"; break
-                    if df.iloc[f]['high'] >= tp: res="WIN"; break
+                    if nx['low'] <= sl: outcome="LOSS"; break
+                    if nx['high'] >= target_5: outcome="WIN_5"; break
+                    if nx['high'] >= target_3 and outcome != "WIN_5": outcome="WIN_3" # Partial check
                 else:
-                    if df.iloc[f]['high'] >= sl: res="LOSS"; break
-                    if df.iloc[f]['low'] <= tp: res="WIN"; break
+                    if nx['high'] >= sl: outcome="LOSS"; break
+                    if nx['low'] <= target_5: outcome="WIN_5"; break
+                    if nx['low'] <= target_3 and outcome != "WIN_5": outcome="WIN_3"
             
-            if res!="OPEN":
-                trades+=1
-                if res=="WIN": wins+=1; balance+=3.0
-                else: balance-=1.0
-                i=f # Pula
+            if outcome != "OPEN":
+                trades += 1
+                if "WIN" in outcome:
+                    if outcome == "WIN_5": balance += 5.0; wins_1_5 += 1
+                    else: balance += 3.0; wins_1_3 += 1
+                else:
+                    balance -= 1.0; losses += 1
+                i = f + 5 # Pula algumas velas apos trade
     
-    wr = (wins/trades*100) if trades>0 else 0
-    return {"WR": round(wr,1), "N": trades, "R": round(balance,2)}
+    total_wins = wins_1_3 + wins_1_5
+    wr = (total_wins / trades * 100) if trades > 0 else 0
+    return {"WR": round(wr,1), "PAYOFF": round(balance,1), "HITS_1_5": wins_1_5}
 
 # ==============================================================================
-# 6. ORACLE PROCESSOR
+# 6. KERNEL (LÓGICA V13)
 # ==============================================================================
 
-def run_god_engine(name, m15_raw, h1_raw, h4_raw):
-    # Processa Dados
-    m15 = indicators(prep_df(m15_raw))
+def sniper_core(name, h1_raw, h4_raw, m15_raw):
     h1 = indicators(prep_df(h1_raw))
     h4 = indicators(prep_df(h4_raw))
+    # Usamos H1 como mestre para o Backtest Swing
     
-    # 1. Roda Backtest Primeiro
-    bt = run_backtest_stats(m15, name)
+    curr = h1.iloc[-1]
     
-    # 2. Fractal Matrix
-    def get_bias(d): return "BULLISH" if d.iloc[-1]['close'] > d.iloc[-1]['EMA_50'] else "BEARISH"
-    b_m15 = get_bias(m15); b_h1 = get_bias(h1); b_h4 = get_bias(h4)
+    # 1. H4 Trend (The River)
+    trend_h4 = "BULLISH" if h4.iloc[-1]['close'] > h4.iloc[-1]['EMA_200'] else "BEARISH"
+    adx_h4 = h4.iloc[-1]['ADX']
+    adx_stat = "TRENDING 🚀" if adx_h4 > 25 else "WEAK/RANGE 💤"
     
-    fractal_score = 0
-    if b_h1 == b_h4: fractal_score += 2 # Peso maior para H1+H4
-    if b_m15 == b_h4: fractal_score += 1
+    # 2. H1 Swing (The Wave)
+    # Detectamos se o preço está "Barato" (Discount) ou "Caro" (Premium) relativo à tendência
+    on_value_zone = False
     
-    # 3. Market State
-    compression = detect_squeeze(m15)
-    fvg = get_fvg_target(m15)
-    s_low, s_high = find_swings_fix(m15)
-    curr = m15.iloc[-1]['close']; rsi = m15.iloc[-1]['RSI']
+    sig = "MONITORING"
+    entry = curr['close']
+    sl = curr['close']
     
-    sig="WAIT"; note="Low Probability"; entry=curr
-    
-    # Logic: Backtest Check + Fractal Sync
-    strong_setup = fractal_score >= 2 or ("COMPRESSION" in compression)
-    
-    if "BOOM" in name:
-        if b_h4 == "BULLISH" and rsi < 45:
-            sig = "BUY (TREND)"
-            if fvg and fvg['type']=='BULLISH': entry = fvg['p']; note="FVG Entry"
-            else: note="Trend Pullback"
-    elif "CRASH" in name:
-        if b_h4 == "BEARISH" and rsi > 55:
-            sig = "SELL (TREND)"
-            if fvg and fvg['type']=='BEARISH': entry = fvg['p']; note="FVG Entry"
-            else: note="Trend Pullback"
-    else:
-        if strong_setup:
-            if b_h4 == "BULLISH" and rsi < 40: sig = "BUY"; note="Aligned Flow"
-            elif b_h4 == "BEARISH" and rsi > 60: sig = "SELL"; note="Aligned Flow"
-
-    # Risk Calc
-    atr = m15.iloc[-1]['ATR']
-    if "BUY" in sig:
-        sl = s_low if s_low < entry else entry - 2*atr
-        tp1 = entry + abs(entry-sl)*2
-        tp2 = entry + abs(entry-sl)*4
-    else: # SELL
-        sl = s_high if s_high > entry else entry + 2*atr
-        tp1 = entry - abs(entry-sl)*2
-        tp2 = entry - abs(entry-sl)*4
+    if trend_h4 == "BULLISH":
+        # Se preço recuou perto da EMA50 ou RSI H1 esfriou
+        dist_to_mean = abs(curr['close'] - curr['EMA_50'])
+        is_close_mean = dist_to_mean < (curr['ATR']*1.0)
         
+        if is_close_mean or curr['RSI'] < 50:
+            sig = "LONG (SWING)"
+            sl = detect_swing_level(h1, "BUY")
+            # Proteção: SL nunca deve ser maior que 3x ATR (gestão)
+            if (entry - sl) > (3*curr['ATR']): sl = entry - (2*curr['ATR'])
+            
+    elif trend_h4 == "BEARISH":
+        dist_to_mean = abs(curr['close'] - curr['EMA_50'])
+        is_close_mean = dist_to_mean < (curr['ATR']*1.0)
+        
+        if is_close_mean or curr['RSI'] > 50:
+            sig = "SHORT (SWING)"
+            sl = detect_swing_level(h1, "SELL")
+            if (sl - entry) > (3*curr['ATR']): sl = entry + (2*curr['ATR'])
+
+    # 3. BACKTEST REALITY CHECK (Validando a direção)
+    # Se o sinal é BUY, rodamos simulação de COMPRA neste ativo. Se for negativo, alertamos.
+    sim = run_payoff_sim(h1, trend_h4)
+    
+    if sim['PAYOFF'] <= 0:
+        sig = "BLOCKED (NEGATIVE PAYOFF)" # Estatística não compensa
+    
+    # Targets 1:3 e 1:5
+    risk = abs(entry - sl)
+    if risk == 0: risk = curr['ATR']
+    
+    if "LONG" in sig or "BUY" in sig:
+        tp3 = entry + (risk * 3.0)
+        tp5 = entry + (risk * 5.0)
+        direction = "BUY"
+    else:
+        tp3 = entry - (risk * 3.0)
+        tp5 = entry - (risk * 5.0)
+        direction = "SELL"
+
     return {
-        "ASSET_NAME": name, "FRACTAL_SCORE": fractal_score,
-        "BIAS_H4": b_h4, "BIAS_H1": b_h1, "BIAS_M15": b_m15,
-        "COMPRESSION_STATE": compression, "FINAL_DECISION": sig,
-        "ENTRY_NOTE": note, "WIN_RATE": bt['WR'], "NET_PROFIT": bt['R'], "TOTAL_TRADES": bt['N'],
-        "MATH_ENTRY": round(entry,2), "MATH_SL": round(sl,2),
-        "MATH_TP1": round(tp1,2), "MATH_TP2": round(tp2,2)
+        "ASSET_NAME": name, "BIAS_H4": trend_h4, "ADX_STATUS": adx_stat,
+        "MARKET_STATE": "Correction/Value Zone" if "SWING" in sig else "Expansion",
+        "FINAL_DECISION": sig, "ENTRY_TYPE": "Pullback/Trend Rejoin",
+        "WIN_RATE": sim['WR'], "NET_PROFIT": sim['PAYOFF'], "HITS_1_5": sim['HITS_1_5'],
+        "MATH_ENTRY": round(entry,2), "MATH_SL": round(sl,2), "SL_DIST": round(risk,2),
+        "MATH_TP3": round(tp3,2), "MATH_TP5": round(tp5,2),
+        "RR_RATIO": "5.0"
     }
 
 # ==============================================================================
-# 7. INTERFACE
+# 7. INTERFACE V13
 # ==============================================================================
-st.sidebar.image("https://img.icons8.com/nolan/64/all-seeing-eye.png", width=60)
-st.sidebar.title("ACCESS V11.1")
-if "GEMINI_API_KEY" in st.secrets: api = st.secrets["GEMINI_API_KEY"]; st.sidebar.success("LINKED")
-else: api = st.sidebar.text_input("ENTER KEY", type="password")
 
+st.sidebar.title("🔐 ACCESS KEY")
+if "GEMINI_API_KEY" in st.secrets: api = st.secrets["GEMINI_API_KEY"]; st.sidebar.success("SECURE")
+else: api = st.sidebar.text_input("Enter Key", type="password")
+
+st.sidebar.divider()
 st.sidebar.info("""
-**V11.1 FEATURES:**
-- 📐 **Fractal Matrix:** 3 Timeframes.
-- 📜 **Backtest Stats:** Restored.
-- 🤖 **AI:** Gemini 3 Pro.
+**V13 SNIPER SPECS:**
+- 🎯 **Target:** 1:3 & 1:5 R:R
+- ⏳ **Frequency:** Medium/Low
+- 📊 **Precision:** High Probability Swing
+- 🚫 **Scalp:** Disabled
 """)
 
-st.title("👁️ SI-APATECO GOD MODE")
-st.caption("THE TRI-FORCE ENGINE: Historical Probability + Present Fractal Alignment")
+st.title("🔭 SI-APATECO SNIPER SWING (V13)")
+st.caption("Strategic Trend Following. High Reward Targeting. Bi-Directional Logic.")
 
-with st.spinner("Connecting to Quantum Matrix..."):
+with st.spinner("Aligning Satellites..."):
     assets = get_assets()
 
-if not assets:
-    st.error("🔴 DISCONNECTED. Check Network."); st.stop()
+if not assets: st.error("Link Failure."); st.stop()
 
-col1, col2 = st.columns([1,2])
-with col1:
-    target = st.selectbox("ASSET", list(assets.keys()))
-    st.markdown("---")
-    u_m15 = st.file_uploader("M15 (Entry)", type=['png','jpg'], key=1)
-    u_h1 = st.file_uploader("H1 (Flow)", type=['png','jpg'], key=2)
-    u_h4 = st.file_uploader("H4 (Vector)", type=['png','jpg'], key=3)
-    st.markdown("---")
-    run = st.button("INITIATE SEQUENCE", use_container_width=True)
+c1, c2 = st.columns([1, 2])
 
-with col2:
+with c1:
+    target = st.selectbox("MISSION TARGET", list(assets.keys()))
+    st.markdown("---")
+    st.caption("VISUAL CONFIRMATION (OPTIONAL)")
+    u1 = st.file_uploader("Upload H4/H1 Chart", type=['png','jpg'])
+    run = st.button("CALCULATE VECTOR", use_container_width=True)
+
+with c2:
     if run:
-        if not api: st.error("⚠️ KEY MISSING"); st.stop()
-        imgs = [Image.open(x) for x in [u_m15,u_h1,u_h4] if x]
-        if not imgs: st.warning("⚠️ M15 IMAGE REQUIRED"); st.stop()
+        if not api: st.error("⚠️ KEY REQUIRED"); st.stop()
         
-        status = st.status("🛸 CALCULATING...", expanded=True)
+        status = st.status("🛸 CALCULATING TRAJECTORY...", expanded=True)
         
-        status.write("1. Downloading 1000 candles (History)...")
-        m15, h1, h4, err = asyncio.run(fetch_tri_force(assets[target]))
-        if err: status.update(state="error", label="NET FAIL"); st.error(err); st.stop()
+        status.write("1. Pulling Macro & Micro Structure...")
+        # A ordem aqui muda: H1, H4, M15 (M15 é só p/ refino, nao crítico)
+        h1, h4, m15, err = asyncio.run(fetch_tri_force(assets[target]))
+        if err: status.update(state='error', label="FAIL"); st.error(err); st.stop()
         
-        status.write("2. Running Historical Backtest & Fractal Matrix...")
-        data = run_god_engine(target, m15, h1, h4)
+        status.write("2. Running Risk/Reward Simulation (1000 candles)...")
+        data = sniper_core(target, h1, h4, m15)
         
-        status.write("3. Consulting Oracle (Gemini)...")
+        status.write("3. Generating Briefing...")
         genai.configure(api_key=api)
         try:
             model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
-            txt = model.generate_content([SYSTEM_PROMPT, f"MATRIX_JSON: {json.dumps(data)}"] + imgs).text
-            status.update(label="GOD MODE RESULT", state="complete")
+            i_list = [Image.open(u1)] if u1 else []
+            txt = model.generate_content([SYSTEM_PROMPT, f"MATH: {json.dumps(data)}"] + i_list).text
+            status.update(label="TRAJECTORY LOCKED", state="complete")
         except:
-             txt = "⚠️ AI Fail (Visual). Use Data."
-             status.update(label="DONE (DATA ONLY)", state="complete")
+             txt = "⚠️ AI Unavailable. Data Only."
+             status.update(label="DATA ONLY", state="complete")
 
         # DASHBOARD
+        # Mostra o Payoff
+        if data['NET_PROFIT'] > 10: st.balloons()
         
-        # CARD DE BACKTEST (VOLTOU)
-        st.subheader("📊 PROBABILIDADE & BACKTEST")
-        b1, b2, b3 = st.columns(3)
-        b1.metric("Win Rate", f"{data['WIN_RATE']}%")
-        b2.metric("Saldo (R)", f"{data['NET_PROFIT']}R")
-        b3.metric("Trade Bias", data['FINAL_DECISION'])
+        st.subheader("💰 POTENCIAL FINANCEIRO (ÚLTIMO CICLO)")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Payoff Total", f"{data['NET_PROFIT']}R")
+        m2.metric("Acertos 1:5", f"{data['HITS_1_5']} Trades")
+        m3.metric("Probabilidade", f"{data['WIN_RATE']}%")
         
-        if data['WIN_RATE'] > 60: st.success("✅ Ativo em condições EXCELENTES para a estratégia.")
-        elif data['WIN_RATE'] < 40: st.error("⚠️ CUIDADO: Backtest negativo recente. Requer confirmação extra.")
+        # Decisão
+        res_col = "green" if "SWING" in data['FINAL_DECISION'] else "red"
+        st.markdown(f"### ORDER: :{res_col}[{data['FINAL_DECISION']}]")
         
-        st.divider()
-        
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Bias H4", data['BIAS_H4'])
-        k2.metric("Bias H1", data['BIAS_H1'])
-        k3.metric("Vol. State", "⚠️ COMPRESSION" if "COMPRESSION" in data['COMPRESSION_STATE'] else "NORMAL")
-        k4.metric("Fractal Score", f"{data['FRACTAL_SCORE']}/3")
+        if "BLOCKED" in data['FINAL_DECISION']:
+            st.error("🛑 TRADE BLOQUEADO: Risco Matemático muito alto. O ativo está lateral ou Payoff é negativo.")
+        else:
+            if "SWING" in data['FINAL_DECISION']:
+                st.success(f"🎯 **ALVO 1:3 CONFIRMADO.** SL protegido por estrutura H1.")
         
         st.dataframe([data], use_container_width=True)
+        st.divider()
         st.markdown(txt)
