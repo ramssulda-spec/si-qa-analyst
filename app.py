@@ -180,11 +180,11 @@ def indicators(df):
     df['EMA_20'] = df['close'].ewm(span=20).mean() 
     df['EMA_50'] = df['close'].ewm(span=50).mean() # Value Zone
     df['EMA_200'] = df['close'].ewm(span=200).mean() # Trend Filter
-    
+
     delta = df['close'].diff()
     rs = (delta.where(delta>0,0).rolling(14).mean()) / (-delta.where(delta<0,0).rolling(14).mean() + 1e-9)
     df['RSI'] = 100 - (100/(1+rs))
-    
+
     df['tr'] = df[['high','low','close']].apply(lambda x: max(x['high']-x['low'], abs(x['high']-x['close']), abs(x['low']-x['close'])), axis=1)
     df['ATR'] = df['tr'].rolling(14).mean()
     df.dropna(inplace=True)
@@ -209,19 +209,19 @@ def run_payoff_sim(df, trend_dir):
     trades=0; hits_5R=0; balance=0
     for i in range(150, len(df)-80):
         row = df.iloc[i]
-        
+
         # Logic: Deep Pullback (Preço volta na Média ou RSI Extremo) + Trend
         sig = None
         if trend_dir == "BULLISH":
             if row['close'] > row['EMA_200'] and row['low'] <= row['EMA_50']: sig = "BUY"
         elif trend_dir == "BEARISH":
             if row['close'] < row['EMA_200'] and row['high'] >= row['EMA_50']: sig = "SELL"
-            
+
         if sig:
             entry = row['close']; atr = row['ATR']
             sl = entry - (2*atr) if sig=="BUY" else entry + (2*atr)
             tp_moon = entry + (5*atr) if sig=="BUY" else entry - (5*atr)
-            
+
             res = "OPEN"
             for f in range(i+1, min(i+80, len(df))): # Deixa correr bastante
                 nx = df.iloc[f]
@@ -231,13 +231,13 @@ def run_payoff_sim(df, trend_dir):
                 else:
                     if nx['high'] >= sl: res="LOSS"; break
                     if nx['low'] <= tp_moon: res="WIN"; break
-            
+
             if res != "OPEN":
                 trades += 1
                 if res == "WIN": hits_5R += 1; balance += 5.0
                 else: balance -= 1.0
                 i = f + 10 # Pula para não repetir trade na mesma congestão
-    
+
     wr = (hits_5R/trades*100) if trades > 0 else 0
     return {"WR": round(wr,1), "NET": round(balance,1)}
 
@@ -249,16 +249,16 @@ def sniper_core(name, h1_raw, h4_raw, m15_raw):
     h1 = indicators(prep_df(h1_raw))
     h4 = indicators(prep_df(h4_raw))
     curr = h1.iloc[-1]
-    
+
     # 1. Bias H4 (Mandatory)
     bias_h4 = "BULLISH" if h4.iloc[-1]['close'] > h4.iloc[-1]['EMA_200'] else "BEARISH"
-    
+
     # 2. Setup (Deep Value Check)
     sig = "MONITORING"
     entry = curr['close']
     sl = curr['close']
     entry_type = "Wait"
-    
+
     if bias_h4 == "BULLISH":
         # Price is "Cheap" (Discount) if touching EMA50 or RSI < 45
         dist = abs(curr['close'] - curr['EMA_50'])
@@ -269,7 +269,7 @@ def sniper_core(name, h1_raw, h4_raw, m15_raw):
             entry_type = "Trend Defense (Discount)"
             # Safety: Limit Max SL distance to 3 ATR
             if (entry - sl) > (3*curr['ATR']): sl = entry - (2.5*curr['ATR'])
-            
+
     elif bias_h4 == "BEARISH":
         dist = abs(curr['close'] - curr['EMA_50'])
         is_value = dist < (curr['ATR']*1.2)
@@ -283,11 +283,11 @@ def sniper_core(name, h1_raw, h4_raw, m15_raw):
     sim = run_payoff_sim(h1, bias_h4)
     if sim['NET'] <= 0:
         sig = "BLOCKED (STATISTICS)" # Negative historical edge
-    
+
     # Targets Calculation (Hardfixed 1:3 & 1:5)
     risk = abs(entry - sl)
     if risk == 0: risk = curr['ATR']
-    
+
     if "LONG" in sig or "BUY" in sig:
         tp3 = entry + (3*risk)
         tp5 = entry + (5*risk)
@@ -334,35 +334,35 @@ c1, c2 = st.columns([1, 1.5])
 
 with c1:
     target = st.selectbox("MISSION TARGET", list(assets.keys()))
-    
+
     st.markdown("### 📸 TRI-FORCE VISUAL UPLOAD")
     st.caption("A IA precisa dos 3 tempos gráficos para máxima precisão.")
-    
+
     # 3 Espaços de Upload distintos
     u_m15 = st.file_uploader("1. M15 CHART (Gatilho)", type=['png','jpg'], key=1)
     u_h1 = st.file_uploader("2. H1 CHART (Estrutura)", type=['png','jpg'], key=2)
     u_h4 = st.file_uploader("3. H4 CHART (Direção)", type=['png','jpg'], key=3)
-    
+
     st.write("")
     run = st.button("CALCULATE VECTOR", use_container_width=True)
 
 with c2:
     if run:
         if not api: st.error("⚠️ KEY REQUIRED"); st.stop()
-        
+
         # Validar Uploads (Mínimo H1/M15 para sniper, mas H4 ideal)
         imgs = [Image.open(x) for x in [u_m15, u_h1, u_h4] if x]
         if not imgs: st.warning("⚠️ Favor enviar os prints para análise visual."); st.stop()
-        
+
         status = st.status("🛸 ENGAGING QUANTUM CORES...", expanded=True)
-        
+
         status.write("1. Retrieving Full History (M15 / H1 / H4)...")
         h1, h4, m15, err = asyncio.run(fetch_tri_force(assets[target]))
         if err: status.update(state='error', label="NET FAIL"); st.error(err); st.stop()
-        
+
         status.write("2. Running Risk/Reward Simulation (1000 candles)...")
         data = sniper_core(target, h1, h4, m15)
-        
+
         status.write(f"3. Gemini Pro Analyzing {len(imgs)} Charts...")
         genai.configure(api_key=api)
         try:
@@ -382,17 +382,17 @@ with c2:
         m1.metric("Payoff Accum.", f"{data['NET_PROFIT']}R")
         m2.metric("Acertos Swing", f"{data['WIN_RATE']}%")
         m3.metric("R:R Ratio", f"1:5")
-        
+
         if "SWING" in data['FINAL_DECISION']:
             st.balloons()
             st.success(f"🎯 **CONFIRMADO:** Oportunidade de Swing Trade detectada. Payoff Histórico Positivo.")
         elif "BLOCKED" in data['FINAL_DECISION']:
             st.error("🛑 **TRADE CANCELADO:** Backtest negativo. Este par não está respeitando setups 1:5 hoje.")
-        
+
         # Grid Execução
         res_col = "green" if "SWING" in data['FINAL_DECISION'] else "red"
         st.markdown(f"#### SIGNAL: :{res_col}[{data['FINAL_DECISION']}]")
         st.dataframe([data], use_container_width=True)
-        
+
         st.divider()
         st.markdown(txt)
