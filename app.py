@@ -316,8 +316,10 @@ def run_payoff_sim(df, trend_dir):
     total_wins = 0
     total_losses = 0
     
-    # Ajustar o range para garantir dados suficientes para indicadores
-    start_idx = max(200, df.first_valid_index().row if isinstance(df.first_valid_index(), pd.Timestamp) else df.first_valid_index())
+    # Ajustar o range para garantir dados suficientes para indicadores (mínimo 200 velas)
+    start_idx = 200
+    if len(df) <= start_idx + 80:
+        return {"WR": 0, "NET": 0, "DD": 0, "PF": 0}
     
     for i in range(start_idx, len(df) - 80):
         row = df.iloc[i]
