@@ -265,7 +265,12 @@ def indicators(df):
     rs = avg_gain / avg_loss
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    df['tr'] = df[['high','low','close']].apply(lambda x: max(x['high']-x['low'], abs(x['high']-x['close']), abs(x['low']-x['close'].shift())), axis=1)
+    # Cálculo do True Range (TR) de forma vetorizada e robusta
+    high_low = df['high'] - df['low']
+    high_close = (df['high'] - df['close'].shift()).abs()
+    low_close = (df['low'] - df['close'].shift()).abs()
+    
+    df['tr'] = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
     df['ATR'] = df['tr'].ewm(span=14, adjust=False).mean()
     
     df = calculate_adx(df)
