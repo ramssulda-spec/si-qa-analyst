@@ -107,9 +107,22 @@ SAFETY_SETTINGS = [
 # ==============================================================================
 SYSTEM_PROMPT = """
 FUNÇÃO: ANALISTA ELITE DE SWING TRADE V15.0 [Gemini 3 Pro]
-Missão: Identificar Confluência Multi-Timeframe Grade A+ com Potencial de Payoff 1:5
+Missão: Identificar Oportunidades DAY TRADE (agressivas) e SWING TRADE (conservadoras)
 
 **IMPORTANTE: RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO. TODAS AS SUAS ANÁLISES, INSIGHTS E COMENTÁRIOS DEVEM SER EM PORTUGUÊS.**
+
+**TIPOS DE SETUPS:**
+1. **DAY TRADE (⚡):** Entrada mais agressiva, menos confirmações necessárias
+   - ADX > 15 (tendência moderada)
+   - Score mínimo: 40/100
+   - Targets: 1:2 e 1:3
+   - Aceita pullbacks em EMA20 ou padrões de candlestick isolados
+   
+2. **SWING TRADE (📈):** Entrada conservadora, múltiplas confirmações
+   - ADX > 20 (tendência forte)
+   - Score mínimo: 70/100
+   - Targets: 1:3 e 1:5
+   - Requer zona de valor (EMA50) + momentum alinhado
 
 **DADOS DE ENTRADA APRIMORADOS:**
 1. **Math Core:** Direção da Tendência, Força ADX, Score do Setup (0-100), Sinais de Padrões
@@ -118,22 +131,24 @@ Missão: Identificar Confluência Multi-Timeframe Grade A+ com Potencial de Payo
 4. **Padrões de Candlestick:** Pin bars, engulfing, inside bars detectados
 5. **Regime de Volatilidade:** Classificação LOW/MEDIUM/HIGH/EXTREME
 6. **Alinhamento de Momentum:** Score MACD nos 3 timeframes
+7. **Estilo de Trade:** {TRADE_STYLE} (DAY ou SWING)
 
-**PROTOCOLO DE ANÁLISE (ALINHAMENTO FRACTAL V2.0):**
-1. **Gráfico H4:** Onde está a principal Oferta/Demanda? Força da tendência (ADX)? Estrutura de mercado (HH/HL ou LH/LL)?
-2. **Gráfico H1:** Estrutura interna alinhada? Níveis de Suporte/Resistência? Zona de valor (EMA 50)?
-3. **Gráfico M15:** Gatilho de entrada (Padrão de candlestick)? Confirmação MACD? Volume?
-4. **Verificação de Momentum:** Todos os 3 timeframes com MACD alinhado? Alguma divergência?
-5. **Confluência de Padrões:** Múltiplos padrões de candlestick empilhados no mesmo nível?
-6. **Filtro de Volatilidade:** Regime adequado para targets 1:5? Não está muito extremo/muito baixo?
+**PROTOCOLO DE ANÁLISE:**
+1. **Gráfico H4:** Tendência principal? Força ADX? Estrutura de mercado?
+2. **Gráfico H1:** Estrutura interna alinhada? Níveis S/R? Zona de valor?
+3. **Gráfico M15:** Gatilho de entrada? Padrões? Confirmação MACD?
+4. **Verificação de Momentum:** Quantos timeframes alinhados?
+5. **Confluência de Padrões:** Múltiplos sinais no mesmo nível?
+6. **Classificação:** Este setup é DAY TRADE ou SWING TRADE?
 
 **FORMATO DE SAÍDA (SEMPRE EM PORTUGUÊS):**
 
 ## 🎯 VEREDICTO SNIPER: [ {FINAL_DECISION} ]
-**Qualidade do Setup:** {SETUP_GRADE} ({SETUP_SCORE}/100)
-**Ativo:** {ASSET_NAME} | **Payoff Alvo:** 1:5 ({MATH_TP5})
+**Tipo:** {TRADE_STYLE_EMOJI} **{TRADE_STYLE}**
+**Qualidade:** {SETUP_GRADE} ({SETUP_SCORE}/100)
+**Ativo:** {ASSET_NAME} | **Targets:** {TARGET_LABEL_1} e {TARGET_LABEL_2}
 
-### 📊 MÉTRICAS DE QUALIDADE DO SETUP
+### 📊 MÉTRICAS DE QUALIDADE
 *   **Detalhamento da Pontuação:**
     - Força da Tendência (ADX): {ADX_SCORE}/25
     - Alinhamento de Momentum: {MOMENTUM_SCORE}/20
@@ -147,20 +162,26 @@ Missão: Identificar Confluência Multi-Timeframe Grade A+ com Potencial de Payo
 *   **Padrões Detectados:** {PATTERNS_DETECTED}
 
 ### 👁️ ANÁLISE VISUAL TRI-FORCE
-*   **H4 (Macro):** {Análise do H4 - tendência, ADX, zonas principais de O/D, estrutura}
-*   **H1 (Estrutura):** {Análise do H1 - pivots, níveis S/R, zona de valor, BOS}
-*   **M15 (Gatilho):** {Análise do M15 - ação do preço, padrões, volume, MACD}
+*   **H4 (Macro):** {Análise do H4 - tendência, ADX, zonas O/D, estrutura}
+*   **H1 (Estrutura):** {Análise do H1 - pivots, níveis S/R, zona de valor}
+*   **M15 (Gatilho):** {Análise do M15 - ação do preço, padrões, MACD}
 
 ### 🎯 PLANO DE EXECUÇÃO
 | Ordem | Nível | Observações |
 | :--- | :--- | :--- |
 | **ENTRADA** | **{MATH_ENTRY}** | *{ENTRY_TYPE}* |
 | **STOP** | **{MATH_SL}** | *{SL_REASON}* |
-| **TP 1** | **{MATH_TP3}** | *Realizar 50% aqui (1:3)* |
-| **TP 2** | **{MATH_TP5}** | *Deixar correr (1:5 com Trailing Stop)* |
-| **Tamanho da Posição** | **{POSITION_SIZE}** | *{POSITION_PCT}% de risco do capital* |
+| **{TARGET_LABEL_1}** | **{MATH_TP1}** | *Realizar 50% aqui* |
+| **{TARGET_LABEL_2}** | **{MATH_TP2}** | *Deixar correr com trailing* |
+| **Posição** | **{POSITION_SIZE}** | *{POSITION_PCT}% de risco* |
 
-*Insight Sniper:* {Por que o alinhamento fractal + confluência de padrões + score de momentum justificam este setup Grade {SETUP_GRADE}? Qual é o seu nível de confiança (Alto/Médio/Baixo)? Explique em português de forma clara e objetiva.}
+*Insight Sniper:* {
+  Se DAY TRADE: Explique por que este pullback agressivo tem potencial mesmo sem todas as confirmações. Qual padrão ou nível técnico justifica a entrada rápida?
+  
+  Se SWING TRADE: Explique a confluência de fatores (tendência + valor + momentum + padrões) que torna este setup de alta probabilidade. 
+  
+  Qual seu nível de confiança (Alto/Médio/Baixo)? Seja claro e objetivo em português.
+}
 """
 
 # ==============================================================================
@@ -822,38 +843,64 @@ def sniper_core_v15(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct=1.0):
     # 5. Pattern detection on M15
     recent_patterns = curr_m15['patterns'] if 'patterns' in curr_m15.index else []
     
-    # 6. Setup detection
+    # 6. Setup detection - AGGRESSIVE MODE (Day Trade + Swing)
     sig = "MONITORING"
     entry = curr_h1['close']
     sl = curr_h1['close']
     entry_type = "Wait"
     sl_reason = "Structural Pivot"
+    trade_style = None
     
-    # Filter: Volatility must be in acceptable range
-    if vol_regime in ["EXTREME_HIGH", "VERY_LOW"]:
+    # Filter: Block only EXTREME volatility (mais permissivo)
+    if vol_regime == "EXTREME_HIGH":
         sig = f"BLOCKED (VOL_{vol_regime})"
-    elif bias_h4 == "BULLISH" and adx_strong:
+    
+    # BULLISH SETUPS
+    elif bias_h4 == "BULLISH":
         dist = abs(curr_h1['close'] - curr_h1['EMA_50'])
-        is_value = dist < (curr_h1['ATR'] * 1.2)
+        is_near_value = dist < (curr_h1['ATR'] * 1.5)  # Mais permissivo
         
-        if is_value or curr_h1['RSI'] < 45:
+        # SWING TRADE (Alta qualidade - ADX > 20, na zona de valor)
+        if adx_h4 > 20 and (is_near_value or curr_h1['RSI'] < 45):
             sig = "LONG (SWING)"
             sl = detect_swing_level(h1, "BUY", atr_multiplier=1.5)
-            entry_type = "Trend Retest (Discount)"
+            entry_type = "Swing: Reteste de Tendência (Desconto)"
+            trade_style = "SWING"
             
+        # DAY TRADE (Agressivo - ADX > 15, pullback em EMA20 ou padrão bullish)
+        elif adx_h4 > 15 and (curr_h1['close'] > curr_h1['EMA_20'] or any('BULLISH' in p for p in recent_patterns)):
+            sig = "LONG (DAY)"
+            sl = detect_swing_level(h1, "BUY", atr_multiplier=1.2)  # SL mais próximo
+            entry_type = "Day Trade: Pullback Agressivo"
+            trade_style = "DAY"
+            
+        # Limit SL distance
+        if "LONG" in sig:
             if (entry - sl) > (3 * curr_h1['ATR']):
                 sl = entry - (2.5 * curr_h1['ATR'])
                 sl_reason = "Max ATR Limit"
-                
-    elif bias_h4 == "BEARISH" and adx_strong:
+    
+    # BEARISH SETUPS
+    elif bias_h4 == "BEARISH":
         dist = abs(curr_h1['close'] - curr_h1['EMA_50'])
-        is_value = dist < (curr_h1['ATR'] * 1.2)
+        is_near_value = dist < (curr_h1['ATR'] * 1.5)
         
-        if is_value or curr_h1['RSI'] > 55:
+        # SWING TRADE (Alta qualidade)
+        if adx_h4 > 20 and (is_near_value or curr_h1['RSI'] > 55):
             sig = "SHORT (SWING)"
             sl = detect_swing_level(h1, "SELL", atr_multiplier=1.5)
-            entry_type = "Trend Retest (Premium)"
+            entry_type = "Swing: Reteste de Tendência (Prêmio)"
+            trade_style = "SWING"
             
+        # DAY TRADE (Agressivo)
+        elif adx_h4 > 15 and (curr_h1['close'] < curr_h1['EMA_20'] or any('BEARISH' in p for p in recent_patterns)):
+            sig = "SHORT (DAY)"
+            sl = detect_swing_level(h1, "SELL", atr_multiplier=1.2)
+            entry_type = "Day Trade: Pullback Agressivo"
+            trade_style = "DAY"
+            
+        # Limit SL distance
+        if "SHORT" in sig:
             if (sl - entry) > (3 * curr_h1['ATR']):
                 sl = entry + (2.5 * curr_h1['ATR'])
                 sl_reason = "Max ATR Limit"
@@ -873,21 +920,55 @@ def sniper_core_v15(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct=1.0):
         profit_factor=sim['PF']
     )
     
+    # AJUSTE DE FILTROS BASEADO NO ESTILO
+    min_score_required = 40 if trade_style == "DAY" else 70  # Day trade mais permissivo
+    min_pf_required = 1.3 if trade_style == "DAY" else 1.5   # Day trade mais permissivo
+    
     # Block if score too low or negative backtest
-    if score.total < 50 or sim['NET'] <= 0 or sim['PF'] < 1.5:
+    if score.total < min_score_required or sim['NET'] <= 0 or sim['PF'] < min_pf_required:
         sig = f"BLOCKED (SCORE={score.total:.0f}, PF={sim['PF']})"
     
-    # 9. Calculate targets
+    # 9. Calculate targets - DINÂMICOS baseado no estilo
     risk = abs(entry - sl)
     if risk == 0: 
         risk = curr_h1['ATR']
     
-    if "LONG" in sig or "BUY" in sig:
-        tp3 = entry + (3 * risk)
-        tp5 = entry + (5 * risk)
+    # Targets diferentes para Day Trade vs Swing
+    if trade_style == "DAY":
+        # Day Trade: 1:2 e 1:3
+        if "LONG" in sig:
+            tp1 = entry + (2 * risk)
+            tp2 = entry + (3 * risk)
+        else:
+            tp1 = entry - (2 * risk)
+            tp2 = entry - (3 * risk)
+        target_label_1 = "TP1 (1:2)"
+        target_label_2 = "TP2 (1:3)"
+        
+    elif trade_style == "SWING":
+        # Swing Trade: 1:3 e 1:5
+        if "LONG" in sig or "BUY" in sig:
+            tp1 = entry + (3 * risk)
+            tp2 = entry + (5 * risk)
+        else:
+            tp1 = entry - (3 * risk)
+            tp2 = entry - (5 * risk)
+        target_label_1 = "TP1 (1:3)"
+        target_label_2 = "TP2 (1:5)"
     else:
-        tp3 = entry - (3 * risk)
-        tp5 = entry - (5 * risk)
+        # Default fallback
+        if "LONG" in sig or "BUY" in sig:
+            tp1 = entry + (3 * risk)
+            tp2 = entry + (5 * risk)
+        else:
+            tp1 = entry - (3 * risk)
+            tp2 = entry - (5 * risk)
+        target_label_1 = "TP1 (1:3)"
+        target_label_2 = "TP2 (1:5)"
+    
+    # Assign to tp3 and tp5 for compatibility
+    tp3 = tp1
+    tp5 = tp2
     
     # 10. Position sizing
     position_size, position_value = calculate_position_size(capital, risk_pct, entry, sl)
@@ -914,6 +995,7 @@ def sniper_core_v15(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct=1.0):
     
     return {
         "FINAL_DECISION": sig,
+        "TRADE_STYLE": trade_style or "N/A",
         "SETUP_SCORE": round(score.total, 1),
         "SETUP_GRADE": score.grade,
         "ADX_SCORE": round(score.trend_strength, 1),
@@ -938,8 +1020,12 @@ def sniper_core_v15(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct=1.0):
         "MAX_CONS_LOSS": sim['MAX_CONS_LOSS'],
         "MATH_ENTRY": round(entry, 2),
         "MATH_SL": round(sl, 2),
+        "MATH_TP1": round(tp1, 2),
+        "MATH_TP2": round(tp2, 2),
         "MATH_TP3": round(tp3, 2),
         "MATH_TP5": round(tp5, 2),
+        "TARGET_LABEL_1": target_label_1,
+        "TARGET_LABEL_2": target_label_2,
         "POSITION_SIZE": position_size,
         "POSITION_VALUE": position_value,
         "KELLY_MSG": kelly_msg,
@@ -965,19 +1051,18 @@ risk_pct = st.sidebar.slider("📊 Risk Per Trade (%)", min_value=0.5, max_value
 
 st.sidebar.divider()
 st.sidebar.info("""
-**V15.0 ENHANCEMENTS:**
+**V15.0 MODO AGRESSIVO:**
+- ⚡ **DAY TRADE:** Score ≥40, ADX >15, Targets 1:2 e 1:3
+- 📈 **SWING TRADE:** Score ≥70, ADX >20, Targets 1:3 e 1:5
 - 🎯 Setup Scoring (0-100)
-- 📊 Pattern Detection (Pin Bar, Engulfing, etc.)
-- 🔄 Momentum Alignment (3 timeframes)
-- 📈 Market Structure Analysis
-- 💹 Volatility Regime Filter
-- 📉 Advanced Backtest (Sharpe, Sortino)
-- 💰 Position Sizing (Fixed % + Kelly)
-- 🎨 Enhanced Charts with MACD
+- 📊 Detecção de Padrões
+- 🔄 Momentum 3 Timeframes
+- 📉 Backtest Avançado
+- 💰 Position Sizing Inteligente
 """)
 
-st.title("🎯 SI-APATECO SNIPER (V15.0)")
-st.caption("Elite Multi-Timeframe Analysis | Grade A+ Setup Detection | 1:5 Payoff System")
+st.title("🎯 SI-APATECO SNIPER (V15.0 AGRESSIVO)")
+st.caption("Day Trade ⚡ + Swing Trade 📈 | Setup Scoring 0-100 | Multi-Timeframe Analysis")
 
 with st.spinner("Loading Assets..."):
     assets = get_assets()
@@ -1041,9 +1126,10 @@ with c2:
         
         # ====== DISPLAY RESULTS ======
         
-        # Setup Grade Header
+        # Setup Grade Header com estilo de trade
         grade = data['SETUP_GRADE']
         score = data['SETUP_SCORE']
+        trade_style = data.get('TRADE_STYLE', 'N/A')
         
         if grade == "A+":
             grade_class = "score-a-plus"
@@ -1058,10 +1144,22 @@ with c2:
             grade_class = "score-c"
             grade_emoji = "⚠️"
         
+        # Emoji do estilo de trade
+        if trade_style == "SWING":
+            style_emoji = "📈"
+            style_color = "#10b981"
+        elif trade_style == "DAY":
+            style_emoji = "⚡"
+            style_color = "#f59e0b"
+        else:
+            style_emoji = "⏸️"
+            style_color = "#6b7280"
+        
         st.markdown(f"""
         <div style='text-align: center; padding: 20px; background: rgba(251, 191, 36, 0.1); border: 2px solid #fbbf24; border-radius: 10px; margin-bottom: 20px;'>
             <h2 style='margin: 0;'>{grade_emoji} SETUP GRADE: <span class='{grade_class}'>{grade}</span></h2>
             <p style='font-size: 24px; margin: 10px 0 0 0;'>Score: <strong>{score}/100</strong></p>
+            <p style='font-size: 20px; margin: 10px 0 0 0; color: {style_color};'>{style_emoji} <strong>{trade_style}</strong></p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1122,29 +1220,32 @@ with c2:
             st.warning(f"⏸️ **STATUS:** {decision}")
         
         # Trade Plan
-        if "SWING" in decision:
-            st.subheader("📋 TRADE EXECUTION PLAN")
+        if "SWING" in decision or "DAY" in decision:
+            st.subheader("📋 PLANO DE EXECUÇÃO")
+            
+            tp1_label = data.get('TARGET_LABEL_1', 'TP1')
+            tp2_label = data.get('TARGET_LABEL_2', 'TP2')
             
             plan_data = pd.DataFrame([{
-                "Parameter": "Entry",
-                "Value": data['MATH_ENTRY'],
-                "Notes": data['ENTRY_TYPE']
+                "Parâmetro": "Entrada",
+                "Valor": data['MATH_ENTRY'],
+                "Observações": data['ENTRY_TYPE']
             }, {
-                "Parameter": "Stop Loss",
-                "Value": data['MATH_SL'],
-                "Notes": data['SL_REASON']
+                "Parâmetro": "Stop Loss",
+                "Valor": data['MATH_SL'],
+                "Observações": data['SL_REASON']
             }, {
-                "Parameter": "TP 1 (1:3)",
-                "Value": data['MATH_TP3'],
-                "Notes": "Bank 50% here"
+                "Parâmetro": tp1_label,
+                "Valor": data['MATH_TP1'],
+                "Observações": "Realizar 50% aqui"
             }, {
-                "Parameter": "TP 2 (1:5)",
-                "Value": data['MATH_TP5'],
-                "Notes": "Let it run with trailing"
+                "Parâmetro": tp2_label,
+                "Valor": data['MATH_TP2'],
+                "Observações": "Deixar correr com trailing stop"
             }, {
-                "Parameter": "Position Size",
-                "Value": f"{data['POSITION_SIZE']} units",
-                "Notes": f"${data['POSITION_VALUE']} ({risk_pct}% risk)"
+                "Parâmetro": "Tamanho da Posição",
+                "Valor": f"{data['POSITION_SIZE']} unidades",
+                "Observações": f"${data['POSITION_VALUE']} ({risk_pct}% risco)"
             }])
             
             st.dataframe(plan_data, use_container_width=True, hide_index=True)
