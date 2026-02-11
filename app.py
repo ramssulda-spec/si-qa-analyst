@@ -348,42 +348,51 @@ def detect_divergence(df, indicator='RSI', lookback=5):
     Detecta divergências entre preço e indicador
     Retorna: (tipo, score_bonus)
     """
-    if len(df) < lookback + 2:
+    try:
+        if len(df) < lookback + 2:
+            return None, 0
+        
+        if indicator not in df.columns:
+            return None, 0
+        
+        recent = df.tail(lookback)
+        
+        price_highs = recent['high']
+        price_lows = recent['low']
+        ind_values = recent[indicator]
+        
+        # Bearish Divergence (preço sobe, indicador cai)
+        if len(price_highs) >= 3:
+            last_high_price = price_highs.iloc[-1]
+            prev_high_price = price_highs.iloc[-3]
+            
+            last_high_ind = ind_values.iloc[-1]
+            prev_high_ind = ind_values.iloc[-3]
+            
+            if pd.notna(last_high_ind) and pd.notna(prev_high_ind) and prev_high_ind != 0:
+                if last_high_price > prev_high_price and last_high_ind < prev_high_ind:
+                    strength = abs(last_high_ind - prev_high_ind) / abs(prev_high_ind)
+                    if strength > 0.05:  # 5% divergência mínima
+                        return "BEARISH_DIVERGENCE", -20
+        
+        # Bullish Divergence (preço cai, indicador sobe)
+        if len(price_lows) >= 3:
+            last_low_price = price_lows.iloc[-1]
+            prev_low_price = price_lows.iloc[-3]
+            
+            last_low_ind = ind_values.iloc[-1]
+            prev_low_ind = ind_values.iloc[-3]
+            
+            if pd.notna(last_low_ind) and pd.notna(prev_low_ind) and prev_low_ind != 0:
+                if last_low_price < prev_low_price and last_low_ind > prev_low_ind:
+                    strength = abs(last_low_ind - prev_low_ind) / abs(prev_low_ind)
+                    if strength > 0.05:
+                        return "BULLISH_DIVERGENCE", +20
+        
         return None, 0
-    
-    recent = df.tail(lookback)
-    
-    price_highs = recent['high']
-    price_lows = recent['low']
-    ind_values = recent[indicator]
-    
-    # Bearish Divergence (preço sobe, indicador cai)
-    if len(price_highs) >= 3:
-        last_high_price = price_highs.iloc[-1]
-        prev_high_price = price_highs.iloc[-3]
-        
-        last_high_ind = ind_values.iloc[-1]
-        prev_high_ind = ind_values.iloc[-3]
-        
-        if last_high_price > prev_high_price and last_high_ind < prev_high_ind:
-            strength = abs(last_high_ind - prev_high_ind) / prev_high_ind
-            if strength > 0.05:  # 5% divergência mínima
-                return "BEARISH_DIVERGENCE", -20  # Penaliza LONG, bonus SHORT
-    
-    # Bullish Divergence (preço cai, indicador sobe)
-    if len(price_lows) >= 3:
-        last_low_price = price_lows.iloc[-1]
-        prev_low_price = price_lows.iloc[-3]
-        
-        last_low_ind = ind_values.iloc[-1]
-        prev_low_ind = ind_values.iloc[-3]
-        
-        if last_low_price < prev_low_price and last_low_ind > prev_low_ind:
-            strength = abs(last_low_ind - prev_low_ind) / prev_low_ind
-            if strength > 0.05:
-                return "BULLISH_DIVERGENCE", +20  # Bonus LONG, penaliza SHORT
-    
-    return None, 0
+    except Exception as e:
+        # Em caso de erro, retorna None silenciosamente
+        return None, 0
 
 # ==============================================================================
 # V16.0 NOVO: SUPORTE E RESISTÊNCIA
@@ -393,34 +402,47 @@ def detect_support_resistance(df, window=50, tolerance_atr_multiplier=0.5):
     """
     Detecta níveis de S/R testados múltiplas vezes
     """
-    if len(df) < window:
-        return []
-    
-    recent = df.tail(window)
-    atr = recent['ATR'].iloc[-1]
-    tolerance = atr * tolerance_atr_multiplier
-    
-    levels = []
-    
-    # Encontrar clusters de toques
-    prices = pd.concat([recent['high'], recent['low']]).values
-    
-    for price in np.unique(prices):
-        touches = sum(abs(recent['high'] - price) < tolerance) + \
-                  sum(abs(recent['low'] - price) < tolerance)
+    try:
+        if len(df) < window:
+            return []
         
-        if touches >= 3:  # Testado 3+ vezes
-            current_price = df['close'].iloc[-1]
-            levels.append({
-                'price': price,
-                'touches': touches,
-                'type': 'RESISTANCE' if price > current_price else 'SUPPORT',
-                'strength': touches
-            })
-    
-    # Ordenar por força
-    levels.sort(key=lambda x: x['strength'], reverse=True)
-    return levels[:5]  # Top 5
+        if 'ATR' not in df.columns:
+            return []
+        
+        recent = df.tail(window)
+        atr = recent['ATR'].iloc[-1]
+        
+        if pd.isna(atr) or atr == 0:
+            return []
+        
+        tolerance = atr * tolerance_atr_multiplier
+        
+        levels = []
+        
+        # Encontrar clusters de toques
+        prices = pd.concat([recent['high'], recent['low']]).values
+        
+        for price in np.unique(prices):
+            if pd.isna(price):
+                continue
+                
+            touches = sum(abs(recent['high'] - price) < tolerance) + \
+                      sum(abs(recent['low'] - price) < tolerance)
+            
+            if touches >= 3:  # Testado 3+ vezes
+                current_price = df['close'].iloc[-1]
+                levels.append({
+                    'price': price,
+                    'touches': touches,
+                    'type': 'RESISTANCE' if price > current_price else 'SUPPORT',
+                    'strength': touches
+                })
+        
+        # Ordenar por força
+        levels.sort(key=lambda x: x['strength'], reverse=True)
+        return levels[:5]  # Top 5
+    except Exception as e:
+        return []
 
 # ==============================================================================
 # V16.0 NOVO: FIBONACCI AUTOMÁTICO
@@ -430,36 +452,51 @@ def calculate_fibonacci_levels(df, lookback=50):
     """
     Calcula níveis de Fibonacci baseado no último swing
     """
-    if len(df) < lookback:
+    try:
+        if len(df) < lookback:
+            return {}
+        
+        recent = df.tail(lookback)
+        swing_high = recent['high'].max()
+        swing_low = recent['low'].min()
+        
+        if pd.isna(swing_high) or pd.isna(swing_low):
+            return {}
+        
+        diff = swing_high - swing_low
+        
+        if diff == 0:
+            return {}
+        
+        fibs = {
+            '0.0%': swing_low,
+            '23.6%': swing_low + (diff * 0.236),
+            '38.2%': swing_low + (diff * 0.382),
+            '50.0%': swing_low + (diff * 0.50),
+            '61.8%': swing_low + (diff * 0.618),
+            '78.6%': swing_low + (diff * 0.786),
+            '100%': swing_high
+        }
+        
+        return fibs
+    except Exception as e:
         return {}
-    
-    recent = df.tail(lookback)
-    swing_high = recent['high'].max()
-    swing_low = recent['low'].min()
-    
-    diff = swing_high - swing_low
-    
-    fibs = {
-        '0.0%': swing_low,
-        '23.6%': swing_low + (diff * 0.236),
-        '38.2%': swing_low + (diff * 0.382),
-        '50.0%': swing_low + (diff * 0.50),
-        '61.8%': swing_low + (diff * 0.618),
-        '78.6%': swing_low + (diff * 0.786),
-        '100%': swing_high
-    }
-    
-    return fibs
 
 def check_fib_confluence(price, fibs, atr):
     """Verifica se preço está próximo de Fibonacci"""
-    tolerance = atr * 0.5
-    
-    for level_name, level_price in fibs.items():
-        if abs(price - level_price) < tolerance:
-            return level_name, +10
-    
-    return None, 0
+    try:
+        if not fibs or pd.isna(price) or pd.isna(atr) or atr == 0:
+            return None, 0
+        
+        tolerance = atr * 0.5
+        
+        for level_name, level_price in fibs.items():
+            if pd.notna(level_price) and abs(price - level_price) < tolerance:
+                return level_name, +10
+        
+        return None, 0
+    except Exception as e:
+        return None, 0
 
 # ==============================================================================
 # V16.0 NOVO: PADRÕES GRADUADOS POR QUALIDADE
@@ -1346,14 +1383,14 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
     """
     V16.0 ULTRA: Sistema completo com todas as melhorias
     """
-    
-    h1 = indicators(prep_df(h1_raw))
-    h4 = indicators(prep_df(h4_raw))
-    m15 = indicators(prep_df(m15_raw))
-    
-    curr_h1 = h1.iloc[-1]
-    curr_h4 = h4.iloc[-1]
-    curr_m15 = m15.iloc[-1]
+    try:
+        h1 = indicators(prep_df(h1_raw))
+        h4 = indicators(prep_df(h4_raw))
+        m15 = indicators(prep_df(m15_raw))
+        
+        curr_h1 = h1.iloc[-1]
+        curr_h4 = h4.iloc[-1]
+        curr_m15 = m15.iloc[-1]
     
     # Análises V16.0
     bias_h4 = "BULLISH" if curr_h4['close'] > curr_h4['EMA_200'] else "BEARISH"
@@ -1488,6 +1525,10 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
                "RECOVERY": 0, "MAX_CONS_WIN": 0, "MAX_CONS_LOSS": 0}
     
     # V16.0: Perfect Storm Detection
+    # BB Compression: verifica se largura atual está abaixo da média dos últimos 20 períodos
+    bb_width_avg = h1['BB_width'].tail(20).mean() if len(h1) >= 20 else h1['BB_width'].mean()
+    bb_compression = curr_h1['BB_width'] < (bb_width_avg * 0.6)
+    
     storm_data = {
         'adx': adx_h4,
         'momentum_score': momentum_score,
@@ -1496,7 +1537,7 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
         'fib_confluence': fib_level is not None,
         'sr_touch': sr_touch,
         'perfect_alignment': alignment_type == "PERFECT_ALIGNMENT",
-        'bb_compression': curr_h1['BB_width'] < curr_h1['BB_width'].rolling(20).mean() * 0.6
+        'bb_compression': bb_compression
     }
     
     storm_level, storm_bonus, storm_criteria = calculate_perfect_storm_bonus(storm_data)
@@ -1722,6 +1763,80 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
         "ATR": curr_h1['ATR'],
         "INITIAL_RISK": risk
     }
+    
+    except Exception as e:
+        # Em caso de erro, retornar dados seguros padrão
+        st.error(f"⚠️ Erro na análise: {str(e)}")
+        
+        # Criar imagens em branco
+        blank_fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, f'Erro na análise: {str(e)}', 
+                ha='center', va='center', fontsize=12)
+        ax.axis('off')
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close(blank_fig)
+        buf.seek(0)
+        blank_img = Image.open(buf)
+        
+        return {
+            "FINAL_DECISION": "ERROR",
+            "TRADE_STYLE": "N/A",
+            "SETUP_TYPE": "ERROR",
+            "SETUP_SCORE": 0,
+            "BASE_SCORE": 0,
+            "BONUS_SCORE": 0,
+            "SETUP_GRADE": "ERROR",
+            "ADX_SCORE": 0,
+            "MOMENTUM_SCORE": 0,
+            "PATTERN_SCORE": 0,
+            "VALUE_SCORE": 0,
+            "HIST_SCORE": 0,
+            "DIVERGENCE_BONUS": 0,
+            "FIB_BONUS": 0,
+            "SR_BONUS": 0,
+            "ALIGNMENT_BONUS": 0,
+            "STORM_BONUS": 0,
+            "MARKET_STRUCTURE": "ERROR",
+            "VOL_REGIME": "ERROR",
+            "PATTERNS_DETECTED": "Erro",
+            "DIVERGENCE": "Erro",
+            "FIB_LEVEL": "N/A",
+            "SR_LEVELS": 0,
+            "ALIGNMENT_TYPE": "ERROR",
+            "STORM_LEVEL": "N/A",
+            "STORM_CRITERIA": [],
+            "CONFLUENCES": [],
+            "MOMENTUM_ALIGNMENT": "0/3",
+            "ENTRY_TYPE": "Error",
+            "SL_REASON": "Error",
+            "WIN_RATE": 0,
+            "NET_PROFIT": 0,
+            "MAX_DRAWDOWN": 0,
+            "PROFIT_FACTOR": 0,
+            "SHARPE_RATIO": 0,
+            "SORTINO_RATIO": 0,
+            "RECOVERY_FACTOR": 0,
+            "MAX_CONS_WIN": 0,
+            "MAX_CONS_LOSS": 0,
+            "MATH_ENTRY": 0,
+            "MATH_SL": 0,
+            "MATH_TP1": 0,
+            "MATH_TP2": 0,
+            "MATH_TP3": 0,
+            "MATH_TP5": 0,
+            "TARGET_LABEL_1": "TP1",
+            "TARGET_LABEL_2": "TP2",
+            "REALIZE_PCT_1": 50,
+            "REALIZE_PCT_2": 50,
+            "POSITION_SIZE": 0,
+            "POSITION_VALUE": 0,
+            "POSITION_NOTE": "Erro na análise",
+            "KELLY_MSG": "",
+            "IMAGES": [blank_img, blank_img, blank_img],
+            "ATR": 0,
+            "INITIAL_RISK": 0
+        }
 
 # ==============================================================================
 # INTERFACE STREAMLIT V16.0
