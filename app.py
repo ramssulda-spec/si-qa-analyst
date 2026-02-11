@@ -1879,15 +1879,32 @@ if operation_mode == "🔍 Análise de Entrada":
             # Converter numpy para tipos Python nativos
             data_converted = convert_numpy_to_python(data)
             
-            try:
-                model = genai.GenerativeModel("models/gemini-1.5-pro", safety_settings=SAFETY_SETTINGS)
-                ai_response = model.generate_content(
-                    [SYSTEM_PROMPT, f"DADOS V16.0: {json.dumps(data_converted)}"] + generated_images
-                ).text
-                status.update(label="✅ ANÁLISE V16.0 COMPLETA", state="complete")
-            except Exception as e:
-                st.error(f"Erro IA: {e}")
-                ai_response = "Análise IA indisponível. Usando apenas dados matemáticos."
+            # Lista de modelos para tentar (do melhor para fallback)
+            models_to_try = [
+                "gemini-2.0-flash-exp",           # Gemini 2.0 Flash (mais recente)
+                "gemini-exp-1206",                # Experimental Gemini
+                "models/gemini-2.0-flash-exp",    # Com prefixo models/
+                "gemini-1.5-flash",               # Gemini 1.5 Flash (estável)
+                "gemini-1.5-pro-latest",          # Gemini 1.5 Pro Latest
+                "gemini-pro-vision",              # Gemini Pro Vision (fallback)
+            ]
+            
+            ai_response = None
+            for model_name in models_to_try:
+                try:
+                    model = genai.GenerativeModel(model_name, safety_settings=SAFETY_SETTINGS)
+                    ai_response = model.generate_content(
+                        [SYSTEM_PROMPT, f"DADOS V16.0: {json.dumps(data_converted)}"] + generated_images
+                    ).text
+                    status.update(label=f"✅ ANÁLISE V16.0 COMPLETA ({model_name})", state="complete")
+                    break  # Sucesso, sair do loop
+                except Exception as e:
+                    # Se falhar, tentar próximo modelo
+                    if model_name == models_to_try[-1]:  # Se foi o último
+                        st.error(f"⚠️ Erro ao conectar IA (tentou {len(models_to_try)} modelos)")
+                        st.info("💡 Usando apenas análise matemática. Para habilitar IA, verifique sua API Key.")
+                        ai_response = "Análise IA indisponível. Veja os dados matemáticos acima para decisão de trade."
+                    continue
             
             # DISPLAY RESULTS
             grade = data['SETUP_GRADE']
