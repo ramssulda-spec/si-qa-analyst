@@ -1375,6 +1375,25 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, patterns=No
     buf.seek(0)
     return Image.open(buf)
 
+def convert_numpy_to_python(obj):
+    """
+    Converte tipos numpy para tipos Python nativos para serialização JSON
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_to_python(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_python(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
+
 # ==============================================================================
 # SNIPER CORE V16.0 ULTRA
 # ==============================================================================
@@ -1703,30 +1722,31 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
     if storm_level:
         confluences.append(f"🌟 {storm_level}")
     
-    return {
+    # Criar dicionário de retorno
+    result = {
         "FINAL_DECISION": sig,
         "TRADE_STYLE": trade_style or "N/A",
         "SETUP_TYPE": setup_type or "N/A",
-        "SETUP_SCORE": round(score.total, 1),
-        "BASE_SCORE": round(score.base_total, 1),
-        "BONUS_SCORE": round(score.bonus_total, 1),
+        "SETUP_SCORE": float(round(score.total, 1)),
+        "BASE_SCORE": float(round(score.base_total, 1)),
+        "BONUS_SCORE": float(round(score.bonus_total, 1)),
         "SETUP_GRADE": score.grade,
-        "ADX_SCORE": round(score.trend_strength, 1),
-        "MOMENTUM_SCORE": round(score.momentum_align, 1),
-        "PATTERN_SCORE": round(score.patterns, 1),
-        "VALUE_SCORE": round(score.value_zone, 1),
-        "HIST_SCORE": round(score.historical, 1),
-        "DIVERGENCE_BONUS": round(score.divergence_bonus, 1),
-        "FIB_BONUS": round(score.fib_bonus, 1),
-        "SR_BONUS": round(score.sr_bonus, 1),
-        "ALIGNMENT_BONUS": round(score.alignment_bonus, 1),
-        "STORM_BONUS": round(score.storm_bonus, 1),
+        "ADX_SCORE": float(round(score.trend_strength, 1)),
+        "MOMENTUM_SCORE": float(round(score.momentum_align, 1)),
+        "PATTERN_SCORE": float(round(score.patterns, 1)),
+        "VALUE_SCORE": float(round(score.value_zone, 1)),
+        "HIST_SCORE": float(round(score.historical, 1)),
+        "DIVERGENCE_BONUS": float(round(score.divergence_bonus, 1)),
+        "FIB_BONUS": float(round(score.fib_bonus, 1)),
+        "SR_BONUS": float(round(score.sr_bonus, 1)),
+        "ALIGNMENT_BONUS": float(round(score.alignment_bonus, 1)),
+        "STORM_BONUS": float(round(score.storm_bonus, 1)),
         "MARKET_STRUCTURE": structure,
         "VOL_REGIME": f"{vol_regime} ({vol_pct:.2f}%)",
         "PATTERNS_DETECTED": ", ".join(recent_patterns) if recent_patterns else "Nenhum",
         "DIVERGENCE": divergence or "Nenhuma",
         "FIB_LEVEL": fib_level or "N/A",
-        "SR_LEVELS": len(sr_levels),
+        "SR_LEVELS": int(len(sr_levels)),
         "ALIGNMENT_TYPE": alignment_type,
         "STORM_LEVEL": storm_level or "N/A",
         "STORM_CRITERIA": storm_criteria,
@@ -1734,34 +1754,36 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
         "MOMENTUM_ALIGNMENT": f"{momentum_score}/3 timeframes",
         "ENTRY_TYPE": entry_type,
         "SL_REASON": sl_reason,
-        "WIN_RATE": sim['WR'],
-        "NET_PROFIT": sim['NET'],
-        "MAX_DRAWDOWN": sim['DD'],
-        "PROFIT_FACTOR": sim['PF'],
-        "SHARPE_RATIO": sim['SHARPE'],
-        "SORTINO_RATIO": sim['SORTINO'],
-        "RECOVERY_FACTOR": sim['RECOVERY'],
-        "MAX_CONS_WIN": sim['MAX_CONS_WIN'],
-        "MAX_CONS_LOSS": sim['MAX_CONS_LOSS'],
-        "MATH_ENTRY": round(entry, 2),
-        "MATH_SL": round(sl, 2),
-        "MATH_TP1": round(tp1, 2),
-        "MATH_TP2": round(tp2, 2),
-        "MATH_TP3": round(tp3, 2),
-        "MATH_TP5": round(tp5, 2),
+        "WIN_RATE": float(sim['WR']),
+        "NET_PROFIT": float(sim['NET']),
+        "MAX_DRAWDOWN": float(sim['DD']),
+        "PROFIT_FACTOR": float(sim['PF']),
+        "SHARPE_RATIO": float(sim['SHARPE']),
+        "SORTINO_RATIO": float(sim['SORTINO']),
+        "RECOVERY_FACTOR": float(sim['RECOVERY']),
+        "MAX_CONS_WIN": int(sim['MAX_CONS_WIN']),
+        "MAX_CONS_LOSS": int(sim['MAX_CONS_LOSS']),
+        "MATH_ENTRY": float(round(entry, 2)),
+        "MATH_SL": float(round(sl, 2)),
+        "MATH_TP1": float(round(tp1, 2)),
+        "MATH_TP2": float(round(tp2, 2)),
+        "MATH_TP3": float(round(tp3, 2)),
+        "MATH_TP5": float(round(tp5, 2)),
         "TARGET_LABEL_1": target_label_1,
         "TARGET_LABEL_2": target_label_2,
-        "REALIZE_PCT_1": realize_pct_1,
-        "REALIZE_PCT_2": realize_pct_2,
-        "POSITION_SIZE": position_size,
-        "POSITION_VALUE": position_value,
+        "REALIZE_PCT_1": int(realize_pct_1),
+        "REALIZE_PCT_2": int(realize_pct_2),
+        "POSITION_SIZE": float(position_size),
+        "POSITION_VALUE": float(position_value),
         "POSITION_NOTE": position_note,
         "KELLY_MSG": kelly_msg,
         "IMAGES": [img_h4, img_h1, img_m15],
         # Para Trade Management
-        "ATR": curr_h1['ATR'],
-        "INITIAL_RISK": risk
+        "ATR": float(curr_h1['ATR']),
+        "INITIAL_RISK": float(risk)
     }
+    
+    return result
 
 # ==============================================================================
 # INTERFACE STREAMLIT V16.0
@@ -1854,10 +1876,13 @@ if operation_mode == "🔍 Análise de Entrada":
             status.write("6️⃣ Análise Visual IA...")
             genai.configure(api_key=api)
             
+            # Converter numpy para tipos Python nativos
+            data_converted = convert_numpy_to_python(data)
+            
             try:
                 model = genai.GenerativeModel("models/gemini-1.5-pro", safety_settings=SAFETY_SETTINGS)
                 ai_response = model.generate_content(
-                    [SYSTEM_PROMPT, f"DADOS V16.0: {json.dumps(data)}"] + generated_images
+                    [SYSTEM_PROMPT, f"DADOS V16.0: {json.dumps(data_converted)}"] + generated_images
                 ).text
                 status.update(label="✅ ANÁLISE V16.0 COMPLETA", state="complete")
             except Exception as e:
