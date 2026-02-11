@@ -1383,14 +1383,13 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
     """
     V16.0 ULTRA: Sistema completo com todas as melhorias
     """
-    try:
-        h1 = indicators(prep_df(h1_raw))
-        h4 = indicators(prep_df(h4_raw))
-        m15 = indicators(prep_df(m15_raw))
-        
-        curr_h1 = h1.iloc[-1]
-        curr_h4 = h4.iloc[-1]
-        curr_m15 = m15.iloc[-1]
+    h1 = indicators(prep_df(h1_raw))
+    h4 = indicators(prep_df(h4_raw))
+    m15 = indicators(prep_df(m15_raw))
+    
+    curr_h1 = h1.iloc[-1]
+    curr_h4 = h4.iloc[-1]
+    curr_m15 = m15.iloc[-1]
     
     # Análises V16.0
     bias_h4 = "BULLISH" if curr_h4['close'] > curr_h4['EMA_200'] else "BEARISH"
@@ -1763,80 +1762,6 @@ def sniper_core_v16_ultra(name, h1_raw, h4_raw, m15_raw, capital=10000, risk_pct
         "ATR": curr_h1['ATR'],
         "INITIAL_RISK": risk
     }
-    
-    except Exception as e:
-        # Em caso de erro, retornar dados seguros padrão
-        st.error(f"⚠️ Erro na análise: {str(e)}")
-        
-        # Criar imagens em branco
-        blank_fig, ax = plt.subplots(figsize=(10, 6))
-        ax.text(0.5, 0.5, f'Erro na análise: {str(e)}', 
-                ha='center', va='center', fontsize=12)
-        ax.axis('off')
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        plt.close(blank_fig)
-        buf.seek(0)
-        blank_img = Image.open(buf)
-        
-        return {
-            "FINAL_DECISION": "ERROR",
-            "TRADE_STYLE": "N/A",
-            "SETUP_TYPE": "ERROR",
-            "SETUP_SCORE": 0,
-            "BASE_SCORE": 0,
-            "BONUS_SCORE": 0,
-            "SETUP_GRADE": "ERROR",
-            "ADX_SCORE": 0,
-            "MOMENTUM_SCORE": 0,
-            "PATTERN_SCORE": 0,
-            "VALUE_SCORE": 0,
-            "HIST_SCORE": 0,
-            "DIVERGENCE_BONUS": 0,
-            "FIB_BONUS": 0,
-            "SR_BONUS": 0,
-            "ALIGNMENT_BONUS": 0,
-            "STORM_BONUS": 0,
-            "MARKET_STRUCTURE": "ERROR",
-            "VOL_REGIME": "ERROR",
-            "PATTERNS_DETECTED": "Erro",
-            "DIVERGENCE": "Erro",
-            "FIB_LEVEL": "N/A",
-            "SR_LEVELS": 0,
-            "ALIGNMENT_TYPE": "ERROR",
-            "STORM_LEVEL": "N/A",
-            "STORM_CRITERIA": [],
-            "CONFLUENCES": [],
-            "MOMENTUM_ALIGNMENT": "0/3",
-            "ENTRY_TYPE": "Error",
-            "SL_REASON": "Error",
-            "WIN_RATE": 0,
-            "NET_PROFIT": 0,
-            "MAX_DRAWDOWN": 0,
-            "PROFIT_FACTOR": 0,
-            "SHARPE_RATIO": 0,
-            "SORTINO_RATIO": 0,
-            "RECOVERY_FACTOR": 0,
-            "MAX_CONS_WIN": 0,
-            "MAX_CONS_LOSS": 0,
-            "MATH_ENTRY": 0,
-            "MATH_SL": 0,
-            "MATH_TP1": 0,
-            "MATH_TP2": 0,
-            "MATH_TP3": 0,
-            "MATH_TP5": 0,
-            "TARGET_LABEL_1": "TP1",
-            "TARGET_LABEL_2": "TP2",
-            "REALIZE_PCT_1": 50,
-            "REALIZE_PCT_2": 50,
-            "POSITION_SIZE": 0,
-            "POSITION_VALUE": 0,
-            "POSITION_NOTE": "Erro na análise",
-            "KELLY_MSG": "",
-            "IMAGES": [blank_img, blank_img, blank_img],
-            "ATR": 0,
-            "INITIAL_RISK": 0
-        }
 
 # ==============================================================================
 # INTERFACE STREAMLIT V16.0
