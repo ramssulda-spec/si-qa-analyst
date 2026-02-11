@@ -1879,31 +1879,100 @@ if operation_mode == "🔍 Análise de Entrada":
             # Converter numpy para tipos Python nativos
             data_converted = convert_numpy_to_python(data)
             
-            # Lista de modelos para tentar (do melhor para fallback)
+            # TESTE 1: Verificar se API Key funciona
+            try:
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                st.info(f"🔍 Modelos disponíveis na sua API: {len(available_models)}")
+                
+                # Mostrar alguns modelos disponíveis
+                if available_models:
+                    st.success(f"✅ Exemplos: {', '.join(available_models[:3])}")
+            except Exception as e:
+                st.error(f"❌ Erro ao verificar modelos disponíveis: {e}")
+                st.warning("⚠️ Verifique se sua API Key tem permissões corretas")
+            
+            # Lista de modelos para tentar (MODELO CORRETO CONFIRMADO)
             models_to_try = [
-                "gemini-2.0-flash-exp",           # Gemini 2.0 Flash (mais recente)
-                "gemini-exp-1206",                # Experimental Gemini
-                "models/gemini-2.0-flash-exp",    # Com prefixo models/
-                "gemini-1.5-flash",               # Gemini 1.5 Flash (estável)
-                "gemini-1.5-pro-latest",          # Gemini 1.5 Pro Latest
-                "gemini-pro-vision",              # Gemini Pro Vision (fallback)
+                "models/gemini-3-pro-preview",  # ✅ MODELO CONFIRMADO FUNCIONANDO
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-latest", 
+                "gemini-1.5-pro",
+                "gemini-1.5-pro-latest",
+                "gemini-pro",
             ]
             
             ai_response = None
-            for model_name in models_to_try:
+            last_error = None
+            
+            for idx, model_name in enumerate(models_to_try, 1):
                 try:
-                    model = genai.GenerativeModel(model_name, safety_settings=SAFETY_SETTINGS)
-                    ai_response = model.generate_content(
+                    st.write(f"Tentativa {idx}/{len(models_to_try)}: {model_name}...")
+                    
+                    # Configurar modelo
+                    model = genai.GenerativeModel(
+                        model_name=model_name,
+                        safety_settings=SAFETY_SETTINGS
+                    )
+                    
+                    # Tentar gerar conteúdo
+                    response = model.generate_content(
                         [SYSTEM_PROMPT, f"DADOS V16.0: {json.dumps(data_converted)}"] + generated_images
-                    ).text
+                    )
+                    
+                    ai_response = response.text
                     status.update(label=f"✅ ANÁLISE V16.0 COMPLETA ({model_name})", state="complete")
-                    break  # Sucesso, sair do loop
+                    st.success(f"✅ Modelo {model_name} funcionou!")
+                    break  # Sucesso!
+                    
                 except Exception as e:
-                    # Se falhar, tentar próximo modelo
-                    if model_name == models_to_try[-1]:  # Se foi o último
-                        st.error(f"⚠️ Erro ao conectar IA (tentou {len(models_to_try)} modelos)")
-                        st.info("💡 Usando apenas análise matemática. Para habilitar IA, verifique sua API Key.")
-                        ai_response = "Análise IA indisponível. Veja os dados matemáticos acima para decisão de trade."
+                    last_error = str(e)
+                    st.warning(f"❌ {model_name}: {str(e)[:100]}")
+                    
+                    # Se é o último modelo
+                    if idx == len(models_to_try):
+                        st.error(f"⚠️ Todos os {len(models_to_try)} modelos falharam")
+                        st.error(f"📋 Último erro: {last_error}")
+                        
+                        # Mostrar solução
+                        st.info("""
+                        💡 **SOLUÇÕES POSSÍVEIS:**
+                        
+                        1. **Verificar API Key:**
+                           - Acesse: https://aistudio.google.com/app/apikey
+                           - Gere nova chave se necessário
+                        
+                        2. **Testar API Key manualmente:**
+                           ```python
+                           import google.generativeai as genai
+                           genai.configure(api_key="SUA_CHAVE")
+                           
+                           # Ver modelos disponíveis
+                           for m in genai.list_models():
+                               print(m.name)
+                           ```
+                        
+                        3. **Verificar quota/limites:**
+                           - API Key pode ter atingido limite
+                           - Verificar em: https://aistudio.google.com/
+                        
+                        4. **Usar apenas análise matemática:**
+                           - Sistema funciona perfeitamente sem IA
+                           - Todos os dados estão disponíveis acima
+                        """)
+                        
+                        ai_response = """
+                        ## 🤖 Análise Automática (Sem IA)
+                        
+                        A análise matemática completa está disponível acima nos gráficos e métricas.
+                        
+                        **Para reativar IA Gemini:**
+                        1. Verifique sua API Key em https://aistudio.google.com/app/apikey
+                        2. Certifique-se que não atingiu limites de quota
+                        3. Tente gerar nova API Key se necessário
+                        
+                        **O sistema funciona perfeitamente sem IA** - todos os dados matemáticos, 
+                        scores, confluências e recomendações estão disponíveis nos gráficos e tabelas acima.
+                        """
                     continue
             
             # DISPLAY RESULTS
