@@ -2126,30 +2126,21 @@ if operation_mode == "🔍 Análise de Entrada":
             
             data_converted = convert_numpy_to_python(data)
             
-            models_to_try = [
-                "gemini-2.0-flash",
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-latest",
-                "gemini-1.5-pro",
-                "gemini-1.5-pro-latest",
-                "gemini-pro",
-            ]
-            
             ai_response = None
             
-            for idx, model_name in enumerate(models_to_try, 1):
-                try:
-                    model = genai.GenerativeModel(model_name=model_name, safety_settings=SAFETY_SETTINGS)
-                    response = model.generate_content(
-                        [SYSTEM_PROMPT, f"DADOS V17.0: {json.dumps(data_converted)}"] + generated_images
-                    )
-                    ai_response = response.text
-                    status.update(label=f"✅ V17.0 COMPLETA ({model_name})", state="complete")
-                    break
-                except Exception as e:
-                    if idx == len(models_to_try):
-                        ai_response = f"⚠️ IA indisponível. Análise matemática completa abaixo.\nErro: {str(e)[:100]}"
-                    continue
+            try:
+                model = genai.GenerativeModel(
+                    model_name="models/gemini-3-pro-preview",
+                    safety_settings=SAFETY_SETTINGS
+                )
+                response = model.generate_content(
+                    [SYSTEM_PROMPT, f"DADOS V17.0: {json.dumps(data_converted)}"] + generated_images
+                )
+                ai_response = response.text
+                status.update(label="✅ V17.0 COMPLETA (Gemini 3 Pro)", state="complete")
+            except Exception as e:
+                ai_response = f"⚠️ IA indisponível. Análise matemática completa abaixo.\nErro: {str(e)[:200]}"
+                status.update(label="⚠️ V17.0 COMPLETA (sem IA)", state="complete")
             
             # ══════════════════════════════════════════════════════
             # DISPLAY RESULTS V17.0
