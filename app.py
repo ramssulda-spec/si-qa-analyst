@@ -11,10 +11,29 @@ import io
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from scipy.stats import norm, median_abs_deviation as scipy_mad
+# --- CORREÇÃO DE IMPORTAÇÃO (FIX DO ERRO SCIPY) ---
+from scipy.stats import norm
+# Removemos a importação problemática e criamos a função manualmente abaixo
 import time
 import warnings
 warnings.filterwarnings('ignore')
+
+# ==============================================================================
+# FUNÇÃO CORRETIVA PARA O ERRO 'ModuleNotFoundError'
+# Substitui: from scipy.stats import median_abs_deviation as scipy_mad
+# ==============================================================================
+def scipy_mad(data, scale='normal'):
+    """
+    Calcula o Median Absolute Deviation (MAD) manualmente usando NumPy.
+    Isso evita conflitos de versão da biblioteca SciPy no Streamlit Cloud.
+    """
+    arr = np.array(data)
+    med = np.median(arr)
+    mad = np.median(np.abs(arr - med))
+    # Fator de consistência para distribuição normal (aprox 1.4826)
+    if scale == 'normal':
+        return mad * 1.4826022185056018
+    return mad
 
 # ==============================================================================
 # SI-APATECO V20.0 — STATISTICAL EDGE ENGINE
