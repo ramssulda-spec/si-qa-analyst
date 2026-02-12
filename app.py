@@ -53,35 +53,316 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="SI-APATECO V20.0 STATISTICAL EDGE",
-    page_icon="⚡",
+    page_title="APATECO V20",
+    page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Teko:wght@300;600&family=Share+Tech+Mono&display=swap');
-    .stApp { background-color:#050505; background-image:linear-gradient(0deg,#000 0%,#0a0a0a 100%); color:#d4d4d4; font-family:'Share Tech Mono',monospace; }
-    h1,h2,h3 { font-family:'Teko',sans-serif!important; text-transform:uppercase; color:#fbbf24; letter-spacing:3px; text-shadow:0 0 10px rgba(251,191,36,0.3); }
-    div[data-testid="stMetric"] { background-color:#111; border-right:4px solid #fbbf24; padding:15px; }
-    .stButton>button { background:linear-gradient(45deg,#d97706,#fbbf24); color:black; font-weight:900; text-transform:uppercase; padding:20px; font-size:20px; border-radius:0px; width:100%; border:1px solid #fbbf24; }
-    .stButton>button:hover { box-shadow:0 0 30px rgba(251,191,36,0.6); transform:scale(1.02); }
-    .score-s { color:#a855f7; font-weight:900; font-size:32px; animation:pulse 2s infinite; }
-    .score-a-pp { color:#10b981; font-weight:900; font-size:30px; }
-    .score-a-p { color:#3b82f6; font-weight:900; font-size:28px; }
-    .score-a { color:#22d3ee; font-weight:900; font-size:26px; }
-    .score-b { color:#fbbf24; font-weight:900; font-size:24px; }
-    .score-c { color:#6b7280; font-weight:900; font-size:22px; }
-    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.7;} }
-    .health-exc { background:linear-gradient(90deg,#10b981,#059669); color:white; padding:15px; border-radius:8px; font-weight:bold; }
-    .health-good { background:linear-gradient(90deg,#3b82f6,#2563eb); color:white; padding:15px; border-radius:8px; font-weight:bold; }
-    .health-warn { background:linear-gradient(90deg,#f59e0b,#d97706); color:white; padding:15px; border-radius:8px; font-weight:bold; }
-    .health-danger { background:linear-gradient(90deg,#ef4444,#dc2626); color:white; padding:15px; border-radius:8px; font-weight:bold; animation:blink 1s infinite; }
-    @keyframes blink { 0%,50%,100%{opacity:1;} 25%,75%{opacity:0.5;} }
-    .gen-model { background:rgba(168,85,247,0.1); border-left:4px solid #a855f7; padding:15px; margin:10px 0; border-radius:0 8px 8px 0; }
-    .edge-card { background:rgba(16,185,129,0.08); border:1px solid #10b981; padding:12px; border-radius:8px; margin:5px 0; }
-    .bug-fixed { background:rgba(239,68,68,0.05); border-left:3px solid #10b981; padding:8px; margin:3px 0; font-size:12px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    /* ── BASE ── */
+    .stApp {
+        background: #09090b;
+        color: #a1a1aa;
+        font-family: 'Inter', -apple-system, sans-serif;
+    }
+    section[data-testid="stSidebar"] {
+        background: #09090b;
+        border-right: 1px solid #1a1a1f;
+    }
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] .stMarkdown span {
+        color: #71717a;
+        font-size: 13px;
+    }
+
+    /* ── TYPOGRAPHY ── */
+    h1 { font-family:'Inter',sans-serif!important; font-weight:300!important; color:#fafafa!important;
+         letter-spacing:-0.5px!important; font-size:28px!important; text-transform:none!important;
+         text-shadow:none!important; border:none!important; }
+    h2 { font-family:'Inter',sans-serif!important; font-weight:500!important; color:#e4e4e7!important;
+         font-size:16px!important; letter-spacing:0.3px!important; text-transform:uppercase!important;
+         text-shadow:none!important; border:none!important; margin-top:28px!important; }
+    h3 { font-family:'Inter',sans-serif!important; font-weight:500!important; color:#a1a1aa!important;
+         font-size:13px!important; letter-spacing:0.5px!important; text-transform:uppercase!important;
+         text-shadow:none!important; border:none!important; }
+    p, li, span { font-family:'Inter',sans-serif; }
+
+    /* ── METRICS ── */
+    div[data-testid="stMetric"] {
+        background: #111113;
+        border: 1px solid #1e1e23;
+        border-radius: 10px;
+        padding: 16px 18px;
+        border-right: 1px solid #1e1e23;
+    }
+    div[data-testid="stMetric"] label {
+        color: #52525b !important;
+        font-size: 11px !important;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        font-weight: 500 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #fafafa !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 20px !important;
+        font-weight: 500 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 11px !important;
+    }
+
+    /* ── BUTTONS ── */
+    .stButton > button {
+        background: #fafafa;
+        color: #09090b;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        border: none;
+        width: 100%;
+        transition: all 0.2s ease;
+    }
+    .stButton > button:hover {
+        background: #e4e4e7;
+        box-shadow: 0 4px 20px rgba(255,255,255,0.06);
+        transform: translateY(-1px);
+    }
+
+    /* ── CARDS ── */
+    .card {
+        background: #111113;
+        border: 1px solid #1e1e23;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 8px 0;
+    }
+    .card-accent {
+        background: linear-gradient(135deg, #111113 0%, #13131a 100%);
+        border: 1px solid #27272a;
+        border-radius: 14px;
+        padding: 28px;
+        margin: 12px 0;
+    }
+
+    /* ── GRADE BADGES ── */
+    .grade-s {
+        background: linear-gradient(135deg, #7c3aed20, #a855f710);
+        border: 1px solid #7c3aed40;
+        color: #c4b5fd;
+        border-radius: 12px; padding: 24px; text-align: center;
+    }
+    .grade-s .grade-letter { font-size: 48px; font-weight: 700; color: #a78bfa; }
+    .grade-app {
+        background: linear-gradient(135deg, #05966920, #10b98110);
+        border: 1px solid #10b98140;
+        color: #6ee7b7;
+        border-radius: 12px; padding: 24px; text-align: center;
+    }
+    .grade-app .grade-letter { font-size: 48px; font-weight: 700; color: #34d399; }
+    .grade-ap {
+        background: linear-gradient(135deg, #2563eb20, #3b82f610);
+        border: 1px solid #3b82f640;
+        color: #93c5fd;
+        border-radius: 12px; padding: 24px; text-align: center;
+    }
+    .grade-ap .grade-letter { font-size: 48px; font-weight: 700; color: #60a5fa; }
+    .grade-a {
+        background: linear-gradient(135deg, #06b6d420, #22d3ee10);
+        border: 1px solid #22d3ee30;
+        color: #a5f3fc;
+        border-radius: 12px; padding: 24px; text-align: center;
+    }
+    .grade-a .grade-letter { font-size: 48px; font-weight: 700; color: #67e8f9; }
+    .grade-low {
+        background: #111113;
+        border: 1px solid #27272a;
+        color: #71717a;
+        border-radius: 12px; padding: 24px; text-align: center;
+    }
+    .grade-low .grade-letter { font-size: 48px; font-weight: 700; color: #52525b; }
+
+    /* ── SCORE BAR ── */
+    .score-bar-outer {
+        background: #1a1a1f;
+        border-radius: 6px;
+        height: 8px;
+        margin: 8px 0 4px;
+        overflow: hidden;
+    }
+    .score-bar-inner {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 1s ease;
+    }
+
+    /* ── SIGNAL TAGS ── */
+    .tag-long {
+        display: inline-block;
+        background: #05966915;
+        color: #34d399;
+        border: 1px solid #10b98130;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.5px;
+    }
+    .tag-short {
+        display: inline-block;
+        background: #ef444415;
+        color: #f87171;
+        border: 1px solid #ef444430;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.5px;
+    }
+    .tag-blocked {
+        display: inline-block;
+        background: #71717a10;
+        color: #71717a;
+        border: 1px solid #52525b30;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .tag-monitoring {
+        display: inline-block;
+        background: #f59e0b10;
+        color: #fbbf24;
+        border: 1px solid #f59e0b30;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    /* ── CONFLUENCE PILLS ── */
+    .pill {
+        display: inline-block;
+        background: #18181b;
+        border: 1px solid #27272a;
+        color: #a1a1aa;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        margin: 3px 3px;
+        font-weight: 400;
+    }
+    .pill-green { border-color: #10b98130; color: #6ee7b7; background: #10b98108; }
+    .pill-red { border-color: #ef444430; color: #fca5a5; background: #ef444408; }
+    .pill-purple { border-color: #7c3aed30; color: #c4b5fd; background: #7c3aed08; }
+    .pill-blue { border-color: #3b82f630; color: #93c5fd; background: #3b82f608; }
+
+    /* ── SCANNER ROWS ── */
+    .scan-row {
+        background: #111113;
+        border: 1px solid #1e1e23;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin: 6px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: border-color 0.2s;
+    }
+    .scan-row:hover { border-color: #3b82f640; }
+    .scan-rank {
+        color: #52525b;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        width: 28px;
+    }
+    .scan-name {
+        color: #fafafa;
+        font-weight: 600;
+        font-size: 14px;
+        flex: 1;
+        margin-left: 8px;
+    }
+    .scan-score {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0 16px;
+    }
+    .scan-meta {
+        color: #52525b;
+        font-size: 11px;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── TRADE PLAN TABLE ── */
+    .plan-row {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid #1e1e23;
+    }
+    .plan-row:last-child { border-bottom: none; }
+    .plan-label {
+        color: #52525b;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        width: 80px;
+        font-weight: 500;
+    }
+    .plan-value {
+        color: #fafafa;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 500;
+        flex: 1;
+    }
+    .plan-note {
+        color: #52525b;
+        font-size: 12px;
+    }
+
+    /* ── MISC ── */
+    .divider {
+        height: 1px;
+        background: #1e1e23;
+        margin: 20px 0;
+        border: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .muted { color: #52525b; }
+    .text-sm { font-size: 12px; }
+    .text-xs { font-size: 11px; }
+
+    /* ── TABS ── */
+    .stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 1px solid #1e1e23; }
+    .stTabs [data-baseweb="tab"] {
+        background: transparent; color: #52525b; font-family:'Inter',sans-serif;
+        font-weight: 500; font-size: 13px; padding: 10px 20px;
+        border-bottom: 2px solid transparent;
+    }
+    .stTabs [aria-selected="true"] { color: #fafafa; border-bottom-color: #fafafa; background: transparent; }
+
+    /* ── STATUS ── */
+    div[data-testid="stStatusWidget"] {
+        background: #111113; border: 1px solid #1e1e23; border-radius: 10px;
+    }
+
+    /* ── HIDE EXTRA ── */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1485,38 +1766,95 @@ def calculate_storm_bonus(sd):
 # ==============================================================================
 
 def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=None, fib_levels=None):
-    fig,(ax1,ax2)=plt.subplots(2,1,figsize=(14,9),height_ratios=[3,1],facecolor='#0a0a0a')
-    ax1.set_facecolor('#0a0a0a'); ax2.set_facecolor('#0a0a0a')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3.5, 1],
+                                     facecolor='#09090b', gridspec_kw={'hspace': 0.08})
+    ax1.set_facecolor('#09090b')
+    ax2.set_facecolor('#09090b')
+
+    # Candles — thin, clean
     for i in range(len(df)):
-        c='#10b981' if df['close'].iloc[i]>=df['open'].iloc[i] else '#ef4444'
-        ax1.plot([df.index[i]]*2,[df['low'].iloc[i],df['high'].iloc[i]],color=c,lw=0.8)
-        ax1.plot([df.index[i]]*2,[df['open'].iloc[i],df['close'].iloc[i]],color=c,lw=3.5)
-    ax1.plot(df.index,df['EMA_20'],label='EMA20',color='cyan',ls='--',alpha=0.6,lw=1)
-    ax1.plot(df.index,df['EMA_50'],label='EMA50',color='orange',ls='--',alpha=0.6,lw=1)
-    ax1.plot(df.index,df['EMA_200'],label='EMA200',color='purple',ls='-',alpha=0.4,lw=1.5)
-    ax1.fill_between(df.index,df['BB_upper'],df['BB_lower'],alpha=0.05,color='white')
+        bull = df['close'].iloc[i] >= df['open'].iloc[i]
+        c = '#22c55e' if bull else '#ef4444'
+        ca = 0.9 if i > len(df) - 30 else 0.45  # Fade older candles
+        ax1.plot([df.index[i]]*2, [df['low'].iloc[i], df['high'].iloc[i]], color=c, lw=0.6, alpha=ca)
+        ax1.plot([df.index[i]]*2, [df['open'].iloc[i], df['close'].iloc[i]], color=c, lw=2.8, alpha=ca, solid_capstyle='round')
+
+    # EMAs — subtle
+    ax1.plot(df.index, df['EMA_20'], color='#3b82f6', lw=1, alpha=0.5, label='20')
+    ax1.plot(df.index, df['EMA_50'], color='#f59e0b', lw=1, alpha=0.4, label='50')
+    ax1.plot(df.index, df['EMA_200'], color='#6b7280', lw=1.2, alpha=0.3, label='200')
+
+    # BB — very subtle fill
+    ax1.fill_between(df.index, df['BB_upper'], df['BB_lower'], alpha=0.02, color='#a1a1aa')
+
+    # S/R — clean zones
     if sr_levels:
-        for sr in sr_levels[:4]:
-            c='#ef4444' if sr['type']=='RESISTANCE' else '#10b981'
-            ax1.axhspan(sr['zone_low'],sr['zone_high'],alpha=0.1,color=c)
+        for sr in sr_levels[:3]:
+            c = '#ef4444' if sr['type'] == 'RESISTANCE' else '#22c55e'
+            ax1.axhspan(sr['zone_low'], sr['zone_high'], alpha=0.04, color=c, linewidth=0)
+            ax1.axhline(y=sr['price'], color=c, ls='-', alpha=0.15, lw=0.5)
+
+    # Fib — dotted, faint
     if fib_levels:
-        for n,p in fib_levels.items():
-            if pd.notna(p): ax1.axhline(y=p,color='#fbbf24',ls='-.',alpha=0.25,lw=0.7)
-    if entry: ax1.axhline(y=entry,color='cyan',ls='-',label='Entry',lw=2)
-    if sl: ax1.axhline(y=sl,color='#ef4444',ls='-',label='SL',lw=2)
-    if tp1: ax1.axhline(y=tp1,color='#10b981',ls='--',label='TP1',lw=1.5)
-    if tp2: ax1.axhline(y=tp2,color='#059669',ls='-',label='TP2',lw=2)
-    ax1.set_title(title,fontsize=14,fontweight='bold',color='#fbbf24')
-    ax1.legend(loc='upper left',fontsize=7,facecolor='#111',edgecolor='#333',labelcolor='white')
-    ax1.grid(True,alpha=0.1,color='#333'); ax1.tick_params(colors='#666')
-    colors=['#10b981' if x>0 else '#ef4444' for x in df['MACD_hist']]
-    ax2.bar(df.index,df['MACD_hist'],color=colors,alpha=0.5,width=0.8)
-    ax2.plot(df.index,df['MACD'],color='#3b82f6',lw=1); ax2.plot(df.index,df['MACD_signal'],color='#ef4444',lw=1)
-    ax2.axhline(y=0,color='#333',lw=0.5); ax2.set_title('MACD',fontsize=10,color='#fbbf24')
-    ax2.grid(True,alpha=0.1,color='#333'); ax2.tick_params(colors='#666')
-    plt.xticks(rotation=45); plt.tight_layout()
-    buf=io.BytesIO(); plt.savefig(buf,format='png',dpi=120,facecolor='#0a0a0a',bbox_inches='tight')
-    plt.close(fig); buf.seek(0); return Image.open(buf)
+        for n, p in fib_levels.items():
+            if pd.notna(p):
+                ax1.axhline(y=p, color='#a1a1aa', ls=':', alpha=0.12, lw=0.5)
+
+    # Trade levels — clean, minimal
+    if entry:
+        ax1.axhline(y=entry, color='#fafafa', ls='-', lw=1.5, alpha=0.9)
+        ax1.text(df.index[-1], entry, '  ENTRY', fontsize=8, color='#fafafa',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if sl:
+        ax1.axhline(y=sl, color='#ef4444', ls='-', lw=1.2, alpha=0.7)
+        ax1.text(df.index[-1], sl, '  SL', fontsize=8, color='#ef4444',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if tp1:
+        ax1.axhline(y=tp1, color='#22c55e', ls='--', lw=1, alpha=0.6)
+        ax1.text(df.index[-1], tp1, '  TP1', fontsize=8, color='#22c55e',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if tp2:
+        ax1.axhline(y=tp2, color='#22c55e', ls='-', lw=1.2, alpha=0.7)
+        ax1.text(df.index[-1], tp2, '  TP2', fontsize=8, color='#22c55e',
+                 fontweight='500', va='center', fontfamily='Inter')
+
+    # Title — minimal
+    ax1.text(0.01, 0.97, title, transform=ax1.transAxes, fontsize=11,
+             color='#a1a1aa', fontweight='400', va='top', fontfamily='Inter')
+    ax1.legend(loc='upper right', fontsize=7, facecolor='#09090b', edgecolor='#1e1e23',
+               labelcolor='#52525b', framealpha=0.8)
+
+    # Grid — barely visible
+    ax1.grid(True, alpha=0.04, color='#27272a', linewidth=0.5)
+    ax1.tick_params(colors='#3f3f46', labelsize=8, length=0)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['bottom'].set_color('#1e1e23')
+    ax1.spines['left'].set_color('#1e1e23')
+
+    # MACD — clean bars
+    hist = df['MACD_hist']
+    colors = ['#22c55e' if x > 0 else '#ef4444' for x in hist]
+    alphas = [0.6 if abs(x) > hist.abs().mean() else 0.3 for x in hist]
+    for i, (idx, val) in enumerate(zip(df.index, hist)):
+        ax2.bar(idx, val, color=colors[i], alpha=alphas[i], width=0.8)
+    ax2.plot(df.index, df['MACD'], color='#3b82f6', lw=0.8, alpha=0.6)
+    ax2.plot(df.index, df['MACD_signal'], color='#a1a1aa', lw=0.8, alpha=0.4)
+    ax2.axhline(y=0, color='#27272a', lw=0.5)
+    ax2.grid(True, alpha=0.03, color='#27272a', linewidth=0.5)
+    ax2.tick_params(colors='#3f3f46', labelsize=7, length=0)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+    ax2.spines['bottom'].set_color('#1e1e23')
+    ax2.spines['left'].set_color('#1e1e23')
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=140, facecolor='#09090b', bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf)
 
 def convert_np(obj):
     if isinstance(obj,dict): return {k:convert_np(v) for k,v in obj.items()}
@@ -2006,156 +2344,319 @@ async def quick_scan(code, name):
     except: return None
 
 # ==============================================================================
-# STREAMLIT UI V20
+# STREAMLIT UI V20 — MODERN MINIMAL
 # ==============================================================================
 
-st.sidebar.title("⚡ SI-APATECO V20.0")
-st.sidebar.caption("STATISTICAL EDGE ENGINE")
+# ── SIDEBAR ──
+with st.sidebar:
+    st.markdown("""<div style='padding:8px 0 16px;'>
+        <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V20</span>
+    </div>""", unsafe_allow_html=True)
 
-if "GEMINI_API_KEY" in st.secrets:
-    api = st.secrets["GEMINI_API_KEY"]; st.sidebar.success("✅ API")
-else:
-    api = st.sidebar.text_input("API GEMINI", type="password")
+    if "GEMINI_API_KEY" in st.secrets:
+        api = st.secrets["GEMINI_API_KEY"]
+        st.markdown("<span class='pill pill-green' style='font-size:11px;'>API Connected</span>", unsafe_allow_html=True)
+    else:
+        api = st.text_input("Gemini API Key", type="password", label_visibility="collapsed",
+                             placeholder="Enter API key...")
 
-st.sidebar.divider()
-capital = st.sidebar.number_input("💰 Capital", min_value=100, value=10000, step=100)
-risk_pct = st.sidebar.slider("📊 Risco %", 0.5, 3.0, 1.0, 0.1)
-mode = st.sidebar.radio("⚙️", ["🔍 Análise", "🔎 Scanner"])
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-st.title("⚡ SI-APATECO V20.0 — STATISTICAL EDGE ENGINE")
-st.caption("20 correções | VR Test | ACF | Vol Cluster | Sigma Calibrado | Smart TP | Kelly")
+    mode = st.radio("Mode", ["Analysis", "Scanner"], label_visibility="collapsed",
+                     horizontal=True)
 
-with st.spinner("Carregando..."): assets = get_assets()
-if not assets: st.error("❌ FALHA"); st.stop()
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-if mode == "🔍 Análise":
-    c1c,c2c = st.columns([1,2])
-    with c1c:
-        target = st.selectbox("🎯 ATIVO", list(assets.keys()))
+    capital = st.number_input("Capital", min_value=100, value=10000, step=100,
+                               label_visibility="collapsed")
+    st.caption("Capital ($)")
+    risk_pct = st.slider("Risk", 0.5, 3.0, 1.0, 0.1, label_visibility="collapsed")
+    st.caption(f"Risk per trade: {risk_pct}%")
+
+    st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
+        border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
+        Statistical Edge Engine<br>
+        VR · ACF · GARCH · Kelly<br>
+        Sigma Calibrated · Smart TP
+    </div>""", unsafe_allow_html=True)
+
+# ── HEADER ──
+st.markdown("""<div style='padding:0 0 8px;'>
+    <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Statistical Edge Engine v20</span>
+</div>""", unsafe_allow_html=True)
+
+with st.spinner("Loading assets..."): assets = get_assets()
+if not assets: st.error("Connection failed"); st.stop()
+
+# ==============================================================================
+# ANALYSIS MODE
+# ==============================================================================
+if mode == "Analysis":
+    left, right = st.columns([1, 3])
+
+    with left:
+        target = st.selectbox("Asset", list(assets.keys()), label_visibility="collapsed")
         prof = get_profile(target)
-        st.markdown(f"**{prof['vol_class']}** — `{prof.get('gen_type','?')}`")
-        run = st.button("⚡ ANALISAR V20", use_container_width=True)
+        st.markdown(f"""<div style='padding:10px 14px;background:#111113;border:1px solid #1e1e23;
+            border-radius:8px;margin:8px 0 16px;'>
+            <span style='color:#fafafa;font-size:13px;font-weight:500;'>{prof['vol_class']}</span><br>
+            <span class='mono text-xs muted'>{prof.get('gen_type','—')}</span>
+        </div>""", unsafe_allow_html=True)
+        run = st.button("Analyze", use_container_width=True)
 
-    with c2c:
+    with right:
         if run:
-            if not api: st.error("API KEY"); st.stop()
-            status = st.status("⚡ V20.0 STATISTICAL EDGE...", expanded=True)
-            status.write("1️⃣ Dados MTF (H1+H4+M15+M5)...")
-            h1r,h4r,m15r,m5r,err = asyncio.run(fetch_multi_tf(assets[target]))
+            if not api: st.error("API key required"); st.stop()
+
+            status = st.status("Analyzing...", expanded=True)
+            status.write("Fetching multi-timeframe data...")
+            h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
             if err: status.update(state='error'); st.error(err); st.stop()
-            status.write("2️⃣ Calibrando σ + Generator Model...")
-            status.write("3️⃣ Variance Ratio + Autocorrelação + Vol Cluster...")
-            status.write("4️⃣ Walk-Forward V20 (multi-setup) + MC Bootstrap...")
-            status.write("5️⃣ Kelly + Adaptive + Score 16-factor...")
-            data = sniper_core_v20(target,h1r,h4r,m15r,m5r,capital,risk_pct)
+            status.write("Running statistical analysis...")
+            data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
             imgs = data.pop("IMAGES")
-            status.write("6️⃣ Gemini IA...")
-            genai.configure(api_key=api); dc = convert_np(data)
+            status.write("Generating AI insights...")
+            genai.configure(api_key=api)
+            dc = convert_np(data)
             try:
                 model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
-                ai = model.generate_content([SYSTEM_PROMPT, f"V20 DATA: {json.dumps(dc)}"]+imgs).text
-                status.update(label="✅ V20 COMPLETA",state="complete")
+                ai = model.generate_content([SYSTEM_PROMPT, f"V20 DATA: {json.dumps(dc)}"] + imgs).text
+                status.update(label="Complete", state="complete")
             except Exception as e:
-                ai = f"⚠️ IA: {str(e)[:150]}"; status.update(label="⚠️",state="complete")
+                ai = f"AI unavailable: {str(e)[:120]}"
+                status.update(label="Done", state="complete")
 
+            # ── GRADE CARD ──
             g = data['SETUP_GRADE']
-            gc = {"S":("score-s","👑"),"A++":("score-a-pp","🏆"),"A+":("score-a-p","💎"),"A":("score-a","⭐"),"B":("score-b","📊")}.get(g,("score-c","⚠️"))
-            st.markdown(f"""<div style='text-align:center;padding:25px;background:rgba(168,85,247,0.08);border:3px solid #a855f7;border-radius:15px;'>
-                <h1>{gc[1]} GRADE: <span class='{gc[0]}'>{g}</span></h1>
-                <p style='font-size:28px;'><strong>SCORE: {data["SETUP_SCORE"]}/170</strong></p>
-                <p>Base: {data["BASE_SCORE"]}/100 | Bonus: +{data["BONUS_SCORE"]}/70</p>
-                <p style='color:#a855f7;'>⚡ {data["GEN_TYPE"]} — {data.get("SETUP_TYPE","N/A")}</p>
-                <p>VR Edge: {'✅ '+data['VR_TEST'].get('dominant_type','') if data['VR_TEST'].get('has_edge') else '❌ Sem edge'} | ACF: {data['ACF_TEST'].get('dominant_type','?')}</p>
+            grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
+            score_pct = min(data['SETUP_SCORE'] / 170 * 100, 100)
+            bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
+
+            # Decision tag
+            d = data['FINAL_DECISION']
+            if "LONG" in d:
+                tag = f"<span class='tag-long'>LONG</span>"
+            elif "SHORT" in d:
+                tag = f"<span class='tag-short'>SHORT</span>"
+            elif "BLOCKED" in d:
+                tag = f"<span class='tag-blocked'>BLOCKED</span>"
+            else:
+                tag = f"<span class='tag-monitoring'>MONITORING</span>"
+
+            st.markdown(f"""
+            <div class='{grade_class}' style='margin:8px 0 20px;'>
+                <div class='grade-letter'>{g}</div>
+                <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
+                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 170</span>
+                </div>
+                <div class='score-bar-outer'>
+                    <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
+                </div>
+                <div style='margin-top:12px;'>{tag}</div>
+                <div style='color:#52525b;font-size:12px;margin-top:6px;'>
+                    {data.get('SETUP_TYPE','—')} · {data['GEN_TYPE']}
+                </div>
             </div>""", unsafe_allow_html=True)
 
-            st.subheader("🧮 GENERATOR MODEL")
-            ga = data.get('GEN_ANALYSIS',{})
-            g1,g2,g3,g4 = st.columns(4)
-            g1.metric("Tipo", data['GEN_TYPE']); g2.metric("Signal", data['GEN_SIGNAL'])
-            g3.metric("σ Calibrado", f"{data.get('SIGMA_CALIBRATED',0) or 0:.4f}")
-            g4.metric("Gen Bonus", f"+{data['GEN_BONUS']}")
-            if data['GEN_TYPE']=='GBM':
-                wins = ga.get('windows',{})
-                w1,w2,w3 = st.columns(3)
-                for col,lbl in [(w1,"SHORT"),(w2,"MEDIUM"),(w3,"LONG")]:
-                    w = wins.get(lbl,{})
-                    col.metric(f"Vol {lbl}", f"{w.get('vol_ratio',1):.3f}", w.get('signal','?'))
-                p1,p2 = st.columns(2)
-                p1.metric("Compress Dir", ga.get('compress_direction','?'))
-                p2.metric("Price Z", f"{ga.get('z_price',0):.2f}")
+            # ── GENERATOR MODEL ──
+            st.markdown("## Generator")
+            ga = data.get('GEN_ANALYSIS', {})
+            g1, g2, g3, g4 = st.columns(4)
+            g1.metric("Type", data['GEN_TYPE'])
+            g2.metric("Signal", data['GEN_SIGNAL'])
+            g3.metric("σ Real", f"{data.get('SIGMA_CALIBRATED',0) or 0:.4f}")
+            g4.metric("Bonus", f"+{data['GEN_BONUS']}")
 
-            st.subheader("📐 EDGE ESTATÍSTICO")
-            e1,e2,e3,e4 = st.columns(4)
-            vrt = data.get('VR_TEST',{})
-            e1.metric("VR Edge", "✅" if vrt.get('has_edge') else "❌", vrt.get('dominant_type','?'))
-            acft = data.get('ACF_TEST',{})
-            e2.metric("ACF", acft.get('dominant_type','?'), f"lag1={acft.get('acf_1',0):.4f}")
-            vc = data.get('VOL_CLUSTER',{})
-            e3.metric("Vol Cluster", vc.get('vol_regime','?'))
-            e4.metric("Hurst", f"{data['HURST']:.3f}", f"R²={data.get('HURST_R2',0):.2f}")
+            if data['GEN_TYPE'] == 'GBM':
+                wins = ga.get('windows', {})
+                w1, w2, w3 = st.columns(3)
+                for col, lbl in [(w1,"SHORT"),(w2,"MEDIUM"),(w3,"LONG")]:
+                    w = wins.get(lbl, {})
+                    sig = w.get('signal', '—')
+                    delta_color = "normal" if sig == "VOL_NORMAL" else ("inverse" if sig == "VOL_COMPRESS" else "normal")
+                    col.metric(f"Vol {lbl}", f"{w.get('vol_ratio',1):.3f}", sig, delta_color=delta_color)
+                pc, pz = st.columns(2)
+                pc.metric("Direction", ga.get('compress_direction', '—'))
+                pz.metric("Price Z", f"{ga.get('z_price',0):.2f}")
 
-            st.subheader("📊 DISTRIBUIÇÃO")
-            da = data.get('DIST_ANALYSIS',{})
-            d1,d2,d3,d4 = st.columns(4)
-            d1.metric("Skew",f"{da.get('skewness',0):.3f}"); d2.metric("Kurt",f"{da.get('kurtosis',3):.3f}")
-            d3.metric("Tails",da.get('tail_risk','?')); d4.metric("Percentil",f"{da.get('percentile',50):.0f}%")
+            # ── STATISTICAL EDGE ──
+            st.markdown("## Edge Analysis")
+            e1, e2, e3, e4 = st.columns(4)
+            vrt = data.get('VR_TEST', {})
+            e1.metric("Variance Ratio",
+                       "Edge Found" if vrt.get('has_edge') else "No Edge",
+                       vrt.get('dominant_type', ''))
+            acft = data.get('ACF_TEST', {})
+            e2.metric("Autocorrelation",
+                       acft.get('dominant_type', '—'),
+                       f"lag1 = {acft.get('acf_1',0):.4f}")
+            vc = data.get('VOL_CLUSTER', {})
+            e3.metric("Vol Cluster", vc.get('vol_regime', '—'))
+            e4.metric("Hurst",
+                       f"{data['HURST']:.3f}",
+                       f"R² = {data.get('HURST_R2',0):.2f}")
 
-            st.subheader("📊 VALIDAÇÃO")
-            m1,m2,m3,m4,m5_c,m6 = st.columns(6)
-            m1.metric("WR",f"{data['WIN_RATE']}%"); m2.metric("PF",f"{data['PROFIT_FACTOR']}")
-            m3.metric("Sharpe",f"{data['SHARPE']}"); m4.metric("Sortino",f"{data['SORTINO']}")
-            m5_c.metric("DD",f"{data['MAX_DRAWDOWN']}R"); m6.metric("Trades",f"{data['TOTAL_TRADES']}")
+            # ── DISTRIBUTION ──
+            st.markdown("## Distribution")
+            da = data.get('DIST_ANALYSIS', {})
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Skewness", f"{da.get('skewness',0):.3f}")
+            d2.metric("Kurtosis", f"{da.get('kurtosis',3):.3f}")
+            d3.metric("Tails", da.get('tail_risk', '—'))
+            d4.metric("Percentile", f"{da.get('percentile',50):.0f}%")
+
+            # ── BACKTEST ──
+            st.markdown("## Validation")
+            v1, v2, v3, v4, v5, v6 = st.columns(6)
+            v1.metric("Win Rate", f"{data['WIN_RATE']}%")
+            v2.metric("Profit Factor", f"{data['PROFIT_FACTOR']}")
+            v3.metric("Sharpe", f"{data['SHARPE']}")
+            v4.metric("Sortino", f"{data['SORTINO']}")
+            v5.metric("Max DD", f"{data['MAX_DRAWDOWN']}R")
+            v6.metric("Trades", f"{data['TOTAL_TRADES']}")
+
+            # Setup breakdown
             if data.get('SETUP_STATS'):
-                st.caption("Por Setup: " + " | ".join(f"{k}: {v['trades']}t {v['wr']}%" for k,v in data['SETUP_STATS'].items()))
-            mc1,mc2,mc3 = st.columns(3)
-            mc1.metric("MC Med",f"{data['MC_MEDIAN']}R"); mc2.metric("MC P5",f"{data['MC_P5']}R")
-            mc3.metric("MC %+",f"{data['MC_POSITIVE']}%")
+                parts = " · ".join(f"{k} {v['trades']}t/{v['wr']}%" for k,v in data['SETUP_STATS'].items())
+                st.markdown(f"<p class='mono text-xs muted' style='margin-top:-8px;'>{parts}</p>",
+                            unsafe_allow_html=True)
 
-            if data['CONFLUENCES']:
-                st.subheader("🔥 CONFLUÊNCIAS")
-                for c in data['CONFLUENCES']: st.markdown(f"- {c}")
-            if data['RISKS']:
-                st.subheader("⚠️ RISCOS")
-                for r in data['RISKS']: st.warning(r)
+            # Monte Carlo
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("MC Median", f"{data['MC_MEDIAN']}R")
+            mc2.metric("MC P5", f"{data['MC_P5']}R")
+            mc3.metric("MC Positive", f"{data['MC_POSITIVE']}%")
 
-            st.divider()
-            d = data['FINAL_DECISION']
-            if any(x in d for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE"]):
-                st.success(f"✅ {d}")
-                st.dataframe(pd.DataFrame([
-                    {"":"Entrada","V":f"{data['ENTRY']}","N":data['ENTRY_TYPE']},
-                    {"":"Stop","V":f"{data['SL']}","N":f"Adaptive SL ×{data.get('ADAPTED_PROFILE',{}).get('sl_atr_mult','?')}"},
-                    {"":"TP1","V":f"{data['TP1']}","N":"Smart TP (S/R aware)"},
-                    {"":"TP2","V":f"{data['TP2']}","N":"Trail"},
-                    {"":"M5 Trigger","V":"✅" if data.get('TRIGGER_OK') else "❌","N":data.get('TRIGGER_TYPE','?')},
-                ]),hide_index=True,use_container_width=True)
-                pyr = data.get('PYRAMID',{})
-                if pyr.get('n_levels',0)>1:
-                    st.subheader("📈 PIRÂMIDE")
-                    for i,l in enumerate(pyr.get('levels',[])):
-                        st.info(f"Nível {i+1}: {l['entry']} | {l['risk_pct']}% | {l['trigger']}")
-            elif "BLOCKED" in d: st.error(f"🛑 {d}")
-            else: st.warning(f"⏸️ {d}")
+            # ── CONFLUENCES & RISKS ──
+            if data['CONFLUENCES'] or data['RISKS']:
+                st.markdown("## Confluences")
+                conf_html = ""
+                for c in data.get('CONFLUENCES', []):
+                    conf_html += f"<span class='pill pill-green'>{c}</span> "
+                for r in data.get('RISKS', []):
+                    conf_html += f"<span class='pill pill-red'>{r}</span> "
+                st.markdown(conf_html, unsafe_allow_html=True)
 
-            tabs = st.tabs(["H4","H1","M15"])
-            for i,t in enumerate(tabs):
-                with t: st.image(imgs[i], use_container_width=True)
-            st.divider(); st.subheader("🤖 IA"); st.markdown(ai)
+            # ── TRADE PLAN ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            is_active = any(x in d for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION",
+                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+            if is_active:
+                st.markdown("## Trade Plan")
 
-elif mode == "🔎 Scanner":
-    st.subheader("🔎 SCANNER V20")
-    if st.button("⚡ ESCANEAR", use_container_width=True):
-        with st.spinner("Escaneando..."):
-            async def run_scan():
-                return await asyncio.gather(*[quick_scan(c,n) for n,c in assets.items()])
-            results = asyncio.run(run_scan())
-            valid = sorted([r for r in results if r], key=lambda x:x['score'], reverse=True)
-        if valid:
-            st.success(f"✅ {len(valid)} ativos")
-            for i,r in enumerate(valid[:12]):
-                e = "🟢" if r['score']>=45 else "🟡" if r['score']>=25 else "🔴"
-                vr_icon = "✅" if r.get('vr_edge') else "❌"
-                st.markdown(f"""<div class='edge-card'>
-                    <strong>{e} #{i+1} {r['name']}</strong> — Score: <b>{r['score']}</b> | {r['bias']} | VR: {vr_icon} {r.get('vr_type','')}<br>
-                    <small>ADX:{r['adx']} | H:{r['hurst']} | Z:{r['zscore']} | {r['regime']} | Gen:{r['gen_signal']} | {r['profile']}</small>
+                # Entry/SL/TP as clean card
+                entry_color = "#22c55e" if "LONG" in d else "#ef4444"
+                st.markdown(f"""<div class='card'>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Entry</span>
+                        <span class='plan-value' style='color:{entry_color};'>{data['ENTRY']}</span>
+                        <span class='plan-note'>{data['ENTRY_TYPE']}</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Stop</span>
+                        <span class='plan-value' style='color:#ef4444;'>{data['SL']}</span>
+                        <span class='plan-note'>ATR x{data.get('ADAPTED_PROFILE',{}).get('sl_atr_mult','—')}</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>TP 1</span>
+                        <span class='plan-value' style='color:#22c55e;'>{data['TP1']}</span>
+                        <span class='plan-note'>Smart TP (S/R aware)</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>TP 2</span>
+                        <span class='plan-value' style='color:#22c55e;'>{data['TP2']}</span>
+                        <span class='plan-note'>Trail target</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Trigger</span>
+                        <span class='plan-value'>{"✓" if data.get('TRIGGER_OK') else "✗"}</span>
+                        <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
+                    </div>
                 </div>""", unsafe_allow_html=True)
+
+                # Pyramid
+                pyr = data.get('PYRAMID', {})
+                if pyr.get('n_levels', 0) > 1:
+                    st.markdown("## Pyramid")
+                    pyr_html = "<div class='card'>"
+                    for i, l in enumerate(pyr.get('levels', [])):
+                        pyr_html += f"""<div class='plan-row'>
+                            <span class='plan-label'>Level {i+1}</span>
+                            <span class='plan-value'>{l['entry']}</span>
+                            <span class='plan-note'>{l['risk_pct']}% · {l['trigger']}</span>
+                        </div>"""
+                    pyr_html += f"""<div class='plan-row' style='border-top:1px solid #27272a;'>
+                        <span class='plan-label'>Total</span>
+                        <span class='plan-value'>{pyr['total_risk_pct']}%</span>
+                        <span class='plan-note'>{pyr['n_levels']} levels</span>
+                    </div></div>"""
+                    st.markdown(pyr_html, unsafe_allow_html=True)
+
+            elif "BLOCKED" in d:
+                reason = d.replace("BLOCKED (","").rstrip(")")
+                st.markdown(f"""<div class='card' style='border-color:#ef444420;'>
+                    <span style='color:#ef4444;font-size:14px;font-weight:500;'>Blocked</span><br>
+                    <span class='mono text-sm muted'>{reason}</span>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown("""<div class='card'>
+                    <span style='color:#f59e0b;font-size:14px;font-weight:500;'>Monitoring</span><br>
+                    <span class='text-sm muted'>No setup detected. Waiting for conditions.</span>
+                </div>""", unsafe_allow_html=True)
+
+            # ── CHARTS ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            st.markdown("## Charts")
+            tabs = st.tabs(["H4", "H1", "M15"])
+            for i, t in enumerate(tabs):
+                with t:
+                    st.image(imgs[i], use_container_width=True)
+
+            # ── AI INSIGHT ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            st.markdown("## AI Analysis")
+            st.markdown(f"""<div class='card-accent'>
+                {ai}
+            </div>""", unsafe_allow_html=True)
+
+# ==============================================================================
+# SCANNER MODE
+# ==============================================================================
+elif mode == "Scanner":
+    st.markdown("## Scanner")
+    st.markdown("<p class='text-sm muted' style='margin-top:-8px;'>Scan all synthetic indices for statistical edge opportunities.</p>",
+                unsafe_allow_html=True)
+
+    if st.button("Scan All Assets", use_container_width=True):
+        with st.spinner("Scanning..."):
+            async def run_scan():
+                return await asyncio.gather(*[quick_scan(c, n) for n, c in assets.items()])
+            results = asyncio.run(run_scan())
+            valid = sorted([r for r in results if r], key=lambda x: x['score'], reverse=True)
+
+        if valid:
+            st.markdown(f"<p class='text-sm muted' style='margin:12px 0;'>{len(valid)} assets scanned</p>",
+                        unsafe_allow_html=True)
+
+            for i, r in enumerate(valid[:12]):
+                score = r['score']
+                sc = "#22c55e" if score >= 50 else "#f59e0b" if score >= 30 else "#52525b"
+                bias_c = "#22c55e" if r['bias'] == "BULLISH" else "#ef4444"
+                vr_tag = "<span class='pill pill-green' style='font-size:10px;'>VR Edge</span>" if r.get('vr_edge') else ""
+
+                st.markdown(f"""<div class='scan-row'>
+                    <span class='scan-rank'>#{i+1}</span>
+                    <span class='scan-name'>{r['name']}</span>
+                    <span class='scan-score' style='color:{sc};'>{score}</span>
+                    <div>
+                        <span class='pill' style='font-size:10px;color:{bias_c};border-color:{bias_c}30;'>{r['bias']}</span>
+                        {vr_tag}
+                    </div>
+                    <span class='scan-meta' style='min-width:260px;text-align:right;'>
+                        ADX {r['adx']} · H {r['hurst']} · Z {r['zscore']} · {r['regime'][:8]} · {r['gen_signal'][:12]}
+                    </span>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("No results found")
