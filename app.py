@@ -21,37 +21,7 @@ warnings.filterwarnings('ignore')
 
 # ==============================================================================
 # SI-APATECO V21.0 — PREDICTABILITY ENGINE
-#
-# ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
-#
-# 🔴 BUG FIX #1: periods_per_year auto-detectado (não hardcoded)
-# 🔴 BUG FIX #2: VOL_COMPRESS direção CONTRA o movimento recente
-# 🔴 BUG FIX #3: Crash/Boom drift segue cálculo real (não bias)
-# 🔴 BUG FIX #4: Backtest por TIPO DE SETUP (não só Swing)
-# 🔴 BUG FIX #5: Backtest roda 1× (não 2×)
-# 🔴 BUG FIX #6: Monte Carlo bootstrap REAL (não distribuição inventada)
-#
-# 🟠 MATH FIX #1: Sigma calibrado do histórico (não inventado)
-# 🟠 MATH FIX #2: Hurst com validação R²
-# 🟠 MATH FIX #3: Step Index escala correta (log-returns, não step_size)
-# 🟠 MATH FIX #4: Spike detection MAD-based (não std circular)
-# 🟠 MATH FIX #5: Crash/Boom drift por REGRESSÃO LINEAR (não média)
-#
-# 🟡 EDGE #1: Variance Ratio Test (detecta se há edge real)
-# 🟡 EDGE #2: Autocorrelação de Retornos (lag 1-5)
-# 🟡 EDGE #3: Volatility Clustering (GARCH effect)
-# 🟡 EDGE #4: Multi-TF Vol Ratio
-# 🟡 EDGE #5: Spike Decay Model (Crash/Boom timing)
-# 🟡 EDGE #6: Preço Teórico vs Real (GBM z-score)
-# 🟡 EDGE #7: Regime-Specific Strategy Selection
-# 🟡 EDGE #8: Entry Trigger Candle Confirmation
-#
-# 🟢 PRECISION #1: Multi-Window Vol Analysis (3 janelas)
-# 🟢 PRECISION #2: Trailing Stop por regime/tipo
-# 🟢 PRECISION #3: Dynamic TP com S/R awareness
-# 🟢 PRECISION #4: Scanner para TODOS gen types
-# 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
-# 🟢 PRECISION #6: M5 entry timing
+# CORREÇÃO APLICADA: UnboundLocalError em cpi_val resolvido.
 # ==============================================================================
 
 st.set_page_config(
@@ -1585,7 +1555,7 @@ def detect_divergence(df, indicator='RSI', order=5):
             pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
             if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
                 if df['low'].iloc[pl2]<df['low'].iloc[pl1] and df[indicator].iloc[il2]>df[indicator].iloc[il1]:
-                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl2])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
+                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl1])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
                     if s>1: return "BULLISH_DIVERGENCE",int(min(s*3,20)),f"Preço LL vs {indicator} HL"
         if len(pl)>=2 and len(il)>=2:
             pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
@@ -2334,6 +2304,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ V21 PREDICTABILITY ENGINES ═══
     cpi = compound_predictability_index(h1['close'], vr, acf)
+    # CORREÇÃO: Definir cpi_val aqui para uso posterior nos bônus
+    cpi_val = cpi.get('cpi', 0)
+
     spectral = spectral_analysis_v21(h1['close'])
     markov = transition_matrix_v21(h1['close'])
     regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
@@ -2406,7 +2379,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     vr_bonus = 0
     if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
 
-    # V21: CPI bonus
+    # V21: CPI bonus (AGORA FUNCIONA PORQUE cpi_val ESTÁ DEFINIDO)
     cpi_bonus = 0
     if cpi_val >= 60: cpi_bonus = 12
     elif cpi_val >= 45: cpi_bonus = 8
@@ -2432,7 +2405,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     mc = monte_carlo_bootstrap(sim.get('RESULTS', []))
 
     # ═══ V21: CPI GATE — Nao operar se imprevisivel ═══
-    cpi_val = cpi.get('cpi', 0)
     cpi_regime = cpi.get('regime', 'ERROR')
 
     # ═══ SETUP DETECTION V21 — PREDICTABILITY-GATED ═══
@@ -2931,7 +2903,7 @@ if mode == "Analysis":
             # ── DISTRIBUTION ──
             # ═══ V21: PREDICTABILITY INDEX ═══
             st.markdown("## Predictability")
-            cpi_data = r.get('CPI', {})
+            cpi_data = data.get('CPI', {})
             cpi_v = cpi_data.get('cpi', 0)
             cpi_reg = cpi_data.get('regime', '?')
             comps = cpi_data.get('components', {})
@@ -2942,12 +2914,12 @@ if mode == "Analysis":
             pc3.metric("PermEn", f"{comps.get('pe',0):.0f}/25")
             pc4.metric("VR+ACF", f"{comps.get('vr',0)+comps.get('acf',0):.0f}/50")
 
-            mrkv = r.get('MARKOV', {})
-            spec = r.get('SPECTRAL', {})
+            mrkv = data.get('MARKOV', {})
+            spec = data.get('SPECTRAL', {})
             mc1, mc2, mc3 = st.columns(3)
             mc1.metric("Markov", "Dep Found" if mrkv.get('has_dependence') else "No Dep", mrkv.get('best_transition',''))
             mc2.metric("Cycles", f"{spec.get('dominant_period',0):.0f} bars" if spec.get('has_cycle') else "None")
-            mc3.metric("Regime Shift", r.get('REGIME_TRANSITION', 'STABLE'), r.get('RT_DETAIL',''))
+            mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
 
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
