@@ -12,13 +12,15 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import deque
-from scipy.stats import norm, median_abs_deviation
+from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist
+from itertools import permutations as _perms
+from math import factorial, log as math_log
 import time
 import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# SI-APATECO V20.0 — STATISTICAL EDGE ENGINE
+# SI-APATECO V21.0 — PREDICTABILITY ENGINE
 #
 # ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
 #
@@ -53,7 +55,7 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V20",
+    page_title="APATECO V21",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -612,10 +614,10 @@ class GeneratorModelV20:
                 p_value = 2 * (1 - norm.cdf(abs(z_chi)))
 
                 if ratio > 1.3:
-                    signal = "VOL_COMPRESS"
+                    signal = "VOL_OVEREXTENDED"
                     confidence = min((ratio - 1.0) / 0.5, 1.0) * 100
                 elif ratio < 1.0 / 1.3:
-                    signal = "VOL_EXPAND"
+                    signal = "VOL_COMPRESSED"
                     confidence = min((1.0 / ratio - 1.0) / 0.5, 1.0) * 100
                 else:
                     signal = "VOL_NORMAL"
@@ -629,17 +631,17 @@ class GeneratorModelV20:
 
             # CONSENSUS: multi-window agreement
             signals = [r['signal'] for r in results.values()]
-            if all(s == "VOL_COMPRESS" for s in signals):
-                consensus = "VOL_COMPRESS"
+            if all(s == "VOL_OVEREXTENDED" for s in signals):
+                consensus = "VOL_OVEREXTENDED"
                 consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
-            elif all(s == "VOL_EXPAND" for s in signals):
-                consensus = "VOL_EXPAND"
+            elif all(s == "VOL_COMPRESSED" for s in signals):
+                consensus = "VOL_COMPRESSED"
                 consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
-            elif signals.count("VOL_COMPRESS") >= 2:
-                consensus = "VOL_COMPRESS"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_COMPRESS") / 2, 100)
-            elif signals.count("VOL_EXPAND") >= 2:
-                consensus = "VOL_EXPAND"
+            elif signals.count("VOL_OVEREXTENDED") >= 2:
+                consensus = "VOL_OVEREXTENDED"
+                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_OVEREXTENDED") / 2, 100)
+            elif signals.count("VOL_COMPRESSED") >= 2:
+                consensus = "VOL_COMPRESSED"
                 consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_EXPAND") / 2, 100)
             else:
                 consensus = "VOL_NORMAL"
@@ -648,7 +650,7 @@ class GeneratorModelV20:
             # 🔴 BUG FIX #2: DIREÇÃO CONTRA O MOVIMENTO RECENTE
             lookback = min(100, len(df) - 1)
             recent_move = float(df['close'].iloc[-1] - df['close'].iloc[-lookback])
-            if consensus == "VOL_COMPRESS":
+            if consensus == "VOL_OVEREXTENDED":
                 compress_direction = "BEARISH" if recent_move > 0 else "BULLISH"
             else:
                 compress_direction = "NEUTRAL"
@@ -964,6 +966,358 @@ def volatility_clustering_test(series, window=20):
         return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
 
 # ==============================================================================
+
+
+# ==============================================================================
+# V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
+# ==============================================================================
+
+def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=400):
+    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico."""
+    try:
+        data = np.array(series.dropna().values[-max_n:], dtype=float)
+        n = len(data)
+        if n < 50: return 2.0, "CHAOTIC"
+        r = r_mult * np.std(data)
+        if r == 0: return 0.0, "CONSTANT"
+        def _count(tl):
+            cnt = 0
+            for i in range(n - tl):
+                for j in range(i + 1, n - tl):
+                    if np.max(np.abs(data[i:i+tl] - data[j:j+tl])) < r:
+                        cnt += 1
+            return cnt
+        B = _count(m)
+        A = _count(m + 1)
+        if B == 0 or A == 0: se = 2.5
+        else: se = -np.log(A / B)
+        if se < 0.4: regime = "HIGHLY_PREDICTABLE"
+        elif se < 0.8: regime = "PREDICTABLE"
+        elif se < 1.5: regime = "MODERATE"
+        else: regime = "CHAOTIC"
+        return round(float(se), 3), regime
+    except: return 2.0, "ERROR"
+
+# ==============================================================================
+# V21 ENGINE #2: PERMUTATION ENTROPY — Determinismo na ordem
+# ==============================================================================
+
+def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
+    """PE=0 deterministic, PE=1 random. PE < 0.85 = padrao detectavel."""
+    try:
+        data = np.array(series.dropna().values[-max_n:], dtype=float)
+        n = len(data)
+        if n < order * delay + 10: return 1.0, "RANDOM"
+        counts = {}
+        total = 0
+        for i in range(n - (order - 1) * delay):
+            pat = tuple(int(x) for x in np.argsort(data[i:i + order * delay:delay]))
+            counts[pat] = counts.get(pat, 0) + 1
+            total += 1
+        if total == 0: return 1.0, "RANDOM"
+        max_e = math_log(factorial(order))
+        if max_e == 0: return 1.0, "RANDOM"
+        entropy = 0.0
+        for c in counts.values():
+            p = c / total
+            if p > 0: entropy -= p * math_log(p)
+        pe = entropy / max_e
+        if pe < 0.75: regime = "DETERMINISTIC"
+        elif pe < 0.85: regime = "STRUCTURED"
+        elif pe < 0.95: regime = "WEAKLY_STRUCTURED"
+        else: regime = "RANDOM"
+        return round(float(pe), 4), regime
+    except: return 1.0, "ERROR"
+
+# ==============================================================================
+# V21 ENGINE #3: SPECTRAL ANALYSIS (FFT) — Ciclos ocultos no CSPRNG
+# ==============================================================================
+
+def spectral_analysis_v21(series, top_n=3, min_period=5, max_period=200):
+    """Encontra ciclos dominantes na serie de precos via FFT."""
+    try:
+        vals = np.array(series.dropna().values, dtype=float)
+        log_ret = np.diff(np.log(vals))
+        n = len(log_ret)
+        if n < 100: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+        log_ret = log_ret - np.mean(log_ret)
+        fft_v = np.fft.rfft(log_ret)
+        power = np.abs(fft_v) ** 2
+        freqs = np.fft.rfftfreq(n, d=1)
+        valid = []
+        for i in range(1, len(freqs)):
+            if freqs[i] > 0:
+                period = 1.0 / freqs[i]
+                if min_period <= period <= max_period:
+                    valid.append((period, power[i]))
+        if not valid: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+        valid.sort(key=lambda x: x[1], reverse=True)
+        mean_p = np.mean(power[1:])
+        cycles = []
+        for period, pwr in valid[:top_n]:
+            sig = pwr / mean_p if mean_p > 0 else 0
+            if sig > 3.0:
+                cycles.append({"period": round(period, 1), "significance": round(float(sig), 2)})
+        se = max((c['significance'] for c in cycles), default=0)
+        return {"has_cycle": len(cycles) > 0, "cycles": cycles,
+                "dominant_period": cycles[0]['period'] if cycles else 0,
+                "spectral_edge": round(float(se), 2)}
+    except: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+
+# ==============================================================================
+# V21 ENGINE #4: TRANSITION MATRIX (Markov Chain)
+# ==============================================================================
+
+def transition_matrix_v21(series, n_states=3, max_n=500):
+    """Detecta dependencias Markovianas nos retornos."""
+    try:
+        vals = np.array(series.dropna().values[-max_n:], dtype=float)
+        log_ret = np.diff(np.log(vals))
+        n = len(log_ret)
+        if n < 80: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
+                           "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+                           "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+        thr = np.percentile(log_ret, [33.3, 66.7])
+        states = np.digitize(log_ret, thr)
+        mat = np.zeros((n_states, n_states))
+        for i in range(len(states) - 1):
+            mat[states[i], states[i + 1]] += 1
+        row_s = mat.sum(axis=1, keepdims=True); row_s[row_s == 0] = 1
+        prob = mat / row_s
+        exp = np.outer(mat.sum(axis=1), mat.sum(axis=0)) / max(mat.sum(), 1)
+        exp[exp == 0] = 1e-10
+        chi2_val = float(np.sum((mat - exp) ** 2 / exp))
+        df = (n_states - 1) ** 2
+        p_val = 1 - chi2_dist.cdf(chi2_val, df)
+        has_dep = p_val < 0.05
+        labels = ["DOWN", "NEUTRAL", "UP"]
+        max_dev = 0; best_t = ""
+        for i in range(n_states):
+            for j in range(n_states):
+                d = abs(prob[i, j] - 1.0 / n_states)
+                if d > max_dev: max_dev = d; best_t = f"{labels[i]}->{labels[j]}: {prob[i,j]:.2f}"
+        return {"has_dependence": has_dep, "chi2": round(chi2_val, 2),
+                "p_value": round(float(p_val), 4), "transition_edge": round(float(max_dev * 100), 1),
+                "best_transition": best_t,
+                "p_reversal_up": round(float(prob[0, 2]), 3) if n_states > 2 else 0.33,
+                "p_reversal_down": round(float(prob[2, 0]), 3) if n_states > 2 else 0.33,
+                "p_momentum_up": round(float(prob[2, 2]), 3) if n_states > 2 else 0.33,
+                "p_momentum_down": round(float(prob[0, 0]), 3) if n_states > 2 else 0.33,
+                "matrix": {labels[i]: {labels[j]: round(float(prob[i,j]),3) for j in range(n_states)} for i in range(n_states)}}
+    except: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
+                    "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+                    "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+
+# ==============================================================================
+# V21 ENGINE #5: COMPOUND PREDICTABILITY INDEX (CPI)
+# ==============================================================================
+
+def compound_predictability_index(series, vr_r=None, acf_r=None):
+    """CPI 0-100. >60=FORTE, 35-60=MODERADO, <35=FRACO (nao operar)."""
+    try:
+        se_val, _ = sample_entropy_v21(series)
+        se_sc = max(0, 25 - se_val * 12.5)
+        pe_val, _ = permutation_entropy_v21(series)
+        pe_sc = max(0, 25 - pe_val * 25)
+        if vr_r is None: vr_r = variance_ratio_test(series)
+        vr_sc = min(25, vr_r.get('n_significant', 0) * 6.25) if vr_r.get('has_edge') else 0
+        if acf_r is None: acf_r = autocorrelation_analysis(series)
+        acf_sc = min(25, len(acf_r.get('significant_lags', [])) * 6.25)
+        cpi = se_sc + pe_sc + vr_sc + acf_sc
+        if cpi >= 60: regime = "HIGHLY_PREDICTABLE"
+        elif cpi >= 45: regime = "PREDICTABLE"
+        elif cpi >= 35: regime = "MODERATE"
+        else: regime = "UNPREDICTABLE"
+        return {"cpi": round(float(cpi), 1), "regime": regime,
+                "components": {"se": round(float(se_sc),1), "pe": round(float(pe_sc),1),
+                               "vr": round(float(vr_sc),1), "acf": round(float(acf_sc),1)},
+                "se_raw": se_val, "pe_raw": pe_val}
+    except: return {"cpi": 0, "regime": "ERROR", "components": {}, "se_raw": 2.0, "pe_raw": 1.0}
+
+# ==============================================================================
+# V21 ENGINE #6: REGIME TRANSITION DETECTION
+# ==============================================================================
+
+def detect_regime_transition(df, lb_cur=30, lb_past=80):
+    """Detecta MUDANCAS de regime (mais lucrativo que regime estatico)."""
+    try:
+        if len(df) < lb_past + 20: return "STABLE", 1.0, ""
+        cur_r, cur_sc = classify_regime(df, lookback=lb_cur)
+        past_r, past_sc = classify_regime(df.iloc[:-lb_cur], lookback=min(lb_past, len(df) - lb_cur - 1))
+        adx_now = df['ADX'].iloc[-1]; adx_past = df['ADX'].iloc[-lb_cur] if len(df) > lb_cur else adx_now
+        adx_acc = adx_now - adx_past
+        bb_now = df['BB_width'].iloc[-1]; bb_past = df['BB_width'].iloc[-lb_cur] if len(df) > lb_cur else bb_now
+        bb_ch = (bb_now - bb_past) / bb_past if bb_past > 0 else 0
+        if "RANGING" in past_r and "TRENDING" in cur_r:
+            return "BREAKOUT_TRANSITION", 1.4, f"Range->Trend (ADX +{adx_acc:.1f})"
+        elif "TRENDING" in past_r and "RANGING" in cur_r:
+            return "EXHAUSTION", 0.5, f"Trend->Range (ADX {adx_acc:.1f})"
+        elif "RANGING" in past_r and "RANGING" in cur_r and bb_ch < -0.3:
+            return "COMPRESSION_BUILDING", 1.2, f"Squeeze (BB {bb_ch:.0%})"
+        elif "TRENDING" in past_r and "TRENDING" in cur_r and adx_acc > 5:
+            return "TREND_ACCEL", 1.3, f"Accel (ADX +{adx_acc:.1f})"
+        elif "TRENDING" in past_r and "TRENDING" in cur_r and adx_acc < -5:
+            return "TREND_DECEL", 0.7, f"Decel (ADX {adx_acc:.1f})"
+        return "STABLE", 1.0, ""
+    except: return "STABLE", 1.0, ""
+
+# ==============================================================================
+# V21 FIX-B: DYNAMIC BIAS com Score de Confianca
+# ==============================================================================
+
+def calculate_dynamic_bias(h4, h1):
+    """Bias com score -80 a +80. Substitui comparacao binaria."""
+    try:
+        c4 = h4.iloc[-1]; c1 = h1.iloc[-1]
+        sc = 0.0
+        if c4['ATR'] > 0:
+            dist_a = (c4['close'] - c4['EMA_200']) / c4['ATR']
+            sc += max(-20, min(20, dist_a * 4))
+        if len(h4) > 20 and c4['ATR'] > 0:
+            sl = (h4['EMA_200'].iloc[-1] - h4['EMA_200'].iloc[-20]) / (c4['ATR'] * 20)
+            sc += max(-15, min(15, sl * 50))
+        if c4['EMA_20'] > c4['EMA_50'] > c4['EMA_200']: sc += 20
+        elif c4['EMA_20'] < c4['EMA_50'] < c4['EMA_200']: sc -= 20
+        elif c4['EMA_20'] > c4['EMA_50']: sc += 8
+        elif c4['EMA_20'] < c4['EMA_50']: sc -= 8
+        h1_bull = c1['close'] > c1['EMA_200']; h4_bull = c4['close'] > c4['EMA_200']
+        if h1_bull == h4_bull: sc += 15 if h1_bull else -15
+        if len(h4) >= 3:
+            hn = h4['MACD_hist'].iloc[-1]; hp = h4['MACD_hist'].iloc[-2]
+            if hn > hp and hn > 0: sc += 10
+            elif hn < hp and hn < 0: sc -= 10
+            elif hn > hp: sc += 5
+            elif hn < hp: sc -= 5
+        if sc > 15: bias = "BULLISH"
+        elif sc < -15: bias = "BEARISH"
+        else: bias = "NEUTRAL"
+        conf = min(abs(sc), 80) / 80 * 100
+        return bias, round(float(conf), 1), round(float(sc), 1)
+    except: return "NEUTRAL", 0.0, 0.0
+
+# ==============================================================================
+# V21 PREC #1: ENHANCED MOMENTUM (0-100)
+# ==============================================================================
+
+def enhanced_momentum_v21(h4, h1, m15, direction):
+    """Multi-dimensional momentum: MACD hist + RSI zone + DI."""
+    try:
+        sc = 0.0; is_b = direction == "BULLISH"
+        for tf, w in [(h4, 15), (h1, 12), (m15, 8)]:
+            if len(tf) >= 3:
+                h = tf['MACD_hist']
+                acc = h.iloc[-1] - h.iloc[-2]
+                if is_b:
+                    if h.iloc[-1] > 0 and acc > 0: sc += w
+                    elif h.iloc[-1] > 0: sc += w * 0.5
+                    elif acc > 0: sc += w * 0.3
+                else:
+                    if h.iloc[-1] < 0 and acc < 0: sc += w
+                    elif h.iloc[-1] < 0: sc += w * 0.5
+                    elif acc < 0: sc += w * 0.3
+        rsi = h1['RSI'].iloc[-1] if pd.notna(h1['RSI'].iloc[-1]) else 50
+        if is_b:
+            if 45 < rsi < 65: sc += 25
+            elif 35 < rsi < 45: sc += 15
+            elif rsi > 70: sc += 5
+        else:
+            if 35 < rsi < 55: sc += 25
+            elif 55 < rsi < 65: sc += 15
+            elif rsi < 30: sc += 5
+        c1 = h1.iloc[-1]
+        dip = c1.get('+DI', 0) if pd.notna(c1.get('+DI', np.nan)) else 0
+        dim = c1.get('-DI', 0) if pd.notna(c1.get('-DI', np.nan)) else 0
+        if dip + dim > 0:
+            ds = abs(dip - dim) / (dip + dim)
+            if is_b and dip > dim: sc += min(20, ds * 40)
+            elif not is_b and dim > dip: sc += min(20, ds * 40)
+        return round(min(100, sc), 1)
+    except: return 0.0
+
+# ==============================================================================
+# V21 PREC #2: EDGE CORRELATION MATRIX
+# ==============================================================================
+
+def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
+                                 divergence, fib_level, sr_touch, align_type, vol_confirmed):
+    """Conta confluencias INDEPENDENTES (nao correlacionadas)."""
+    try:
+        groups = {}
+        g1 = 0
+        if vr.get('has_edge') and vr.get('dominant_type') == 'MEAN_REVERT': g1 += 1
+        if acf.get('has_pattern') and acf.get('dominant_type') == 'MEAN_REVERT': g1 += 0.5
+        if hurst_val < 0.48: g1 += 0.5
+        groups['STAT_MR'] = min(1.0, g1)
+        g2 = 0
+        if vr.get('has_edge') and vr.get('dominant_type') == 'TRENDING': g2 += 1
+        if acf.get('has_pattern') and acf.get('dominant_type') == 'MOMENTUM': g2 += 0.5
+        if hurst_val > 0.53: g2 += 0.5
+        groups['STAT_TREND'] = min(1.0, g2)
+        groups['GENERATOR'] = 1.0 if gen_bonus > 0 else 0.0
+        g4 = 0
+        if abs(zscore) > 1.5: g4 += 0.5
+        if dist.get('percentile', 50) < 15 or dist.get('percentile', 50) > 85: g4 += 0.5
+        groups['DISTRIBUTION'] = min(1.0, g4)
+        groups['PATTERNS'] = min(1.0, 0.7 if divergence else 0.0)
+        g6 = 0
+        if fib_level: g6 += 0.4
+        if sr_touch: g6 += 0.3
+        if align_type not in ["NONE", None]: g6 += 0.3
+        groups['STRUCTURE'] = min(1.0, g6)
+        groups['VOLUME'] = 1.0 if vol_confirmed else 0.0
+        n_act = sum(1 for v in groups.values() if v >= 0.5)
+        tot = sum(groups.values())
+        ql = "ELITE" if n_act >= 5 else "STRONG" if n_act >= 4 else "MODERATE" if n_act >= 3 else "WEAK"
+        return {"n_independent": n_act, "total_strength": round(tot, 1), "groups": groups, "quality": ql}
+    except: return {"n_independent": 0, "total_strength": 0, "groups": {}, "quality": "WEAK"}
+
+# ==============================================================================
+# V21 PREC #3: OPTIMAL HOLDING PERIOD
+# ==============================================================================
+
+def optimal_holding_period(acf_result, setup_type):
+    """Calcula tempo otimo de trade baseado no edge decay."""
+    try:
+        base = {"SWING": 40, "DAY": 20, "MEAN_REVERSION": 15,
+                "GEN_VOL_COMPRESS": 25, "GEN_SPIKE_DRIFT": 30,
+                "GEN_STEP_REVERT": 12, "GEN_PRICE_DEV": 20,
+                "BREAKOUT": 35, "PERFECT_STORM": 60}
+        mc = base.get(setup_type, 30)
+        sig_l = acf_result.get('significant_lags', [])
+        if sig_l:
+            ml = max(sig_l); hl = ml * 3
+            mc = min(mc, max(10, hl * 2))
+        return {"max_candles": int(mc), "time_stop": int(mc * 1.5), "edge_halflife": int(mc // 2)}
+    except: return {"max_candles": 30, "time_stop": 45, "edge_halflife": 15}
+
+# ==============================================================================
+# V21 PREC #4: CONDITIONAL ENTRY ENGINE
+# ==============================================================================
+
+def conditional_entry_v21(setup_type, direction, price, ema20, ema50, atr, bb_lo, bb_hi):
+    """Calcula preco de entrada ideal em vez de entrar no close."""
+    try:
+        is_l = "LONG" in str(direction) or "BULLISH" in str(direction)
+        if setup_type == "SWING":
+            if is_l:
+                ideal = max(ema20 - atr * 0.2, (ema20 + ema50) / 2)
+                return (price, "MARKET_IN_ZONE") if price < ideal + atr * 0.3 else (ideal, "LIMIT_VALUE_ZONE")
+            else:
+                ideal = min(ema20 + atr * 0.2, (ema20 + ema50) / 2)
+                return (price, "MARKET_IN_ZONE") if price > ideal - atr * 0.3 else (ideal, "LIMIT_VALUE_ZONE")
+        elif setup_type == "MEAN_REVERSION":
+            if is_l:
+                ideal = bb_lo + atr * 0.3
+                return (price, "MARKET_BB_ZONE") if price < ideal + atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
+            else:
+                ideal = bb_hi - atr * 0.3
+                return (price, "MARKET_BB_ZONE") if price > ideal - atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
+        elif "BREAKOUT" in str(setup_type):
+            return (price - atr * 0.3, "LIMIT_PULLBACK") if is_l else (price + atr * 0.3, "LIMIT_PULLBACK")
+        return price, "MARKET"
+    except: return price, "MARKET"
+
+
 # DISTRIBUIÇÃO V20 (mantido do V19, corrigido)
 # ==============================================================================
 
@@ -1160,7 +1514,9 @@ def calculate_adx(df, window=14):
     df['+DI']=(df['+DM_E']/df['TR_E'])*100; df['-DI']=(df['-DM_E']/df['TR_E'])*100
     di_sum=(df['+DI']+df['-DI']).replace(0,np.nan); df['DX']=(abs(df['+DI']-df['-DI'])/di_sum)*100
     df['ADX']=df['DX'].ewm(span=window,adjust=False).mean()
-    df.drop(columns=['trh','trc','trl','TR','+DM','-DM','TR_E','+DM_E','-DM_E','DX'],inplace=True); return df
+    df.drop(columns=['trh','trc','trl','TR','+DM','-DM','TR_E','+DM_E','-DM_E','DX'],inplace=True)
+    # V21: +DI and -DI PRESERVED (not dropped)
+    return df
 
 def calculate_zscore(series, window=50):
     mean = series.rolling(window=window).mean(); std = series.rolling(window=window).std()
@@ -1528,8 +1884,8 @@ def detect_swing_level(df, direction, atr_mult=1.5):
 # 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
 # ==============================================================================
 
-def run_walk_forward_v20(df, bias, profile, gen_analysis, vr_test, acf_test, n_folds=4):
-    """V20: Backtest testa setups Generator + Clássicos + Mean Reversion"""
+def run_walk_forward_v21(df, bias, profile, n_folds=4):
+    """V21: VR e ACF recalculados POR FOLD (sem look-ahead bias)"""
     spread = profile.get('spread', 0.05)
     sl_mult = profile.get('sl_atr_mult', 2.5)
     fold_size = len(df) // (n_folds + 1)
@@ -1542,6 +1898,11 @@ def run_walk_forward_v20(df, bias, profile, gen_analysis, vr_test, acf_test, n_f
             break
         si = max(200, ts)
 
+        # V21 FIX-A: Recalcular edge tests usando APENAS dados de treino
+        train_data = df.iloc[:ts]
+        fold_vr = variance_ratio_test(train_data['close'])
+        fold_acf = autocorrelation_analysis(train_data['close'])
+
         for i in range(si, min(te, len(df) - 60)):
             row = df.iloc[i]
             if pd.isna(row['ADX']) or pd.isna(row['ATR']) or row['ATR'] == 0:
@@ -1551,8 +1912,8 @@ def run_walk_forward_v20(df, bias, profile, gen_analysis, vr_test, acf_test, n_f
             entry = sl = risk = 0
             setup = "NONE"
 
-            # SETUP 1: TREND (clássico melhorado)
-            if row['ADX'] > profile.get('adx_strong', 25):
+            # SETUP 1: TREND (V21: ADX minimo 22, nao 15)
+            if row['ADX'] > max(profile.get('adx_strong', 25), 22):
                 if bias == "BULLISH" and row['close'] > row['EMA_200'] and row['RSI'] < 60:
                     sig = "BUY"; setup = "SWING"
                 elif bias == "BEARISH" and row['close'] < row['EMA_200'] and row['RSI'] > 40:
@@ -1568,7 +1929,7 @@ def run_walk_forward_v20(df, bias, profile, gen_analysis, vr_test, acf_test, n_f
                         sig = "SELL"; setup = "MEAN_REVERSION"
 
             # SETUP 3: VOL COMPRESS (se edge detectado por VR)
-            if not sig and vr_test.get('has_edge') and vr_test.get('dominant_type') == 'MEAN_REVERT':
+            if not sig and fold_vr.get('has_edge') and fold_vr.get('dominant_type') == 'MEAN_REVERT':
                 z = row.get('ZSCORE', 0)
                 if pd.notna(z) and z < -1.0:
                     sig = "BUY"; setup = "VOL_COMPRESS"
@@ -1576,7 +1937,7 @@ def run_walk_forward_v20(df, bias, profile, gen_analysis, vr_test, acf_test, n_f
                     sig = "SELL"; setup = "VOL_COMPRESS"
 
             # SETUP 4: ACF MOMENTUM (se autocorrelação significativa)
-            if not sig and acf_test.get('has_pattern') and acf_test.get('dominant_type') == 'MOMENTUM':
+            if not sig and fold_acf.get('has_pattern') and fold_acf.get('dominant_type') == 'MOMENTUM':
                 if i >= 2:
                     prev_ret = df['close'].iloc[i] - df['close'].iloc[i-1]
                     if prev_ret > atr * 0.3:
@@ -1713,6 +2074,7 @@ class SetupScore:
     volume_bonus:float; hurst_bonus:float; zscore_bonus:float
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
+    cpi_bonus:float; markov_bonus:float; spectral_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
@@ -1725,18 +2087,19 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     base=ts+mp+pattern_score+vs+hs
     keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
           'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
-          'generator_bonus','distribution_bonus','vr_bonus','acf_bonus']
-    bonus=min(sum(bonuses.get(k,0) for k in keys),70)  # V20: max 70
+          'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
+          'cpi_bonus','markov_bonus','spectral_bonus']
+    bonus=min(sum(bonuses.get(k,0) for k in keys),100)  # V21: max 100
     total=base+bonus
-    if total>=160: g="S"
-    elif total>=135: g="A++"
-    elif total>=105: g="A+"
-    elif total>=80: g="A"
-    elif total>=55: g="B"
-    elif total>=35: g="C"
+    if total>=175: g="S"
+    elif total>=145: g="A++"
+    elif total>=115: g="A+"
+    elif total>=85: g="A"
+    elif total>=60: g="B"
+    elif total>=40: g="C"
     else: g="D"
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
-        *[bonuses.get(k,0) for k in keys], bonus,total,g)
+        *[bonuses.get(k,0) for k in keys],bonus,total,g)
 
 # ==============================================================================
 # STORM DETECTOR V20
@@ -1871,31 +2234,34 @@ def convert_np(obj):
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V20.0 — STATISTICAL EDGE ENGINE [Gemini 3 Pro]
+FUNÇÃO: ANALISTA V21.0 — PREDICTABILITY ENGINE [Gemini 3 Pro]
 Missão: Explorar edges estatísticos reais nos sintéticos Deriv
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V20.0 — 20 CORREÇÕES DA ANÁLISE CIRÚRGICA:**
-- Sigma calibrado do histórico real (não inventado)
-- VOL_COMPRESS com direção CONTRA o movimento
-- Crash/Boom drift por regressão linear + spike decay model
-- Backtest testa CADA tipo de setup separadamente
-- Monte Carlo bootstrap dos resultados REAIS
-- Variance Ratio Test (detecta se há edge)
-- Autocorrelação de retornos (padrão explorável)
-- Vol Clustering (GARCH)
-- Preço teórico vs real (GBM z-score)
-- Multi-window vol analysis (3 janelas)
-- Smart TP com S/R awareness
-- Trigger candle confirmation
-- Hurst com validação R²
-- Kelly Criterion contínuo
+**V21.0 — PREDICTABILITY ENGINE (V20 + 16 melhorias):**
+Base V20 (20 correções) PLUS:
+- Sample Entropy (previsibilidade do gerador CSPRNG)
+- Permutation Entropy (determinismo na ordem)
+- Spectral Analysis FFT (ciclos ocultos)
+- Transition Matrix Markov (dependências sequenciais)
+- Compound Predictability Index CPI 0-100
+- Regime Transition Detection (early swing capture)
+- Dynamic Bias com score de confiança (não binário)
+- Enhanced Momentum (MACD hist + RSI zone + DI spread)
+- Edge Correlation Matrix (confluência real vs inflada)
+- Optimal Holding Period (time-stop por edge decay)
+- Look-ahead bias removido do backtest (VR/ACF por fold)
+- +DI/-DI preservados do cálculo ADX
+- DAY setup não é mais catch-all (ADX mínimo 22)
+- VOL naming corrigido (OVEREXTENDED vs COMPRESSED)
+- Breakout com confirmação real (close > SR)
+- CPI gate: bloqueia trades em séries imprevisíveis
 
 **FORMATO:**
 
 ## ⚡ VEREDICTO V20.0: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/170
+**Grade:** {GRADE} | **Score:** {SCORE}/200 | **CPI:** {CPI}/100
 **Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
 
 ### 🧮 MODELO DO GERADOR
@@ -1932,11 +2298,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     c1, c4, cm = h1.iloc[-1], h4.iloc[-1], m15.iloc[-1]
     c5 = m5.iloc[-1] if m5 is not None and len(m5) > 0 else None
 
-    bias = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
+    # V21 FIX-B: Dynamic Bias
+    bias, bias_confidence, bias_score = calculate_dynamic_bias(h4, h1)
+    bias_old = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
+    if bias == "NEUTRAL": bias = bias_old  # fallback
     adx = c4['ADX']
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
-    momentum = check_momentum(h4, h1, m15, bias)
+    momentum_old = check_momentum(h4, h1, m15, bias)
+    momentum_v21 = enhanced_momentum_v21(h4, h1, m15, bias)
+    momentum = momentum_old  # keep for scoring compatibility
 
     # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
@@ -1960,6 +2331,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     acf = autocorrelation_analysis(h1['close'])
     vol_cluster = volatility_clustering_test(h1['close'])
     dist = DistributionAnalyzer.analyze(h1)
+
+    # ═══ V21 PREDICTABILITY ENGINES ═══
+    cpi = compound_predictability_index(h1['close'], vr, acf)
+    spectral = spectral_analysis_v21(h1['close'])
+    markov = transition_matrix_v21(h1['close'])
+    regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
 
     # ═══ CLASSIC STATS ═══
     hurst_val, hurst_regime, hurst_r2 = calculate_hurst_exponent(h1['close'])
@@ -1994,7 +2371,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # BONUSES V20
     gen_bonus = 0; gen_signal = gen.get('signal', 'NEUTRAL')
     if gen_type == "GBM":
-        if gen.get('consensus') in ["VOL_COMPRESS","VOL_EXPAND"] and gen.get('consensus_confidence',0) > 30:
+        if gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 30:
             gen_bonus = min(int(gen['consensus_confidence'] / 8), 12)
         if abs(gen.get('z_price',0)) > 2:
             gen_bonus += 5
@@ -2028,11 +2405,25 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     vr_bonus = 0
     if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
+
+    # V21: CPI bonus
+    cpi_bonus = 0
+    if cpi_val >= 60: cpi_bonus = 12
+    elif cpi_val >= 45: cpi_bonus = 8
+    elif cpi_val >= 35: cpi_bonus = 4
+
+    # V21: Markov bonus
+    markov_bonus = 0
+    if markov.get('has_dependence'): markov_bonus = min(int(markov.get('transition_edge',0) / 2), 8)
+
+    # V21: Spectral bonus
+    spectral_bonus = 0
+    if spectral.get('has_cycle'): spectral_bonus = min(int(spectral.get('spectral_edge',0) * 2), 8)
     acf_bonus = 0
     if acf.get('has_pattern'): acf_bonus = min(len(acf.get('significant_lags',[]))*3, 10)
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
-    sim = run_walk_forward_v20(h1, bias, profile, gen, vr, acf, n_folds=4)
+    sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
 
     # ADAPTIVE (usa resultado do único backtest)
     adapted_profile = AdaptiveLearnerV20.adjust_profile(profile, sim, dist)
@@ -2040,7 +2431,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # 🔴 FIX #6: Monte Carlo REAL
     mc = monte_carlo_bootstrap(sim.get('RESULTS', []))
 
-    # ═══ SETUP DETECTION V20 — 🟡 EDGE #7: REGIME-SPECIFIC ═══
+    # ═══ V21: CPI GATE — Nao operar se imprevisivel ═══
+    cpi_val = cpi.get('cpi', 0)
+    cpi_regime = cpi.get('regime', 'ERROR')
+
+    # ═══ SETUP DETECTION V21 — PREDICTABILITY-GATED ═══
     sig = "MONITORING"; entry = float(c1['close']); sl_val = float(c1['close'])
     entry_type = "Wait"; sl_reason = "Pivot"; trade_style = None; setup_type = None
     vc = profile['vol_class']
@@ -2067,7 +2462,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         # TRANSITIONAL → Esperar ou size reduzido
 
         # 1. GENERATOR SETUPS (PRIORIDADE)
-        if gen_type == "GBM" and gen.get('consensus') == "VOL_COMPRESS" and gen.get('consensus_confidence',0) > 40:
+        if gen_type == "GBM" and gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 40:
             # 🔴 FIX #2: Direção CONTRA o movimento
             cd = gen.get('compress_direction','NEUTRAL')
             if (cd == "BULLISH" and is_long) or (cd == "BEARISH" and not is_long):
@@ -2134,7 +2529,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                     return
 
         # 3. DAY
-        if adx > adapted_profile.get('adx_trend_min',15):
+        # V21 FIX-C: DAY requires ADX >= 22 (not catch-all)
+        if adx > max(adapted_profile.get('adx_trend_min',15), 22):
             d = "LONG" if is_long else "SHORT"
             sig = f"{d} (DAY)"
             sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult']*0.8)
@@ -2144,9 +2540,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             return
 
         # 4. BREAKOUT
+        # V21 PREC #5: Breakout needs close ABOVE/BELOW SR (not just near)
         if sr_touch and closest_sr:
             bk_ok, bk_r = confirm_breakout_volume(m15)
-            if bk_ok:
+            broke_through = (is_long and c1['close'] > closest_sr['price'] + c1['ATR']*0.1) or \
+                            (not is_long and c1['close'] < closest_sr['price'] - c1['ATR']*0.1)
+            if bk_ok and broke_through:
                 d = "LONG" if is_long else "SHORT"
                 sig = f"{d} (BREAKOUT)"
                 sl_val = closest_sr['price'] - c1['ATR'] if is_long else closest_sr['price'] + c1['ATR']
@@ -2186,6 +2585,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         sig = sig.replace("LONG","LONG ⭐STORM⭐").replace("SHORT","SHORT ⭐STORM⭐")
         setup_type = "PERFECT_STORM"
 
+    # V21: Independent Edge Correlation
+    indep_edges = calculate_independent_edges(
+        vr, acf, hurst_val, gen_bonus, dist, z_current,
+        divergence, fib_level, sr_touch, align_type, vol_confirmed)
+
     final_db = 0
     if divergence and (("LONG" in sig and "BULLISH" in str(divergence)) or ("SHORT" in sig and "BEARISH" in str(divergence))):
         final_db = abs(div_bonus)
@@ -2199,7 +2603,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         regime_bonus=regime_bonus, volume_bonus=vol_bonus,
         hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
         consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
-        distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus)
+        distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
+        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus)
 
     # Filters
     configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
@@ -2210,6 +2615,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if "BLOCKED" not in sig and sig != "MONITORING":
         fails = []
         if score.total < ms: fails.append(f"SCORE={score.total:.0f}<{ms}")
+        if cpi_val < 25 and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<25")
         if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
         if sim['PF'] < mpf and not is_gen_setup: fails.append(f"PF={sim['PF']}<{mpf}")
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
@@ -2236,7 +2642,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
     ]
 
+    # V21: Optimal holding
+    hold = optimal_holding_period(acf, setup_type)
+
     confs = []
+    if cpi_val >= 45: confs.append(f"\U0001f9e0 CPI: {cpi_val:.0f} ({cpi_regime})")
+    if markov.get('has_dependence'): confs.append(f"\U0001f52e Markov: {markov['best_transition']}")
+    if spectral.get('has_cycle'): confs.append(f"\U0001f4c8 Cycle: {spectral['dominant_period']:.0f} bars")
+    if rt_detail: confs.append(f"\U0001f504 {regime_transition}: {rt_detail}")
     if gen_bonus>0: confs.append(f"🧮 Gen: {gen_signal} (+{gen_bonus})")
     if vr.get('has_edge'): confs.append(f"📐 VR: {vr['dominant_type']} ({vr.get('n_significant',0)} sig)")
     if acf.get('has_pattern'): confs.append(f"📊 ACF: {acf['dominant_type']} (lag-1={acf.get('acf_1',0):.3f})")
@@ -2253,6 +2666,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
 
     risks = []
+    if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
+    if regime_transition == "EXHAUSTION": risks.append("\u26a0\ufe0f Regime EXHAUSTION")
+    if indep_edges['quality'] == "WEAK": risks.append(f"\u26a0\ufe0f Edges WEAK ({indep_edges['n_independent']} indep)")
     if "RANGING" in regime: risks.append("⚠️ RANGING")
     if not sim['WF_STABLE']: risks.append("⚠️ WF instável")
     if mc.get('positive_pct',0)<55: risks.append(f"⚠️ MC {mc['positive_pct']}%")
@@ -2293,6 +2709,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "TP1": float(round(tp1,5)), "TP2": float(round(tp2,5)),
         "PYRAMID": convert_np(pyramid), "ADAPTED_PROFILE": convert_np({k:v for k,v in adapted_profile.items() if k in ['risk_mult','sl_atr_mult','tp2_r']}),
         "IMAGES": imgs, "ATR": float(c1['ATR']),
+        "CPI": convert_np(cpi), "CPI_VAL": cpi_val,
+        "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
+        "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
+        "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
+        "MOMENTUM_V21": momentum_v21,
+        "INDEPENDENT_EDGES": convert_np(indep_edges),
+        "HOLDING_PERIOD": convert_np(hold),
         "SCORE_BREAKDOWN": convert_np({
             "ADX":score.trend_strength,"MOM":score.momentum_align,"PAT":score.patterns,
             "VAL":score.value_zone,"HIST":score.historical,
@@ -2300,7 +2723,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "ALIGN":score.alignment_bonus,"STORM":score.storm_bonus,"REGIME":score.regime_bonus,
             "VOL":score.volume_bonus,"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
             "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
-            "VR":score.vr_bonus,"ACF":score.acf_bonus
+            "VR":score.vr_bonus,"ACF":score.acf_bonus,
+            "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus
         }),
     }
 
@@ -2336,11 +2760,17 @@ async def quick_scan(code, name):
         if gen.get('signal','NEUTRAL') not in ['NEUTRAL','VOL_NORMAL']: qs += 20
         if vr.get('has_edge'): qs += 15
         if "TRENDING" in regime: qs += 8
+        # V21: CPI in scanner
+        cpi_r = compound_predictability_index(df['close'], vr)
+        cpi_v = cpi_r.get('cpi', 0)
+        if cpi_v >= 50: qs += 15
+        elif cpi_v >= 35: qs += 8
         bias = "BULLISH" if c['close'] > c['EMA_200'] else "BEARISH"
         return {"name":name,"code":code,"score":qs,"bias":bias,"adx":round(c['ADX'],1),
                 "hurst":round(hurst_val,3),"zscore":round(z,2),"regime":regime,
                 "gen_signal":gen.get('signal','N/A'),"vr_edge":vr.get('has_edge',False),
-                "vr_type":vr.get('dominant_type','?'),"profile":profile['vol_class']}
+                "cpi":round(cpi_v,1),
+                "vr_type":vr.get('dominant_type','?'),"cpi_regime":cpi_r.get('regime','?'),"profile":profile['vol_class']}
     except: return None
 
 # ==============================================================================
@@ -2384,7 +2814,7 @@ with st.sidebar:
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Statistical Edge Engine v20</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V21</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -2499,6 +2929,26 @@ if mode == "Analysis":
                        f"R² = {data.get('HURST_R2',0):.2f}")
 
             # ── DISTRIBUTION ──
+            # ═══ V21: PREDICTABILITY INDEX ═══
+            st.markdown("## Predictability")
+            cpi_data = r.get('CPI', {})
+            cpi_v = cpi_data.get('cpi', 0)
+            cpi_reg = cpi_data.get('regime', '?')
+            comps = cpi_data.get('components', {})
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            cpi_color = '#22c55e' if cpi_v >= 60 else '#f59e0b' if cpi_v >= 35 else '#ef4444'
+            pc1.metric("CPI", f"{cpi_v:.0f}/100", cpi_reg)
+            pc2.metric("SampleEn", f"{comps.get('se',0):.0f}/25")
+            pc3.metric("PermEn", f"{comps.get('pe',0):.0f}/25")
+            pc4.metric("VR+ACF", f"{comps.get('vr',0)+comps.get('acf',0):.0f}/50")
+
+            mrkv = r.get('MARKOV', {})
+            spec = r.get('SPECTRAL', {})
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Markov", "Dep Found" if mrkv.get('has_dependence') else "No Dep", mrkv.get('best_transition',''))
+            mc2.metric("Cycles", f"{spec.get('dominant_period',0):.0f} bars" if spec.get('has_cycle') else "None")
+            mc3.metric("Regime Shift", r.get('REGIME_TRANSITION', 'STABLE'), r.get('RT_DETAIL',''))
+
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
             d1, d2, d3, d4 = st.columns(4)
