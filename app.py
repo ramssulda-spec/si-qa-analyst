@@ -2885,7 +2885,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ V22 ENGINES ═══
     # Adaptive RSI (Cycle Tuned)
     dom_period = spectral.get('dominant_period')
-    rsi_adaptive, rsi_period = calculate_adaptive_rsi_v22(h1['close'], dom_period)
+    rsi_series, rsi_period = calculate_adaptive_rsi_v22(h1['close'], dom_period)
+    rsi_adaptive = float(rsi_series.iloc[-1]) if len(rsi_series) > 0 else 50.0
     
     # Step Asymmetry (Only for Step Index)
     step_asym = 0; step_regime = "NEUTRAL"
