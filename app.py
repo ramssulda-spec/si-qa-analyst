@@ -21,7 +21,37 @@ warnings.filterwarnings('ignore')
 
 # ==============================================================================
 # SI-APATECO V21.0 — PREDICTABILITY ENGINE
-# CORREÇÃO APLICADA: UnboundLocalError em cpi_val resolvido.
+#
+# ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
+#
+# 🔴 BUG FIX #1: periods_per_year auto-detectado (não hardcoded)
+# 🔴 BUG FIX #2: VOL_COMPRESS direção CONTRA o movimento recente
+# 🔴 BUG FIX #3: Crash/Boom drift segue cálculo real (não bias)
+# 🔴 BUG FIX #4: Backtest por TIPO DE SETUP (não só Swing)
+# 🔴 BUG FIX #5: Backtest roda 1× (não 2×)
+# 🔴 BUG FIX #6: Monte Carlo bootstrap REAL (não distribuição inventada)
+#
+# 🟠 MATH FIX #1: Sigma calibrado do histórico (não inventado)
+# 🟠 MATH FIX #2: Hurst com validação R²
+# 🟠 MATH FIX #3: Step Index escala correta (log-returns, não step_size)
+# 🟠 MATH FIX #4: Spike detection MAD-based (não std circular)
+# 🟠 MATH FIX #5: Crash/Boom drift por REGRESSÃO LINEAR (não média)
+#
+# 🟡 EDGE #1: Variance Ratio Test (detecta se há edge real)
+# 🟡 EDGE #2: Autocorrelação de Retornos (lag 1-5)
+# 🟡 EDGE #3: Volatility Clustering (GARCH effect)
+# 🟡 EDGE #4: Multi-TF Vol Ratio
+# 🟡 EDGE #5: Spike Decay Model (Crash/Boom timing)
+# 🟡 EDGE #6: Preço Teórico vs Real (GBM z-score)
+# 🟡 EDGE #7: Regime-Specific Strategy Selection
+# 🟡 EDGE #8: Entry Trigger Candle Confirmation
+#
+# 🟢 PRECISION #1: Multi-Window Vol Analysis (3 janelas)
+# 🟢 PRECISION #2: Trailing Stop por regime/tipo
+# 🟢 PRECISION #3: Dynamic TP com S/R awareness
+# 🟢 PRECISION #4: Scanner para TODOS gen types
+# 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
+# 🟢 PRECISION #6: M5 entry timing
 # ==============================================================================
 
 st.set_page_config(
@@ -612,7 +642,7 @@ class GeneratorModelV20:
                 consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_OVEREXTENDED") / 2, 100)
             elif signals.count("VOL_COMPRESSED") >= 2:
                 consensus = "VOL_COMPRESSED"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_EXPAND") / 2, 100)
+                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_COMPRESSED") / 2, 100)
             else:
                 consensus = "VOL_NORMAL"
                 consensus_confidence = 0
@@ -936,6 +966,415 @@ def volatility_clustering_test(series, window=20):
         return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
 
 # ==============================================================================
+# V21+ ENGINE: ADX SLOPE DETECTION — Early Trend Capture
+# ==============================================================================
+
+def adx_slope_analysis(df, lookback=14):
+    """Detects ADX acceleration BEFORE it crosses thresholds.
+    Rising ADX slope = trend forming. Falling = trend dying."""
+    try:
+        if len(df) < lookback + 5 or 'ADX' not in df.columns:
+            return {"slope": 0, "acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+        adx_series = df['ADX'].tail(lookback).dropna()
+        if len(adx_series) < 8:
+            return {"slope": 0, "acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+        x = np.arange(len(adx_series))
+        slope = np.polyfit(x, adx_series.values, 1)[0]
+        # Acceleration: slope of last half vs first half
+        mid = len(adx_series) // 2
+        slope_1 = np.polyfit(np.arange(mid), adx_series.values[:mid], 1)[0]
+        slope_2 = np.polyfit(np.arange(len(adx_series) - mid), adx_series.values[mid:], 1)[0]
+        acceleration = slope_2 - slope_1
+        adx_now = float(adx_series.iloc[-1])
+        if slope > 0.5 and acceleration > 0:
+            phase = "TREND_FORMING"
+            confidence = min(slope * 20 + acceleration * 30, 100)
+        elif slope > 0.3 and adx_now > 20:
+            phase = "TREND_ESTABLISHED"
+            confidence = min(adx_now * 1.5 + slope * 10, 100)
+        elif slope > 0.5 and acceleration < 0:
+            phase = "TREND_MATURING"
+            confidence = min(slope * 15, 80)
+        elif slope < -0.3:
+            phase = "TREND_DYING"
+            confidence = min(abs(slope) * 20, 80)
+        elif abs(slope) < 0.15 and adx_now < 20:
+            phase = "RANGE_FLAT"
+            confidence = 0
+        else:
+            phase = "TRANSITIONING"
+            confidence = min(abs(slope) * 15, 50)
+        return {
+            "slope": round(float(slope), 3),
+            "acceleration": round(float(acceleration), 3),
+            "phase": phase,
+            "adx_now": round(adx_now, 1),
+            "confidence": round(float(confidence), 1)
+        }
+    except:
+        return {"slope": 0, "acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+
+# ==============================================================================
+# V21+ ENGINE: EMA RIBBON SPREAD — Trend Strength Measurement
+# ==============================================================================
+
+def ema_ribbon_analysis(df):
+    """Measures EMA ribbon spread and ordering for trend quality.
+    Expanding ribbon = strong trend. Contracting = weakening."""
+    try:
+        if len(df) < 5 or not all(c in df.columns for c in ['EMA_20', 'EMA_50', 'EMA_200']):
+            return {"spread": 0, "expanding": False, "quality": "NONE", "direction": "NEUTRAL"}
+        c = df.iloc[-1]
+        e20, e50, e200 = float(c['EMA_20']), float(c['EMA_50']), float(c['EMA_200'])
+        atr = float(c['ATR']) if c['ATR'] > 0 else 1
+        # Normalized spreads
+        spread_20_50 = (e20 - e50) / atr
+        spread_50_200 = (e50 - e200) / atr
+        total_spread = abs(spread_20_50) + abs(spread_50_200)
+        # Check ordering
+        bull_order = e20 > e50 > e200
+        bear_order = e20 < e50 < e200
+        # Expansion check (compare with 5 bars ago)
+        if len(df) >= 6:
+            p = df.iloc[-6]
+            prev_spread = abs(float(p['EMA_20']) - float(p['EMA_50'])) / atr + abs(float(p['EMA_50']) - float(p['EMA_200'])) / atr
+            expanding = total_spread > prev_spread * 1.05
+            contracting = total_spread < prev_spread * 0.95
+        else:
+            expanding = False
+            contracting = False
+        # Quality
+        if (bull_order or bear_order) and expanding and total_spread > 3:
+            quality = "EXCELLENT"
+        elif (bull_order or bear_order) and total_spread > 2:
+            quality = "GOOD"
+        elif (bull_order or bear_order):
+            quality = "MODERATE"
+        elif abs(spread_20_50) < 0.5 and abs(spread_50_200) < 1:
+            quality = "COMPRESSED"
+        else:
+            quality = "MIXED"
+        direction = "BULLISH" if spread_20_50 > 0 and spread_50_200 > 0 else \
+                    "BEARISH" if spread_20_50 < 0 and spread_50_200 < 0 else "MIXED"
+        return {
+            "spread_20_50": round(spread_20_50, 2),
+            "spread_50_200": round(spread_50_200, 2),
+            "total_spread": round(total_spread, 2),
+            "expanding": expanding, "contracting": contracting,
+            "quality": quality, "direction": direction,
+            "bull_order": bull_order, "bear_order": bear_order,
+        }
+    except:
+        return {"spread": 0, "expanding": False, "quality": "NONE", "direction": "NEUTRAL"}
+
+# ==============================================================================
+# V21+ ENGINE: MULTI-TF TREND COHERENCE SCORING
+# ==============================================================================
+
+def multi_tf_trend_coherence(h4, h1, m15, m5=None):
+    """Scores how coherent the trend is across all timeframes.
+    Perfect coherence = highest confidence entries."""
+    try:
+        score = 0.0; details = []
+        for tf, name, weight in [(h4, "H4", 3.0), (h1, "H1", 2.0), (m15, "M15", 1.5), (m5, "M5", 1.0)]:
+            if tf is None or len(tf) < 20:
+                continue
+            c = tf.iloc[-1]
+            # EMA alignment direction
+            if c['EMA_20'] > c['EMA_50'] > c['EMA_200']:
+                tf_dir = "BULL"
+            elif c['EMA_20'] < c['EMA_50'] < c['EMA_200']:
+                tf_dir = "BEAR"
+            else:
+                tf_dir = "MIXED"
+            # MACD confirmation
+            macd_bull = c['MACD_hist'] > 0
+            # RSI zone
+            rsi = c.get('RSI', 50)
+            rsi_ok = (40 < rsi < 70) if tf_dir == "BULL" else (30 < rsi < 60) if tf_dir == "BEAR" else True
+            # ADX trending
+            adx = c.get('ADX', 0)
+            trending = adx > 20
+            # Score this TF
+            tf_score = 0
+            if tf_dir in ["BULL", "BEAR"]:
+                tf_score += 1.0
+                if (tf_dir == "BULL" and macd_bull) or (tf_dir == "BEAR" and not macd_bull):
+                    tf_score += 0.5
+                if rsi_ok:
+                    tf_score += 0.3
+                if trending:
+                    tf_score += 0.2
+            score += tf_score * weight
+            details.append({"tf": name, "dir": tf_dir, "score": round(tf_score * weight, 1)})
+        max_score = 3.0 * 2.0 + 2.0 * 2.0 + 1.5 * 2.0 + (1.0 * 2.0 if m5 is not None else 0)
+        normalized = score / max_score * 100 if max_score > 0 else 0
+        # Coherence: check if all TFs agree on direction
+        dirs = [d['dir'] for d in details if d['dir'] != "MIXED"]
+        if dirs and all(d == dirs[0] for d in dirs):
+            coherence = "PERFECT"
+            coherent_dir = "BULLISH" if dirs[0] == "BULL" else "BEARISH"
+        elif dirs and dirs.count(dirs[0]) >= len(dirs) * 0.7:
+            coherence = "STRONG"
+            coherent_dir = "BULLISH" if dirs.count("BULL") > dirs.count("BEAR") else "BEARISH"
+        else:
+            coherence = "WEAK"
+            coherent_dir = "MIXED"
+        return {
+            "score": round(normalized, 1),
+            "coherence": coherence,
+            "coherent_direction": coherent_dir,
+            "details": details,
+            "n_timeframes": len(details),
+        }
+    except:
+        return {"score": 0, "coherence": "WEAK", "coherent_direction": "MIXED", "details": []}
+
+# ==============================================================================
+# V21+ ENGINE: VWAP PROXY — Institutional Entry Zones
+# ==============================================================================
+
+def vwap_proxy_analysis(df, lookback=50):
+    """VWAP proxy using typical price × range as volume proxy.
+    Identifies institutional accumulation/distribution zones."""
+    try:
+        if len(df) < lookback:
+            return {"vwap": 0, "deviation": 0, "zone": "UNKNOWN"}
+        recent = df.tail(lookback)
+        typical_price = (recent['high'] + recent['low'] + recent['close']) / 3
+        vol_proxy = recent['high'] - recent['low']  # range as volume proxy
+        cumulative_tpv = (typical_price * vol_proxy).cumsum()
+        cumulative_vol = vol_proxy.cumsum()
+        vwap = cumulative_tpv / cumulative_vol.replace(0, np.nan)
+        vwap_current = float(vwap.iloc[-1]) if pd.notna(vwap.iloc[-1]) else float(typical_price.iloc[-1])
+        current_price = float(df['close'].iloc[-1])
+        atr = float(df['ATR'].iloc[-1]) if df['ATR'].iloc[-1] > 0 else 1
+        deviation = (current_price - vwap_current) / atr
+        if deviation > 2.0:
+            zone = "FAR_ABOVE_VWAP"
+        elif deviation > 0.5:
+            zone = "ABOVE_VWAP"
+        elif deviation > -0.5:
+            zone = "AT_VWAP"
+        elif deviation > -2.0:
+            zone = "BELOW_VWAP"
+        else:
+            zone = "FAR_BELOW_VWAP"
+        # Entry quality: best entries are near VWAP in trend direction
+        return {
+            "vwap": round(vwap_current, 5),
+            "deviation": round(float(deviation), 2),
+            "zone": zone,
+            "entry_quality": "EXCELLENT" if abs(deviation) < 0.5 else "GOOD" if abs(deviation) < 1.5 else "POOR",
+        }
+    except:
+        return {"vwap": 0, "deviation": 0, "zone": "UNKNOWN", "entry_quality": "UNKNOWN"}
+
+# ==============================================================================
+# V21+ ENGINE: CANDLE STRUCTURE SCORING — Entry Quality
+# ==============================================================================
+
+def candle_structure_score(df, direction, n_candles=5):
+    """Scores the last N candles' structure quality for entry.
+    Strong bodies, proper wicks, momentum sequence = better entry."""
+    try:
+        if len(df) < n_candles + 1:
+            return {"score": 0, "quality": "UNKNOWN", "pattern_type": "NONE"}
+        recent = df.tail(n_candles)
+        is_long = "BULL" in str(direction) or "LONG" in str(direction)
+        score = 0.0
+        # 1. Body-to-range ratio (strong moves have large bodies)
+        bodies = abs(recent['close'] - recent['open'])
+        ranges = (recent['high'] - recent['low']).replace(0, np.nan)
+        body_ratios = (bodies / ranges).dropna()
+        avg_body_ratio = float(body_ratios.mean()) if len(body_ratios) > 0 else 0.5
+        if avg_body_ratio > 0.6:
+            score += 25  # Strong directional candles
+        elif avg_body_ratio > 0.4:
+            score += 15
+        # 2. Directional consistency
+        if is_long:
+            bullish_candles = sum(recent['close'] > recent['open'])
+        else:
+            bullish_candles = sum(recent['close'] < recent['open'])
+        consistency = bullish_candles / n_candles
+        score += consistency * 25
+        # 3. Wick analysis (favorable wicks)
+        last = df.iloc[-1]
+        body = abs(last['close'] - last['open'])
+        rng = last['high'] - last['low']
+        if rng > 0:
+            if is_long:
+                lower_wick = min(last['open'], last['close']) - last['low']
+                upper_wick = last['high'] - max(last['open'], last['close'])
+                # Long entries: small upper wick (no rejection), lower wick ok
+                if upper_wick / rng < 0.2:
+                    score += 15
+                if lower_wick / rng > 0.3 and last['close'] > last['open']:
+                    score += 10  # Demand wick
+            else:
+                upper_wick = last['high'] - max(last['open'], last['close'])
+                lower_wick = min(last['open'], last['close']) - last['low']
+                if lower_wick / rng < 0.2:
+                    score += 15
+                if upper_wick / rng > 0.3 and last['close'] < last['open']:
+                    score += 10  # Supply wick
+        # 4. Closing position (close near high for longs, near low for shorts)
+        if rng > 0:
+            close_pos = (last['close'] - last['low']) / rng
+            if is_long and close_pos > 0.7:
+                score += 15
+            elif not is_long and close_pos < 0.3:
+                score += 15
+        # 5. Range expansion (last candle bigger than recent average)
+        if len(df) > n_candles + 5:
+            prev_avg_range = float((df['high'] - df['low']).iloc[-(n_candles+5):-n_candles].mean())
+            if prev_avg_range > 0 and rng > prev_avg_range * 1.3:
+                score += 10
+        quality = "EXCELLENT" if score >= 75 else "GOOD" if score >= 55 else "MODERATE" if score >= 35 else "WEAK"
+        # Pattern type
+        if consistency > 0.8 and avg_body_ratio > 0.5:
+            pattern_type = "IMPULSE"
+        elif consistency < 0.4:
+            pattern_type = "CONFLICTED"
+        elif avg_body_ratio < 0.3:
+            pattern_type = "INDECISION"
+        else:
+            pattern_type = "BUILDING"
+        return {"score": round(min(score, 100), 1), "quality": quality, "pattern_type": pattern_type,
+                "body_ratio": round(avg_body_ratio, 2) if len(body_ratios) > 0 else 0,
+                "consistency": round(consistency, 2)}
+    except:
+        return {"score": 0, "quality": "UNKNOWN", "pattern_type": "NONE"}
+
+# ==============================================================================
+# V21+ ENGINE: MOMENTUM ACCELERATION — Optimal Timing
+# ==============================================================================
+
+def momentum_acceleration(df, periods=[3, 7, 14]):
+    """Measures rate of change of momentum itself.
+    Accelerating momentum = ideal entry point.
+    Decelerating = wait or take profit."""
+    try:
+        if len(df) < max(periods) + 5 or 'MACD_hist' not in df.columns:
+            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+        hist = df['MACD_hist'].tail(max(periods) + 2).dropna()
+        if len(hist) < max(periods):
+            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+        # Rate of change measurements at different scales
+        rocs = {}
+        for p in periods:
+            if len(hist) > p:
+                roc = float(hist.iloc[-1] - hist.iloc[-p]) / abs(float(hist.iloc[-p])) * 100 if hist.iloc[-p] != 0 else 0
+                rocs[p] = roc
+        if not rocs:
+            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+        short_roc = rocs.get(3, 0)
+        med_roc = rocs.get(7, 0)
+        long_roc = rocs.get(14, 0)
+        # Phase detection
+        current_hist = float(hist.iloc[-1])
+        prev_hist = float(hist.iloc[-2])
+        if current_hist > 0 and current_hist > prev_hist and short_roc > 0:
+            phase = "BULL_ACCELERATING"
+            confidence = min(abs(short_roc) * 0.5 + abs(med_roc) * 0.3, 100)
+        elif current_hist > 0 and current_hist < prev_hist:
+            phase = "BULL_DECELERATING"
+            confidence = min(abs(short_roc) * 0.3, 60)
+        elif current_hist < 0 and current_hist < prev_hist and short_roc < 0:
+            phase = "BEAR_ACCELERATING"
+            confidence = min(abs(short_roc) * 0.5 + abs(med_roc) * 0.3, 100)
+        elif current_hist < 0 and current_hist > prev_hist:
+            phase = "BEAR_DECELERATING"
+            confidence = min(abs(short_roc) * 0.3, 60)
+        elif abs(current_hist) < abs(prev_hist) * 0.3:
+            phase = "ZERO_CROSS_IMMINENT"
+            confidence = 70
+        else:
+            phase = "NEUTRAL"
+            confidence = 0
+        # Consecutive accelerating bars
+        accel_bars = 0
+        for i in range(1, min(8, len(hist))):
+            if abs(float(hist.iloc[-i])) > abs(float(hist.iloc[-i-1])) if i < len(hist) - 1 else False:
+                accel_bars += 1
+            else:
+                break
+        return {
+            "acceleration": round(float(short_roc), 2),
+            "phase": phase,
+            "confidence": round(float(confidence), 1),
+            "short_roc": round(float(short_roc), 2),
+            "med_roc": round(float(med_roc), 2),
+            "long_roc": round(float(long_roc), 2),
+            "accel_bars": accel_bars,
+            "current_hist": round(float(current_hist), 6),
+        }
+    except:
+        return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
+
+# ==============================================================================
+# V21+ ENGINE: DYNAMIC ATR CHANNEL — Volatility-Adjusted Entries
+# ==============================================================================
+
+def atr_channel_entry(df, direction, lookback=20):
+    """Calculates optimal entry using ATR channels.
+    Entries near lower channel in uptrend = high probability."""
+    try:
+        if len(df) < lookback + 5 or 'ATR' not in df.columns:
+            return {"channel_entry": None, "channel_position": 0.5, "quality": "UNKNOWN"}
+        recent = df.tail(lookback)
+        ema = recent['EMA_20']
+        atr = recent['ATR']
+        upper_channel = ema + atr * 2
+        lower_channel = ema - atr * 2
+        current_price = float(df['close'].iloc[-1])
+        ema_now = float(ema.iloc[-1])
+        atr_now = float(atr.iloc[-1])
+        channel_range = float(upper_channel.iloc[-1]) - float(lower_channel.iloc[-1])
+        if channel_range > 0:
+            channel_position = (current_price - float(lower_channel.iloc[-1])) / channel_range
+        else:
+            channel_position = 0.5
+        is_long = "BULL" in str(direction) or "LONG" in str(direction)
+        # Optimal entry zones
+        if is_long:
+            if channel_position < 0.3:
+                quality = "OPTIMAL"  # Near lower channel in uptrend
+                channel_entry = float(lower_channel.iloc[-1]) + atr_now * 0.3
+            elif channel_position < 0.5:
+                quality = "GOOD"
+                channel_entry = ema_now - atr_now * 0.2
+            elif channel_position < 0.7:
+                quality = "FAIR"
+                channel_entry = current_price
+            else:
+                quality = "OVEREXTENDED"
+                channel_entry = ema_now  # Wait for pullback to EMA
+        else:
+            if channel_position > 0.7:
+                quality = "OPTIMAL"
+                channel_entry = float(upper_channel.iloc[-1]) - atr_now * 0.3
+            elif channel_position > 0.5:
+                quality = "GOOD"
+                channel_entry = ema_now + atr_now * 0.2
+            elif channel_position > 0.3:
+                quality = "FAIR"
+                channel_entry = current_price
+            else:
+                quality = "OVEREXTENDED"
+                channel_entry = ema_now
+        return {
+            "channel_entry": round(float(channel_entry), 5),
+            "channel_position": round(float(channel_position), 3),
+            "quality": quality,
+            "upper": round(float(upper_channel.iloc[-1]), 5),
+            "lower": round(float(lower_channel.iloc[-1]), 5),
+            "ema": round(float(ema_now), 5),
+        }
+    except:
+        return {"channel_entry": None, "channel_position": 0.5, "quality": "UNKNOWN"}
+
 
 
 # ==============================================================================
@@ -1555,7 +1994,7 @@ def detect_divergence(df, indicator='RSI', order=5):
             pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
             if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
                 if df['low'].iloc[pl2]<df['low'].iloc[pl1] and df[indicator].iloc[il2]>df[indicator].iloc[il1]:
-                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl1])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
+                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl2])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
                     if s>1: return "BULLISH_DIVERGENCE",int(min(s*3,20)),f"Preço LL vs {indicator} HL"
         if len(pl)>=2 and len(il)>=2:
             pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
@@ -2045,6 +2484,8 @@ class SetupScore:
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
     cpi_bonus:float; markov_bonus:float; spectral_bonus:float
+    adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
+    candle_bonus:float; mom_accel_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
@@ -2058,15 +2499,16 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
           'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
-          'cpi_bonus','markov_bonus','spectral_bonus']
-    bonus=min(sum(bonuses.get(k,0) for k in keys),100)  # V21: max 100
+          'cpi_bonus','markov_bonus','spectral_bonus',
+          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
+    bonus=min(sum(bonuses.get(k,0) for k in keys),130)  # V21+: raised cap for new engines
     total=base+bonus
-    if total>=175: g="S"
-    elif total>=145: g="A++"
-    elif total>=115: g="A+"
-    elif total>=85: g="A"
-    elif total>=60: g="B"
-    elif total>=40: g="C"
+    if total>=190: g="S"
+    elif total>=155: g="A++"
+    elif total>=125: g="A+"
+    elif total>=95: g="A"
+    elif total>=65: g="B"
+    elif total>=45: g="C"
     else: g="D"
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in keys],bonus,total,g)
@@ -2085,13 +2527,18 @@ def calculate_storm_bonus(sd):
         (sd.get('volume'),"Volume"),(sd.get('hurst_trending'),"Hurst"),
         (sd.get('zscore'),"Z-Score"),(sd.get('gen_signal'),"Generator"),
         (sd.get('dist'),"Distrib"),(sd.get('vr_edge'),"VR Edge"),(sd.get('acf_edge'),"ACF Edge"),
+        # V21+ new checks
+        (sd.get('ribbon_quality') in ["EXCELLENT","GOOD"],"EMA Ribbon"),
+        (sd.get('coherence') in ["PERFECT","STRONG"],"TF Coherence"),
+        (sd.get('candle_quality') in ["EXCELLENT","GOOD"],"Candle Struct"),
+        (sd.get('mom_accel'),"Mom Accel"),
     ]
     for c,l in checks:
         if c: met+=1; lst.append(l)
-    if met>=11: return "PERFECT_STORM",25,lst
-    elif met>=8: return "STRONG_CONFLUENCE",20,lst
-    elif met>=6: return "GOOD_CONFLUENCE",15,lst
-    elif met>=4: return "MODERATE",10,lst
+    if met>=13: return "PERFECT_STORM",25,lst
+    elif met>=10: return "STRONG_CONFLUENCE",20,lst
+    elif met>=7: return "GOOD_CONFLUENCE",15,lst
+    elif met>=5: return "MODERATE",10,lst
     return None,0,lst
 
 # ==============================================================================
@@ -2200,38 +2647,36 @@ def convert_np(obj):
     return obj
 
 # ==============================================================================
-# SYSTEM PROMPT V20
+# SYSTEM PROMPT V21+
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V21.0 — PREDICTABILITY ENGINE [Gemini 3 Pro]
-Missão: Explorar edges estatísticos reais nos sintéticos Deriv
+FUNÇÃO: ANALISTA V21+ — PRECISION PREDICTABILITY ENGINE [Gemini 3 Pro]
+Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V21.0 — PREDICTABILITY ENGINE (V20 + 16 melhorias):**
-Base V20 (20 correções) PLUS:
-- Sample Entropy (previsibilidade do gerador CSPRNG)
-- Permutation Entropy (determinismo na ordem)
-- Spectral Analysis FFT (ciclos ocultos)
-- Transition Matrix Markov (dependências sequenciais)
-- Compound Predictability Index CPI 0-100
-- Regime Transition Detection (early swing capture)
-- Dynamic Bias com score de confiança (não binário)
-- Enhanced Momentum (MACD hist + RSI zone + DI spread)
-- Edge Correlation Matrix (confluência real vs inflada)
-- Optimal Holding Period (time-stop por edge decay)
-- Look-ahead bias removido do backtest (VR/ACF por fold)
-- +DI/-DI preservados do cálculo ADX
-- DAY setup não é mais catch-all (ADX mínimo 22)
-- VOL naming corrigido (OVEREXTENDED vs COMPRESSED)
-- Breakout com confirmação real (close > SR)
-- CPI gate: bloqueia trades em séries imprevisíveis
+**V21+ — PRECISION ENGINE (V21 + 7 motores de precisão):**
+Base V21 (16 melhorias) PLUS:
+- ADX Slope Detection (captura tendências ANTES do ADX cruzar threshold)
+- EMA Ribbon Spread Analysis (qualidade da tendência via expansão da ribbon)
+- Multi-TF Trend Coherence Scoring (coerência H4→H1→M15→M5)
+- VWAP Proxy Analysis (zonas institucionais de entrada)
+- Candle Structure Scoring (qualidade dos candles para entrada)
+- Momentum Acceleration (timing ótimo via taxa de mudança do MACD)
+- Dynamic ATR Channel (entradas ajustadas por volatilidade)
+- Entry Refinement Engine (ATR channel + VWAP para entradas precisas)
+
+Base V21:
+- Sample Entropy, Permutation Entropy, FFT, Markov Chain
+- CPI 0-100, Regime Transition, Dynamic Bias
+- Enhanced Momentum, Edge Correlation Matrix
+- Optimal Holding Period, Look-ahead bias removido
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V20.0: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/200 | **CPI:** {CPI}/100
+## ⚡ VEREDICTO V21+: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE}/220 | **CPI:** {CPI}/100
 **Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
 
 ### 🧮 MODELO DO GERADOR
@@ -2245,14 +2690,26 @@ Base V20 (20 correções) PLUS:
 - Vol Clustering: {regime}
 - Distribuição: Skew={S} Kurt={K} Tails={T}
 
+### 🎯 PRECISÃO DE ENTRADA
+- ADX Phase: {phase} (slope={slope})
+- EMA Ribbon: {quality} ({direction}) - Expanding: {Y/N}
+- TF Coherence: {coherence} ({direction})
+- Candle Structure: {quality} ({pattern_type})
+- Mom Acceleration: {phase} (confidence={X}%)
+- ATR Channel: {quality} (position={X})
+- VWAP Zone: {zone} ({entry_quality})
+
 ### 🎯 PLANO DE TRADE
 {Entradas + Pirâmide + Smart TP}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V20 Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
-e Autocorrelação, NÃO em indicadores clássicos. Se VR mostra random walk,
-dizer claramente que não há edge estatístico operável.}
+*V21+ Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
+e Autocorrelação, combinados com PRECISÃO DE ENTRADA via EMA Ribbon,
+Trend Coherence e Momentum Acceleration. Se VR mostra random walk,
+dizer claramente que não há edge estatístico operável.
+Quando Trend Coherence é PERFECT, enfatizar alta confiança.
+Quando candle structure é WEAK, recomendar cautela ou esperar melhor setup.}
 """
 
 # ==============================================================================
@@ -2304,9 +2761,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ V21 PREDICTABILITY ENGINES ═══
     cpi = compound_predictability_index(h1['close'], vr, acf)
-    # CORREÇÃO: Definir cpi_val aqui para uso posterior nos bônus
-    cpi_val = cpi.get('cpi', 0)
-
     spectral = spectral_analysis_v21(h1['close'])
     markov = transition_matrix_v21(h1['close'])
     regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
@@ -2317,6 +2771,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bb_cycle, bb_ratio, bb_squeeze_count = detect_bb_cycle(h1, profile)
     consec_count, consec_dir = count_consecutive(m15)
     roc_status, roc_details = detect_roc_extreme(m15, profile)
+
+    # ═══ V21+ PRECISION ENGINES ═══
+    adx_slope = adx_slope_analysis(h1)
+    ema_ribbon = ema_ribbon_analysis(h1)
+    trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)
+    vwap_data = vwap_proxy_analysis(h1)
+    candle_struct = candle_structure_score(m15, bias)
+    mom_accel = momentum_acceleration(h1)
+    atr_channel = atr_channel_entry(h1, bias)
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -2379,7 +2842,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     vr_bonus = 0
     if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
 
-    # V21: CPI bonus (AGORA FUNCIONA PORQUE cpi_val ESTÁ DEFINIDO)
+    # V21: CPI bonus (cpi_val extracted from cpi dict computed above)
+    cpi_val = cpi.get('cpi', 0)
+    cpi_regime = cpi.get('regime', 'ERROR')
     cpi_bonus = 0
     if cpi_val >= 60: cpi_bonus = 12
     elif cpi_val >= 45: cpi_bonus = 8
@@ -2395,6 +2860,55 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     acf_bonus = 0
     if acf.get('has_pattern'): acf_bonus = min(len(acf.get('significant_lags',[]))*3, 10)
 
+    # ═══ V21+ PRECISION BONUSES ═══
+    # ADX Slope: early trend detection bonus
+    adx_slope_bonus = 0
+    if adx_slope.get('phase') == "TREND_FORMING" and adx_slope.get('confidence', 0) > 40:
+        adx_slope_bonus = min(int(adx_slope['confidence'] / 10), 8)
+    elif adx_slope.get('phase') == "TREND_ESTABLISHED":
+        adx_slope_bonus = 5
+
+    # EMA Ribbon: trend quality bonus
+    ribbon_bonus = 0
+    if ema_ribbon.get('quality') == "EXCELLENT":
+        ribbon_bonus = 10
+    elif ema_ribbon.get('quality') == "GOOD":
+        ribbon_bonus = 6
+    elif ema_ribbon.get('quality') == "MODERATE":
+        ribbon_bonus = 3
+    # Extra for direction alignment
+    if ema_ribbon.get('direction') == bias and ribbon_bonus > 0:
+        ribbon_bonus += 3
+
+    # Trend Coherence: multi-TF agreement bonus
+    coherence_bonus = 0
+    if trend_coherence.get('coherence') == "PERFECT" and trend_coherence.get('coherent_direction') == bias:
+        coherence_bonus = 12
+    elif trend_coherence.get('coherence') == "STRONG" and trend_coherence.get('coherent_direction') == bias:
+        coherence_bonus = 8
+    elif trend_coherence.get('coherence') == "STRONG":
+        coherence_bonus = 4
+
+    # Candle Structure: entry quality bonus
+    candle_bonus = 0
+    if candle_struct.get('quality') == "EXCELLENT":
+        candle_bonus = 8
+    elif candle_struct.get('quality') == "GOOD":
+        candle_bonus = 5
+    elif candle_struct.get('quality') == "MODERATE":
+        candle_bonus = 2
+
+    # Momentum Acceleration: timing precision bonus
+    mom_accel_bonus = 0
+    if bias == "BULLISH" and mom_accel.get('phase') == "BULL_ACCELERATING":
+        mom_accel_bonus = min(int(mom_accel.get('confidence', 0) / 12), 8)
+    elif bias == "BEARISH" and mom_accel.get('phase') == "BEAR_ACCELERATING":
+        mom_accel_bonus = min(int(mom_accel.get('confidence', 0) / 12), 8)
+    # Penalty for decelerating in our direction
+    if (bias == "BULLISH" and mom_accel.get('phase') == "BULL_DECELERATING") or \
+       (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
+        mom_accel_bonus = -3  # Slight penalty
+
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
 
@@ -2405,7 +2919,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     mc = monte_carlo_bootstrap(sim.get('RESULTS', []))
 
     # ═══ V21: CPI GATE — Nao operar se imprevisivel ═══
-    cpi_regime = cpi.get('regime', 'ERROR')
+    # (cpi_val and cpi_regime already extracted above)
 
     # ═══ SETUP DETECTION V21 — PREDICTABILITY-GATED ═══
     sig = "MONITORING"; entry = float(c1['close']); sl_val = float(c1['close'])
@@ -2534,6 +3048,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     else:
         try_setup(bias)
 
+    # ═══ V21+ ENTRY REFINEMENT ═══
+    # Use ATR channel and VWAP for more precise entry when setup detected
+    if "LONG" in sig or "SHORT" in sig:
+        ch_quality = atr_channel.get('quality', 'UNKNOWN')
+        ch_entry = atr_channel.get('channel_entry')
+        if ch_quality in ['OPTIMAL', 'GOOD'] and ch_entry is not None:
+            # Refine entry to ATR channel level for better R:R
+            if "LONG" in sig and ch_entry < entry:
+                entry = ch_entry
+                entry_type = f"{entry_type} → ATR-CH {ch_quality}"
+            elif "SHORT" in sig and ch_entry > entry:
+                entry = ch_entry
+                entry_type = f"{entry_type} → ATR-CH {ch_quality}"
+        # VWAP proximity refinement
+        vwap_qual = vwap_data.get('entry_quality', 'UNKNOWN')
+        if vwap_qual == 'EXCELLENT':
+            entry_type = f"{entry_type} (VWAP✓)"
+
     # Spread
     if "LONG" in sig: entry += profile['spread']
     elif "SHORT" in sig: entry -= profile['spread']
@@ -2550,7 +3082,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         'alignment':align_type=="PERFECT",'bb_squeeze':bb_compression,
         'trending':"TRENDING" in regime,'volume':vol_confirmed,'hurst_trending':hurst_trending,
         'zscore':zscore_favorable,'gen_signal':gen_bonus>0,'dist':dist_favorable,
-        'vr_edge':vr.get('has_edge',False),'acf_edge':acf.get('has_pattern',False)}
+        'vr_edge':vr.get('has_edge',False),'acf_edge':acf.get('has_pattern',False),
+        # V21+ new storm checks
+        'ribbon_quality':ema_ribbon.get('quality'),
+        'coherence':trend_coherence.get('coherence'),
+        'candle_quality':candle_struct.get('quality'),
+        'mom_accel':mom_accel_bonus > 0}
     storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
 
     if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
@@ -2576,7 +3113,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
         consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
         distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
-        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus)
+        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
+        adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
+        coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
+        mom_accel_bonus=mom_accel_bonus)
 
     # Filters
     configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
@@ -2631,11 +3171,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if fib_level: confs.append(f"📐 Fib {fib_level}")
     if sr_touch: confs.append(f"🎯 S/R")
     if align_type!="NONE": confs.append(f"⭐ Align {align_type}")
-    if storm_level: confs.append(f"🌟 {storm_level} ({len(storm_criteria)}/16)")
+    if storm_level: confs.append(f"🌟 {storm_level} ({len(storm_criteria)}/20)")
     if hurst_trending: confs.append(f"🧬 Hurst {hurst_val}")
     if zscore_favorable: confs.append(f"📊 Z {z_current:.1f}")
     if bb_compression: confs.append("💥 BB Squeeze")
     if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
+    # V21+ precision confluences
+    if ema_ribbon.get('quality') in ['EXCELLENT','GOOD']:
+        confs.append(f"🌈 Ribbon {ema_ribbon['quality']} ({ema_ribbon.get('direction','?')})")
+    if trend_coherence.get('coherence') in ['PERFECT','STRONG']:
+        confs.append(f"🎯 TF Coherence {trend_coherence['coherence']} ({trend_coherence.get('coherent_direction','?')})")
+    if candle_struct.get('quality') in ['EXCELLENT','GOOD']:
+        confs.append(f"🔥 Candle {candle_struct['quality']} ({candle_struct.get('pattern_type','?')})")
+    if mom_accel_bonus > 0:
+        confs.append(f"🚀 Mom Accel {mom_accel.get('phase','?')}")
+    if vwap_data.get('entry_quality') == 'EXCELLENT':
+        confs.append(f"🏦 VWAP Zone ({vwap_data.get('zone','?')})")
+    if adx_slope.get('phase') == 'TREND_FORMING':
+        confs.append(f"📈 ADX Forming (slope={adx_slope.get('slope',0):.2f})")
 
     risks = []
     if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
@@ -2650,6 +3203,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if not vr.get('has_edge'): risks.append("⚠️ VR: sem edge estatístico")
     if gen.get('spike_phase')=="SPIKE_IMMINENT": risks.append("💥 SPIKE IMINENTE")
     if not trigger_ok and c5 is not None: risks.append(f"⚠️ M5 sem trigger ({trigger_type})")
+    # V21+ precision risks
+    if candle_struct.get('quality') == 'WEAK': risks.append("⚠️ Candle structure WEAK")
+    if adx_slope.get('phase') == 'TREND_DYING': risks.append("⚠️ ADX trend dying")
+    if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
+    if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
+    if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -2696,8 +3255,19 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "VOL":score.volume_bonus,"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
             "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
             "VR":score.vr_bonus,"ACF":score.acf_bonus,
-            "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus
+            "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
+            "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
+            "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
+            "MOM_ACCEL":score.mom_accel_bonus
         }),
+        # V21+ precision data
+        "ADX_SLOPE": convert_np(adx_slope),
+        "EMA_RIBBON": convert_np(ema_ribbon),
+        "TREND_COHERENCE": convert_np(trend_coherence),
+        "VWAP_DATA": convert_np(vwap_data),
+        "CANDLE_STRUCT": convert_np(candle_struct),
+        "MOM_ACCEL": convert_np(mom_accel),
+        "ATR_CHANNEL": convert_np(atr_channel),
     }
 
 # ==============================================================================
@@ -2753,7 +3323,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V20</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V21</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -2833,7 +3403,7 @@ if mode == "Analysis":
             # ── GRADE CARD ──
             g = data['SETUP_GRADE']
             grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
-            score_pct = min(data['SETUP_SCORE'] / 170 * 100, 100)
+            score_pct = min(data['SETUP_SCORE'] / 220 * 100, 100)
             bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
 
             # Decision tag
@@ -2851,7 +3421,7 @@ if mode == "Analysis":
             <div class='{grade_class}' style='margin:8px 0 20px;'>
                 <div class='grade-letter'>{g}</div>
                 <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
-                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 170</span>
+                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 220</span>
                 </div>
                 <div class='score-bar-outer'>
                     <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
@@ -2920,6 +3490,27 @@ if mode == "Analysis":
             mc1.metric("Markov", "Dep Found" if mrkv.get('has_dependence') else "No Dep", mrkv.get('best_transition',''))
             mc2.metric("Cycles", f"{spec.get('dominant_period',0):.0f} bars" if spec.get('has_cycle') else "None")
             mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
+
+            # ── V21+ ENTRY PRECISION ──
+            st.markdown("## Entry Precision V21+")
+            adx_sl = data.get('ADX_SLOPE', {})
+            ribbon = data.get('EMA_RIBBON', {})
+            coherence = data.get('TREND_COHERENCE', {})
+            vwap = data.get('VWAP_DATA', {})
+            candle = data.get('CANDLE_STRUCT', {})
+            maccel = data.get('MOM_ACCEL', {})
+            atr_ch = data.get('ATR_CHANNEL', {})
+
+            ep1, ep2, ep3, ep4 = st.columns(4)
+            ep1.metric("ADX Slope", adx_sl.get('phase', '?'), f"slope={adx_sl.get('slope',0):.2f}")
+            ep2.metric("EMA Ribbon", ribbon.get('quality', '?'), ribbon.get('direction', '?'))
+            ep3.metric("TF Coherence", coherence.get('coherence', '?'), f"{coherence.get('score',0):.0f}%")
+            ep4.metric("VWAP Zone", vwap.get('zone', '?'), vwap.get('entry_quality', '?'))
+
+            ep5, ep6, ep7 = st.columns(3)
+            ep5.metric("Candle Struct", candle.get('quality', '?'), candle.get('pattern_type', '?'))
+            ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
+            ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
 
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
