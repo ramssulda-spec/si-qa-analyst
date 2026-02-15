@@ -3246,9 +3246,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if divergence and (("LONG" in sig and "BULLISH" in str(divergence)) or ("SHORT" in sig and "BEARISH" in str(divergence))):
         final_db = abs(div_bonus)
 
+    # Prepare inputs for scoring
+    dist_ema = abs(h1['close'].iloc[-1] - h1['EMA_50'].iloc[-1])
     score = calculate_score(
-        adx, enhanced_mom, candle_struct['score'], dist_ema, atr,
-        win_rate, profit_factor, profile,
+        h1['ADX'].iloc[-1], momentum_v21, candle_struct.get('score',0), dist_ema, h1['ATR'].iloc[-1],
+        sim['WR'], sim['PF'], profile,
         divergence_bonus=div_bonus if not div_detail else div_bonus/2,
         fib_bonus=fib_conf[1], sr_bonus=sr_levels[0]['strength']*2 if sr_levels else 0,
         alignment_bonus=15 if trend_alignment=="FULL_ALIGNMENT" else 5,
