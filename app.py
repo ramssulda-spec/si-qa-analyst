@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import deque
-from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist, linregress # 🟢 V22 Added: linregress
+from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist
 from itertools import permutations as _perms
 from math import factorial, log as math_log
 import time
@@ -20,17 +20,13 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# SI-APATECO V22.0 — ARCHITECTURAL UPGRADE
-#
-# IMPLEMENTAÇÃO:
-# 🟢 MATH ENGINE V22: Kalman Filter, Drift T-Stat, Entropy Gate
-# 🟢 CORE V22: Classificação Formal de Regimes
-# 🟢 UPGRADE: Unified Trend Score & Noise Filtering
+# SI-APATECO V21.0 — PREDICTABILITY ENGINE
+# CORREÇÃO APLICADA: UnboundLocalError em cpi_val resolvido.
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V22",
-    page_icon="🧬",
+    page_title="APATECO V21",
+    page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -350,22 +346,153 @@ SAFETY_SETTINGS = [
 ]
 
 # ==============================================================================
-# PERFIS — V21 Seeds (Mantido)
+# PERFIS — sigma_annual será CALIBRADO dos dados reais (MATH FIX #1)
+# Os valores aqui são SEEDS iniciais, substituídos pela calibração
 # ==============================================================================
 
 SYNTHETIC_PROFILES = {
-    "VOLATILITY 10 INDEX": {"gen_type": "GBM", "vol_class": "ULTRA_LOW", "sigma_seed": 0.10, "spread": 0.02, "adx_trend_min": 12, "adx_strong": 20, "sl_atr_mult": 2.0, "tp1_r": 2.5, "tp2_r": 4.0},
-    "VOLATILITY 25 INDEX": {"gen_type": "GBM", "vol_class": "LOW", "sigma_seed": 0.25, "spread": 0.03, "adx_trend_min": 14, "adx_strong": 22, "sl_atr_mult": 2.2, "tp1_r": 2.5, "tp2_r": 4.5},
-    "VOLATILITY 50 INDEX": {"gen_type": "GBM", "vol_class": "MEDIUM", "sigma_seed": 0.50, "spread": 0.05, "adx_trend_min": 16, "adx_strong": 25, "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0},
-    "VOLATILITY 75 INDEX": {"gen_type": "GBM", "vol_class": "HIGH", "sigma_seed": 0.75, "spread": 0.10, "adx_trend_min": 18, "adx_strong": 28, "sl_atr_mult": 3.0, "tp1_r": 3.0, "tp2_r": 5.0},
-    "VOLATILITY 100 INDEX": {"gen_type": "GBM", "vol_class": "EXTREME", "sigma_seed": 1.00, "spread": 0.15, "adx_trend_min": 20, "adx_strong": 30, "sl_atr_mult": 3.5, "tp1_r": 3.0, "tp2_r": 5.0},
-    "BOOM 300 INDEX": {"gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50, "spike_direction": "UP", "drift_direction": "DOWN", "spread": 0.10, "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0},
-    "BOOM 500 INDEX": {"gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50, "spike_direction": "UP", "drift_direction": "DOWN", "spread": 0.10, "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0},
-    "BOOM 1000 INDEX": {"gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50, "spike_direction": "UP", "drift_direction": "DOWN", "spread": 0.10, "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0},
-    "CRASH 300 INDEX": {"gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50, "spike_direction": "DOWN", "drift_direction": "UP", "spread": 0.10, "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0},
-    "CRASH 500 INDEX": {"gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50, "spike_direction": "DOWN", "drift_direction": "UP", "spread": 0.10, "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0},
-    "CRASH 1000 INDEX": {"gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50, "spike_direction": "DOWN", "drift_direction": "UP", "spread": 0.10, "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0},
-    "STEP INDEX": {"gen_type": "STEP", "vol_class": "STEP", "sigma_seed": 0.20, "spread": 0.01, "adx_trend_min": 10, "adx_strong": 18, "sl_atr_mult": 1.5, "tp1_r": 2.0, "tp2_r": 3.0},
+    "VOLATILITY 10 INDEX": {
+        "gen_type": "GBM", "vol_class": "ULTRA_LOW", "sigma_seed": 0.10,
+        "spread": 0.02, "adx_trend_min": 12, "adx_strong": 20,
+        "sl_atr_mult": 2.0, "tp1_r": 2.5, "tp2_r": 4.0,
+        "bb_squeeze_threshold": 0.5, "zscore_extreme": 2.5,
+        "hurst_trend_min": 0.55, "consecutive_reversal": 8,
+        "roc_extreme_pct": 0.3, "mean_reversion_bias": 0.7, "risk_mult": 1.3,
+    },
+    "VOLATILITY 10 (1S) INDEX": {
+        "gen_type": "GBM", "vol_class": "ULTRA_LOW", "sigma_seed": 0.10,
+        "spread": 0.02, "adx_trend_min": 12, "adx_strong": 20,
+        "sl_atr_mult": 2.0, "tp1_r": 2.5, "tp2_r": 4.0,
+        "bb_squeeze_threshold": 0.5, "zscore_extreme": 2.5,
+        "hurst_trend_min": 0.55, "consecutive_reversal": 8,
+        "roc_extreme_pct": 0.3, "mean_reversion_bias": 0.7, "risk_mult": 1.3,
+    },
+    "VOLATILITY 25 INDEX": {
+        "gen_type": "GBM", "vol_class": "LOW", "sigma_seed": 0.25,
+        "spread": 0.03, "adx_trend_min": 14, "adx_strong": 22,
+        "sl_atr_mult": 2.2, "tp1_r": 2.5, "tp2_r": 4.5,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 2.3,
+        "hurst_trend_min": 0.54, "consecutive_reversal": 7,
+        "roc_extreme_pct": 0.5, "mean_reversion_bias": 0.6, "risk_mult": 1.2,
+    },
+    "VOLATILITY 25 (1S) INDEX": {
+        "gen_type": "GBM", "vol_class": "LOW", "sigma_seed": 0.25,
+        "spread": 0.03, "adx_trend_min": 14, "adx_strong": 22,
+        "sl_atr_mult": 2.2, "tp1_r": 2.5, "tp2_r": 4.5,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 2.3,
+        "hurst_trend_min": 0.54, "consecutive_reversal": 7,
+        "roc_extreme_pct": 0.5, "mean_reversion_bias": 0.6, "risk_mult": 1.2,
+    },
+    "VOLATILITY 50 INDEX": {
+        "gen_type": "GBM", "vol_class": "MEDIUM", "sigma_seed": 0.50,
+        "spread": 0.05, "adx_trend_min": 16, "adx_strong": 25,
+        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.53, "consecutive_reversal": 6,
+        "roc_extreme_pct": 0.8, "mean_reversion_bias": 0.5, "risk_mult": 1.0,
+    },
+    "VOLATILITY 50 (1S) INDEX": {
+        "gen_type": "GBM", "vol_class": "MEDIUM", "sigma_seed": 0.50,
+        "spread": 0.05, "adx_trend_min": 16, "adx_strong": 25,
+        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.53, "consecutive_reversal": 6,
+        "roc_extreme_pct": 0.8, "mean_reversion_bias": 0.5, "risk_mult": 1.0,
+    },
+    "VOLATILITY 75 INDEX": {
+        "gen_type": "GBM", "vol_class": "HIGH", "sigma_seed": 0.75,
+        "spread": 0.10, "adx_trend_min": 18, "adx_strong": 28,
+        "sl_atr_mult": 3.0, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.65, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 1.2, "mean_reversion_bias": 0.4, "risk_mult": 0.7,
+    },
+    "VOLATILITY 75 (1S) INDEX": {
+        "gen_type": "GBM", "vol_class": "HIGH", "sigma_seed": 0.75,
+        "spread": 0.10, "adx_trend_min": 18, "adx_strong": 28,
+        "sl_atr_mult": 3.0, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.65, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 1.2, "mean_reversion_bias": 0.4, "risk_mult": 0.7,
+    },
+    "VOLATILITY 100 INDEX": {
+        "gen_type": "GBM", "vol_class": "EXTREME", "sigma_seed": 1.00,
+        "spread": 0.15, "adx_trend_min": 20, "adx_strong": 30,
+        "sl_atr_mult": 3.5, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.7, "zscore_extreme": 1.5,
+        "hurst_trend_min": 0.51, "consecutive_reversal": 4,
+        "roc_extreme_pct": 1.5, "mean_reversion_bias": 0.35, "risk_mult": 0.5,
+    },
+    "VOLATILITY 100 (1S) INDEX": {
+        "gen_type": "GBM", "vol_class": "EXTREME", "sigma_seed": 1.00,
+        "spread": 0.15, "adx_trend_min": 20, "adx_strong": 30,
+        "sl_atr_mult": 3.5, "tp1_r": 3.0, "tp2_r": 5.0,
+        "bb_squeeze_threshold": 0.7, "zscore_extreme": 1.5,
+        "hurst_trend_min": 0.51, "consecutive_reversal": 4,
+        "roc_extreme_pct": 1.5, "mean_reversion_bias": 0.35, "risk_mult": 0.5,
+    },
+    "BOOM 300 INDEX": {
+        "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+        "spike_lambda": 1/300, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+    },
+    "BOOM 500 INDEX": {
+        "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+        "spike_lambda": 1/500, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+    },
+    "BOOM 1000 INDEX": {
+        "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+        "spike_lambda": 1/1000, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 6,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.9,
+    },
+    "CRASH 300 INDEX": {
+        "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
+        "spike_lambda": 1/300, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+    },
+    "CRASH 500 INDEX": {
+        "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
+        "spike_lambda": 1/500, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+    },
+    "CRASH 1000 INDEX": {
+        "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
+        "spike_lambda": 1/1000, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
+        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0,
+        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.52, "consecutive_reversal": 6,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.9,
+    },
+    "STEP INDEX": {
+        "gen_type": "STEP", "vol_class": "STEP", "sigma_seed": 0.20,
+        "spread": 0.01, "adx_trend_min": 10, "adx_strong": 18,
+        "sl_atr_mult": 1.5, "tp1_r": 2.0, "tp2_r": 3.0,
+        "bb_squeeze_threshold": 0.4, "zscore_extreme": 2.0,
+        "hurst_trend_min": 0.55, "consecutive_reversal": 10,
+        "roc_extreme_pct": 0.2, "mean_reversion_bias": 0.8, "risk_mult": 1.5,
+    },
 }
 
 DEFAULT_PROFILE = {
@@ -383,7 +510,13 @@ def get_profile(name: str) -> dict:
             return profile.copy()
     return DEFAULT_PROFILE.copy()
 
+# ==============================================================================
+# 🔴 BUG FIX #1: AUTO-DETECT TIMEFRAME
+# ==============================================================================
+
 def detect_periods_per_year(df):
+    """Detecta timeframe automaticamente e retorna períodos/ano corretos.
+    Sintéticos operam 24/7/365, não 252 dias."""
     try:
         if len(df) < 3:
             return 365 * 24  # default H1
@@ -398,7 +531,13 @@ def detect_periods_per_year(df):
     except:
         return 365 * 24
 
+# ==============================================================================
+# 🟠 MATH FIX #1: CALIBRAR SIGMA REAL DO HISTÓRICO
+# ==============================================================================
+
 def calibrate_sigma(df, periods_per_year):
+    """Calcula sigma REAL do ativo a partir de todo o histórico disponível.
+    Usa toda a série como referência — NÃO assume que Vol10 = 0.10."""
     try:
         log_ret = np.log(df['close'] / df['close'].shift(1)).dropna()
         if len(log_ret) < 50:
@@ -408,185 +547,85 @@ def calibrate_sigma(df, periods_per_year):
         return None
 
 # ==============================================================================
-# 🟢 MATH ENGINE V22 — NOVAS FUNCIONALIDADES INJETADAS
+# GENERATOR MODELS V20 — TODOS OS BUGS CORRIGIDOS
 # ==============================================================================
 
-class AdvancedMathEngineV22:
-    
-    @staticmethod
-    def calculate_drift_tstat(series: pd.Series) -> dict:
-        """
-        🟢 MELHORIA #1: Drift robusto com T-Stat e R²
-        """
-        try:
-            y = series.values
-            x = np.arange(len(y))
-            slope, intercept, r_value, p_value, std_err = linregress(x, y)
-            
-            # T-Stat: Slope / Standard Error
-            t_stat = slope / std_err if std_err > 0 else 0
-            
-            # Normalized slope
-            norm_slope = slope / y[0] if y[0] > 0 else 0
-            
-            return {
-                "slope": slope,
-                "norm_slope": norm_slope * 10000, 
-                "r_squared": r_value**2,
-                "t_stat": t_stat,
-                "significant": abs(t_stat) > 2.0 and (r_value**2) > 0.2
-            }
-        except:
-            return {"slope":0, "t_stat":0, "significant":False, "r_squared":0}
-
-    @staticmethod
-    def kalman_filter_drift(series: pd.Series) -> pd.Series:
-        """
-        🟢 MELHORIA #2: Kalman Filter 1D
-        Suaviza o drift eliminando ruído gaussiano (noise reduction).
-        """
-        try:
-            n = len(series)
-            x_est = np.zeros(n)
-            P = np.ones(n) # Covariância
-            x_est[0] = series.iloc[0]
-            
-            Q = 1e-5 # Process variance
-            R = 0.01**2 # Measurement variance
-            
-            for t in range(1, n):
-                x_pred = x_est[t-1]
-                P_pred = P[t-1] + Q
-                K = P_pred / (P_pred + R)
-                x_est[t] = x_pred + K * (series.iloc[t] - x_pred)
-                P[t] = (1 - K) * P_pred
-                
-            return pd.Series(x_est, index=series.index)
-        except:
-            return series
-
-    @staticmethod
-    def simple_garch_proxy(returns: pd.Series, alpha=0.1, beta=0.85) -> float:
-        """
-        🟢 MELHORIA #4: GARCH(1,1) Proxy para Volatilidade Condicional
-        """
-        try:
-            sq_rets = returns**2
-            var = sq_rets.mean() # Initial variance
-            omega = var * (1 - alpha - beta)
-            
-            last_var = var
-            for r2 in sq_rets.values:
-                last_var = omega + alpha * r2 + beta * last_var
-                
-            return np.sqrt(last_var) 
-        except:
-            return returns.std()
-
-    @staticmethod
-    def calculate_permutation_entropy(series, order=3, delay=1):
-        """
-        🟢 MELHORIA #3: Entropy Gate (Detector de Caos/Ruído)
-        """
-        try:
-            x = np.array(series)
-            if len(x) < order*delay: return 1.0
-            
-            perms = []
-            for i in range(len(x) - (order-1)*delay):
-                window = [x[i + j*delay] for j in range(order)]
-                perms.append(tuple(np.argsort(window)))
-                
-            cnt = {}
-            for p in perms: cnt[p] = cnt.get(p,0) + 1
-            
-            probs = [c/len(perms) for c in cnt.values()]
-            entropy = -sum(p * math_log(p) for p in probs)
-            max_entropy = math_log(factorial(order))
-            
-            return entropy / max_entropy
-        except:
-            return 1.0
-
-# ==============================================================================
-# 🔵 REGIME CLASSIFIER V22 — ARQUITETURA DE DECISÃO
-# ==============================================================================
-
-class RegimeClassifierV22:
-    @staticmethod
-    def calculate_unified_trend_score(hurst, drift_data, adx, vr_data, vol_regime):
-        """
-        🔵 SCORE UNIFICADO 0-100 (V22)
-        """
-        score = 0
-        
-        # 1. Structural Drift (Max 30)
-        t = abs(drift_data.get('t_stat', 0))
-        r2 = drift_data.get('r_squared', 0)
-        if t > 5 and r2 > 0.6: score += 30
-        elif t > 3 and r2 > 0.3: score += 20
-        elif t > 2: score += 10
-        
-        # 2. Hurst Validity (Max 25)
-        if hurst > 0.60: score += 25
-        elif hurst > 0.55: score += 15
-        elif hurst > 0.52: score += 5
-        
-        # 3. Variance Ratio (Max 20)
-        best_vr = vr_data.get('best_vr', 1.0)
-        if best_vr > 1.2: score += 20
-        elif best_vr > 1.1: score += 10
-        
-        # 4. Vol-Adjusted ADX (Max 15)
-        if adx > 25: score += 15
-        elif adx > 18: score += 7
-        
-        # 5. Vol Consistency (Max 10)
-        if vol_regime != "COMPRESSED": score += 10
-        
-        return min(100, score)
-    
-    @staticmethod
-    def classify_structural_regime(hurst, vr_test, drift_data):
-        vr = vr_test.get('best_vr', 1.0)
-        t_stat = drift_data.get('t_stat', 0)
-        score = 0
-        if hurst > 0.55: score += 2
-        elif hurst < 0.45: score -= 2
-        if vr > 1.05: score += 1
-        elif vr < 0.95: score -= 1
-        if abs(t_stat) > 2.5: score += 2 * (1 if t_stat>0 else -1)
-        
-        if abs(score) <= 1: return "RANDOM_WALK"
-        elif score > 2: return "TRENDING"
-        elif score < -2: return "MEAN_REVERSION"
-        return "UNDEFINED"
-
-# ==============================================================================
-# GENERATOR MODELS V22 — ATUALIZADO (REPLACES V20)
-# ==============================================================================
-
-class GeneratorModelV22:
-    """V22: Inclui Kalman Drift, Decay Não-Linear e GARCH"""
+class GeneratorModelV20:
+    """V20: Modela o gerador com sigma calibrado, direction-aware, multi-window"""
 
     @staticmethod
     def analyze_gbm(df, profile, sigma_calibrated, ppy):
+        """
+        🔴 FIX #2: VOL_COMPRESS agora sabe a DIREÇÃO (contra movimento recente)
+        🟠 FIX #1: Usa sigma calibrado, não inventado
+        🔴 FIX #1: periods_per_year auto-detectado
+        🟢 PRECISION #1: Multi-window (30, 100, 300)
+        🟡 EDGE #6: Preço teórico vs real
+        """
         try:
-            # 🟢 V22: Integração com Math Engine
-            smoothed = AdvancedMathEngineV22.kalman_filter_drift(df['close'])
             log_returns = np.log(df['close'] / df['close'].shift(1)).dropna()
-            
-            # GARCH Vol Proxy
-            garch_vol = AdvancedMathEngineV22.simple_garch_proxy(log_returns)
-            hist_vol = log_returns.std()
-            vol_ratio = garch_vol / hist_vol if hist_vol > 0 else 1.0
-
-            # Slope via Kalman (mais limpo)
-            kf_slope = (smoothed.iloc[-1] - smoothed.iloc[-20]) / 20 
-
             sigma_ref = sigma_calibrated if sigma_calibrated else profile.get('sigma_seed', 0.5)
-            
-            # Theoretical Price Deviation
+            results = {}
+
+            # 🟢 MULTI-WINDOW ANALYSIS
+            for label, window in [("SHORT", 30), ("MEDIUM", 100), ("LONG", min(300, len(log_returns)-1))]:
+                if len(log_returns) < window:
+                    results[label] = {"vol_ratio": 1.0, "signal": "NEUTRAL", "confidence": 0}
+                    continue
+                recent = log_returns.tail(window)
+                vol_realized = float(recent.std() * np.sqrt(ppy))
+                ratio = vol_realized / sigma_ref if sigma_ref > 0 else 1.0
+
+                # Chi² test correto
+                expected_var = (sigma_ref / np.sqrt(ppy)) ** 2
+                observed_var = float(recent.var())
+                chi2 = (window - 1) * observed_var / expected_var if expected_var > 0 else window
+                z_chi = (chi2 - (window - 1)) / np.sqrt(2 * (window - 1))
+                p_value = 2 * (1 - norm.cdf(abs(z_chi)))
+
+                if ratio > 1.3:
+                    signal = "VOL_OVEREXTENDED"
+                    confidence = min((ratio - 1.0) / 0.5, 1.0) * 100
+                elif ratio < 1.0 / 1.3:
+                    signal = "VOL_COMPRESSED"
+                    confidence = min((1.0 / ratio - 1.0) / 0.5, 1.0) * 100
+                else:
+                    signal = "VOL_NORMAL"
+                    confidence = 0
+
+                results[label] = {
+                    "vol_ratio": round(ratio, 3), "vol_realized": round(vol_realized, 4),
+                    "signal": signal, "confidence": round(confidence, 1),
+                    "p_value": round(p_value, 4), "z_chi": round(z_chi, 2),
+                }
+
+            # CONSENSUS: multi-window agreement
+            signals = [r['signal'] for r in results.values()]
+            if all(s == "VOL_OVEREXTENDED" for s in signals):
+                consensus = "VOL_OVEREXTENDED"
+                consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
+            elif all(s == "VOL_COMPRESSED" for s in signals):
+                consensus = "VOL_COMPRESSED"
+                consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
+            elif signals.count("VOL_OVEREXTENDED") >= 2:
+                consensus = "VOL_OVEREXTENDED"
+                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_OVEREXTENDED") / 2, 100)
+            elif signals.count("VOL_COMPRESSED") >= 2:
+                consensus = "VOL_COMPRESSED"
+                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_EXPAND") / 2, 100)
+            else:
+                consensus = "VOL_NORMAL"
+                consensus_confidence = 0
+
+            # 🔴 BUG FIX #2: DIREÇÃO CONTRA O MOVIMENTO RECENTE
+            lookback = min(100, len(df) - 1)
+            recent_move = float(df['close'].iloc[-1] - df['close'].iloc[-lookback])
+            if consensus == "VOL_OVEREXTENDED":
+                compress_direction = "BEARISH" if recent_move > 0 else "BULLISH"
+            else:
+                compress_direction = "NEUTRAL"
+
+            # 🟡 EDGE #6: PREÇO TEÓRICO VS REAL
             lookback_price = min(200, len(df) - 1)
             start_price = float(df['close'].iloc[-lookback_price])
             current_price = float(df['close'].iloc[-1])
@@ -594,73 +633,218 @@ class GeneratorModelV22:
             expected_var_price = sigma_ref**2 * t_years
             actual_log_dev = np.log(current_price / start_price) if start_price > 0 else 0
             z_price = actual_log_dev / np.sqrt(expected_var_price) if expected_var_price > 0 else 0
-            
-            consensus = "VOL_OVEREXTENDED" if vol_ratio > 1.3 else "VOL_NORMAL"
-            
+
             return {
+                "windows": results,
                 "consensus": consensus,
-                "compress_direction": "BEARISH" if kf_slope > 0 else "BULLISH", # Mean Reversion hint
+                "consensus_confidence": round(consensus_confidence, 1),
+                "compress_direction": compress_direction,
+                "recent_move": round(recent_move, 4),
+                "sigma_calibrated": round(sigma_ref, 4),
                 "z_price": round(z_price, 2),
-                "vol_ratio": round(vol_ratio, 3),
-                "kf_slope": kf_slope,
-                "signal": consensus
+                "price_deviation_signal": "OVERBOUGHT" if z_price > 2 else "OVERSOLD" if z_price < -2 else "NORMAL",
+                "vol_ratio": results.get("MEDIUM", {}).get("vol_ratio", 1.0),
+                "signal": consensus,
+                "confidence": consensus_confidence,
             }
         except:
-            return {"consensus": "NEUTRAL", "z_price": 0, "signal": "NEUTRAL"}
+            return {"windows": {}, "consensus": "NEUTRAL", "consensus_confidence": 0,
+                    "compress_direction": "NEUTRAL", "sigma_calibrated": 0,
+                    "z_price": 0, "signal": "NEUTRAL", "confidence": 0, "vol_ratio": 1.0}
 
     @staticmethod
     def analyze_crash_boom(df, profile, ppy):
         """
-        V22: Nonlinear Spike Decay Model
+        🟠 FIX #4: MAD-based spike detection (não std circular)
+        🟠 FIX #5: Drift por REGRESSÃO LINEAR (não média)
+        🟡 EDGE #5: Spike Decay Model
+        🔴 FIX #3: Drift direction calculada, não hardcoded
         """
         try:
             window = min(300, len(df) - 1)
+            if window < 50:
+                return {"signal": "NEUTRAL", "spikes_found": 0, "drift_direction": "UNKNOWN",
+                        "drift_slope": 0, "last_spike_bars": 999, "spike_phase": "UNKNOWN", "decay_strength": 0}
+
             recent = df.tail(window)
             returns = recent['close'].pct_change().dropna()
             is_boom = profile.get('gen_type') == 'BOOM'
 
+            # 🟠 FIX #4: MAD-BASED SPIKE DETECTION
             mad = float(median_abs_deviation(returns.values, scale='normal'))
             spike_threshold = mad * 4.5 if mad > 0 else returns.std() * 3.5
 
             spike_indices = []
             for i in range(len(returns)):
                 r = returns.iloc[i]
-                if is_boom and r > spike_threshold: spike_indices.append(i)
-                elif not is_boom and r < -spike_threshold: spike_indices.append(i)
+                if is_boom and r > spike_threshold:
+                    spike_indices.append(i)
+                elif not is_boom and r < -spike_threshold:
+                    spike_indices.append(i)
 
             last_spike_bars = (len(returns) - spike_indices[-1]) if spike_indices else 999
-            
-            # 🟢 V22: Decay não-linear (1 / 1 + k*x)
-            decay_strength = 1.0 / (1.0 + 0.1 * last_spike_bars)
-            
-            # Drift direction via T-Stat (Math Engine)
-            drift_data = AdvancedMathEngineV22.calculate_drift_tstat(recent['close'].tail(50))
-            drift_direction = "UP" if drift_data['t_stat'] > 1 else ("DOWN" if drift_data['t_stat'] < -1 else "FLAT")
-            
-            phase = "DRIFT_STRONG" if decay_strength > 0.5 else "ABSORBING"
+
+            # 🟠 FIX #5: DRIFT POR REGRESSÃO LINEAR
+            slopes = []
+            if len(spike_indices) >= 2:
+                for si in range(len(spike_indices) - 1):
+                    start_idx = spike_indices[si] + 3  # após absorção
+                    end_idx = spike_indices[si + 1]
+                    if end_idx - start_idx > 5:
+                        segment = recent['close'].iloc[start_idx:end_idx].values
+                        x = np.arange(len(segment))
+                        try:
+                            slope = np.polyfit(x, segment, 1)[0]
+                            norm_slope = slope / recent['close'].iloc[start_idx] if recent['close'].iloc[start_idx] > 0 else 0
+                            slopes.append(norm_slope)
+                        except:
+                            pass
+
+            # Também calcular drift do segmento ATUAL (após último spike)
+            if spike_indices:
+                current_start = spike_indices[-1] + 3
+                if current_start < len(recent) - 5:
+                    current_segment = recent['close'].iloc[current_start:].values
+                    x = np.arange(len(current_segment))
+                    try:
+                        current_slope = np.polyfit(x, current_segment, 1)[0]
+                        current_norm_slope = current_slope / recent['close'].iloc[current_start]
+                        slopes.append(current_norm_slope)
+                    except:
+                        pass
+
+            drift_slope = float(np.median(slopes)) if slopes else 0
+            drift_direction = "UP" if drift_slope > 0 else "DOWN" if drift_slope < 0 else "FLAT"
+            drift_strength = abs(drift_slope) * 10000  # Normalizar para legibilidade
+
+            avg_between = window / max(len(spike_indices), 1)
+
+            # 🟡 EDGE #5: SPIKE DECAY MODEL
+            progress = last_spike_bars / avg_between if avg_between > 0 else 0
+            if progress < 0.05:
+                spike_phase = "ABSORBING"
+                decay_strength = 0
+            elif progress < 0.15:
+                spike_phase = "DRIFT_STRONG"
+                decay_strength = drift_strength * 1.5
+            elif progress < 0.5:
+                spike_phase = "DRIFT_NORMAL"
+                decay_strength = drift_strength * 1.0
+            elif progress < 0.8:
+                spike_phase = "DRIFT_WEAKENING"
+                decay_strength = drift_strength * 0.5
+            else:
+                spike_phase = "SPIKE_IMMINENT"
+                decay_strength = 0
+
+            # Signal
+            if spike_phase in ["DRIFT_STRONG", "DRIFT_NORMAL"] and drift_strength > 0.5:
+                signal = f"DRIFT_{drift_direction}"
+            elif spike_phase == "ABSORBING":
+                signal = "SPIKE_RECOVERY"
+            elif spike_phase == "SPIKE_IMMINENT":
+                signal = "SPIKE_WARNING"
+            else:
+                signal = "NEUTRAL"
 
             return {
-                "signal": "DRIFT_" + drift_direction if phase == "DRIFT_STRONG" else "NEUTRAL",
+                "signal": signal,
                 "spikes_found": len(spike_indices),
                 "drift_direction": drift_direction,
+                "drift_slope": round(drift_slope * 10000, 4),
+                "drift_strength": round(drift_strength, 3),
                 "last_spike_bars": last_spike_bars,
-                "spike_phase": phase,
+                "avg_bars_between": round(avg_between, 0),
+                "spike_phase": spike_phase,
+                "progress": round(progress, 2),
                 "decay_strength": round(decay_strength, 3),
-                "drift_tstat": drift_data['t_stat']
+                "confidence": min(drift_strength * 30, 100) if signal != "NEUTRAL" else 0,
             }
         except:
-            return {"signal": "NEUTRAL", "spikes_found": 0, "decay_strength": 0}
+            return {"signal": "NEUTRAL", "spikes_found": 0, "drift_direction": "UNKNOWN",
+                    "drift_slope": 0, "last_spike_bars": 999, "spike_phase": "UNKNOWN",
+                    "decay_strength": 0, "confidence": 0}
 
     @staticmethod
     def analyze_step(df, profile, ppy):
-        # Compatibilidade com Step mantida da V21
-        return {"signal": "NEUTRAL"}
+        """
+        🟠 FIX #3: Escala correta (log-returns, não step_size em candles)
+        """
+        try:
+            window = min(300, len(df) - 1)
+            if window < 50:
+                return {"signal": "NEUTRAL", "deviation_sigma": 0, "runs_test": "NORMAL", "runs_z": 0}
+
+            recent = df.tail(window)
+            log_ret = np.log(recent['close'] / recent['close'].shift(1)).dropna()
+
+            # Deviation: vol realizada recente vs toda a série
+            full_log_ret = np.log(df['close'] / df['close'].shift(1)).dropna()
+            full_std = float(full_log_ret.std())
+            recent_std = float(log_ret.std()) if len(log_ret) > 10 else full_std
+
+            # Preço: quanto desviou em termos de std acumulado
+            price_change = float(recent['close'].iloc[-1] - recent['close'].iloc[0])
+            expected_std_price = full_std * np.sqrt(window) * float(recent['close'].iloc[0])
+            deviation_sigma = price_change / expected_std_price if expected_std_price > 0 else 0
+
+            # Runs test
+            directions = (recent['close'].diff().dropna() > 0).astype(int)
+            runs = 1
+            for i in range(1, len(directions)):
+                if directions.iloc[i] != directions.iloc[i-1]:
+                    runs += 1
+            n1 = int(directions.sum())
+            n0 = len(directions) - n1
+            if n0 > 0 and n1 > 0:
+                expected_runs = (2 * n0 * n1) / (n0 + n1) + 1
+                denom = (n0 + n1)**2 * (n0 + n1 - 1)
+                std_runs = np.sqrt(2*n0*n1*(2*n0*n1-n0-n1) / denom) if denom > 0 else 1
+                z_runs = (runs - expected_runs) / std_runs if std_runs > 0 else 0
+            else:
+                z_runs = 0
+
+            runs_test = "CLUSTERING" if z_runs < -2 else "ALTERNATING" if z_runs > 2 else "NORMAL"
+
+            # Vol ratio
+            vol_ratio = recent_std / full_std if full_std > 0 else 1.0
+
+            # Signal
+            if abs(deviation_sigma) > 2.5:
+                signal = "EXTREME_DEVIATION"
+            elif abs(deviation_sigma) > 1.5:
+                signal = "HIGH_DEVIATION"
+            elif runs_test == "CLUSTERING":
+                signal = "TREND_CLUSTER"
+            elif runs_test == "ALTERNATING":
+                signal = "MEAN_REVERT_PATTERN"
+            elif vol_ratio > 1.4:
+                signal = "VOL_EXPANDING"
+            elif vol_ratio < 0.6:
+                signal = "VOL_COMPRESSING"
+            else:
+                signal = "NEUTRAL"
+
+            return {
+                "signal": signal,
+                "deviation_sigma": round(deviation_sigma, 2),
+                "runs_test": runs_test,
+                "runs_z": round(z_runs, 2),
+                "vol_ratio": round(vol_ratio, 3),
+                "price_change": round(price_change, 4),
+                "confidence": min(abs(deviation_sigma) * 25, 100) if signal != "NEUTRAL" else 0,
+            }
+        except:
+            return {"signal": "NEUTRAL", "deviation_sigma": 0, "runs_test": "NORMAL",
+                    "runs_z": 0, "confidence": 0}
 
 # ==============================================================================
-# EDGE #1: VARIANCE RATIO TEST (Mantido para compatibilidade com scoring)
+# 🟡 EDGE #1: VARIANCE RATIO TEST — Detecta se há edge real
 # ==============================================================================
 
 def variance_ratio_test(series, periods=[2, 5, 10, 20]):
+    """Se VR ≠ 1 → NÃO é random walk → há edge explorável.
+    VR < 1 = mean-reverting. VR > 1 = trending."""
     try:
         log_ret = np.log(series / series.shift(1)).dropna()
         if len(log_ret) < 50:
@@ -671,29 +855,32 @@ def variance_ratio_test(series, periods=[2, 5, 10, 20]):
         results = {}
         for q in periods:
             q_ret = np.log(series / series.shift(q)).dropna()
-            if len(q_ret) < 20: continue
+            if len(q_ret) < 20:
+                continue
             var_q = float(q_ret.var())
             vr = var_q / (q * var1)
-            results[q] = {"vr": round(vr, 4)}
-        
-        best_vr = 1.0
-        max_dev = 0
-        for r in results.values():
-            dev = abs(r['vr'] - 1)
-            if dev > max_dev:
-                max_dev = dev
-                best_vr = r['vr']
-
-        dom_type = "TRENDING" if best_vr > 1.1 else ("MEAN_REVERT" if best_vr < 0.9 else "RANDOM_WALK")
-        return {"has_edge": max_dev > 0.1, "dominant_type": dom_type, "results": results, "best_vr": best_vr}
+            n = len(log_ret)
+            z = (vr - 1) / np.sqrt(2*(2*q-1)*(q-1) / (3*q*n)) if n > 0 else 0
+            results[q] = {"vr": round(vr, 4), "z": round(z, 2), "significant": abs(z) > 1.96,
+                          "type": "MEAN_REVERT" if vr < 1 and abs(z)>1.96 else "TRENDING" if vr > 1 and abs(z)>1.96 else "RANDOM"}
+        sig_results = [r for r in results.values() if r['significant']]
+        if not sig_results:
+            return {"has_edge": False, "dominant_type": "RANDOM_WALK", "results": results,
+                    "best_vr": min((r['vr'] for r in results.values()), default=1.0)}
+        types = [r['type'] for r in sig_results]
+        dominant = max(set(types), key=types.count)
+        return {"has_edge": True, "dominant_type": dominant, "results": results,
+                "n_significant": len(sig_results),
+                "best_vr": min((r['vr'] for r in results.values()), default=1.0)}
     except:
         return {"has_edge": False, "dominant_type": "RANDOM_WALK", "results": {}}
 
 # ==============================================================================
-# EDGE #2: AUTOCORRELAÇÃO DE RETORNOS
+# 🟡 EDGE #2: AUTOCORRELAÇÃO DE RETORNOS
 # ==============================================================================
 
 def autocorrelation_analysis(series, max_lag=5):
+    """Autocorrelação significativa → padrão explorável"""
     try:
         log_ret = np.log(series / series.shift(1)).dropna()
         if len(log_ret) < 50:
@@ -703,68 +890,405 @@ def autocorrelation_analysis(series, max_lag=5):
         for lag in range(1, max_lag + 1):
             acf = float(log_ret.autocorr(lag=lag))
             sig = abs(acf) > sig_threshold
-            results[lag] = {"acf": round(acf, 4), "significant": sig}
-        
-        acf1 = results.get(1, {}).get('acf', 0)
-        dom_type = "MOMENTUM" if acf1 > 0.05 else ("MEAN_REVERT" if acf1 < -0.05 else "NOISE")
-        
-        return {"results": results, "significant_lags": [k for k,v in results.items() if v['significant']], "dominant_type": dom_type, "acf_1": acf1, "has_pattern": abs(acf1) > sig_threshold}
+            rtype = "MEAN_REVERT" if acf < -sig_threshold else "MOMENTUM" if acf > sig_threshold else "NOISE"
+            results[lag] = {"acf": round(acf, 4), "significant": sig, "type": rtype}
+        sig_lags = [lag for lag, r in results.items() if r['significant']]
+        types = [results[l]['type'] for l in sig_lags]
+        dominant = max(set(types), key=types.count) if types else "NOISE"
+        return {"results": results, "significant_lags": sig_lags, "dominant_type": dominant,
+                "acf_1": results.get(1, {}).get('acf', 0), "has_pattern": len(sig_lags) > 0}
     except:
         return {"significant_lags": [], "dominant_type": "NOISE", "acf_1": 0, "has_pattern": False}
 
 # ==============================================================================
-# EDGE #3: VOLATILITY CLUSTERING (GARCH EFFECT)
+# 🟡 EDGE #3: VOLATILITY CLUSTERING (GARCH EFFECT)
 # ==============================================================================
 
 def volatility_clustering_test(series, window=20):
+    """Autocorrelação de retornos absolutos → vol clusters → edge"""
     try:
         log_ret = np.log(series / series.shift(1)).dropna()
         if len(log_ret) < 50:
             return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
         abs_ret = log_ret.abs()
         acf_abs = float(abs_ret.autocorr(lag=1))
-        
+        sig = 2 / np.sqrt(len(abs_ret))
+        has_clustering = acf_abs > sig
+
         current_vol = float(abs_ret.tail(window).mean())
         historical_vol = float(abs_ret.mean())
         vol_ratio = current_vol / historical_vol if historical_vol > 0 else 1.0
 
-        if vol_ratio > 1.5: regime = "HIGH_VOL_CLUSTER"
-        elif vol_ratio < 0.6: regime = "LOW_VOL_CLUSTER"
-        else: regime = "NORMAL_CLUSTER"
+        if has_clustering:
+            if vol_ratio > 1.5:
+                regime = "HIGH_VOL_CLUSTER"
+            elif vol_ratio < 0.6:
+                regime = "LOW_VOL_CLUSTER"
+            else:
+                regime = "NORMAL_CLUSTER"
+        else:
+            regime = "NO_CLUSTER"
 
-        return {"has_clustering": abs(acf_abs) > 0.1, "vol_regime": regime,
-                "vol_ratio": round(vol_ratio, 3)}
+        return {"has_clustering": has_clustering, "vol_regime": regime,
+                "acf_abs": round(acf_abs, 4), "vol_ratio": round(vol_ratio, 3),
+                "current_vol": round(current_vol, 6), "historical_vol": round(historical_vol, 6)}
     except:
         return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
 
 # ==============================================================================
-# CPI ENGINE & TRANSITION
+
+
+# ==============================================================================
+# V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
+# ==============================================================================
+
+def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=400):
+    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico."""
+    try:
+        data = np.array(series.dropna().values[-max_n:], dtype=float)
+        n = len(data)
+        if n < 50: return 2.0, "CHAOTIC"
+        r = r_mult * np.std(data)
+        if r == 0: return 0.0, "CONSTANT"
+        def _count(tl):
+            cnt = 0
+            for i in range(n - tl):
+                for j in range(i + 1, n - tl):
+                    if np.max(np.abs(data[i:i+tl] - data[j:j+tl])) < r:
+                        cnt += 1
+            return cnt
+        B = _count(m)
+        A = _count(m + 1)
+        if B == 0 or A == 0: se = 2.5
+        else: se = -np.log(A / B)
+        if se < 0.4: regime = "HIGHLY_PREDICTABLE"
+        elif se < 0.8: regime = "PREDICTABLE"
+        elif se < 1.5: regime = "MODERATE"
+        else: regime = "CHAOTIC"
+        return round(float(se), 3), regime
+    except: return 2.0, "ERROR"
+
+# ==============================================================================
+# V21 ENGINE #2: PERMUTATION ENTROPY — Determinismo na ordem
+# ==============================================================================
+
+def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
+    """PE=0 deterministic, PE=1 random. PE < 0.85 = padrao detectavel."""
+    try:
+        data = np.array(series.dropna().values[-max_n:], dtype=float)
+        n = len(data)
+        if n < order * delay + 10: return 1.0, "RANDOM"
+        counts = {}
+        total = 0
+        for i in range(n - (order - 1) * delay):
+            pat = tuple(int(x) for x in np.argsort(data[i:i + order * delay:delay]))
+            counts[pat] = counts.get(pat, 0) + 1
+            total += 1
+        if total == 0: return 1.0, "RANDOM"
+        max_e = math_log(factorial(order))
+        if max_e == 0: return 1.0, "RANDOM"
+        entropy = 0.0
+        for c in counts.values():
+            p = c / total
+            if p > 0: entropy -= p * math_log(p)
+        pe = entropy / max_e
+        if pe < 0.75: regime = "DETERMINISTIC"
+        elif pe < 0.85: regime = "STRUCTURED"
+        elif pe < 0.95: regime = "WEAKLY_STRUCTURED"
+        else: regime = "RANDOM"
+        return round(float(pe), 4), regime
+    except: return 1.0, "ERROR"
+
+# ==============================================================================
+# V21 ENGINE #3: SPECTRAL ANALYSIS (FFT) — Ciclos ocultos no CSPRNG
+# ==============================================================================
+
+def spectral_analysis_v21(series, top_n=3, min_period=5, max_period=200):
+    """Encontra ciclos dominantes na serie de precos via FFT."""
+    try:
+        vals = np.array(series.dropna().values, dtype=float)
+        log_ret = np.diff(np.log(vals))
+        n = len(log_ret)
+        if n < 100: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+        log_ret = log_ret - np.mean(log_ret)
+        fft_v = np.fft.rfft(log_ret)
+        power = np.abs(fft_v) ** 2
+        freqs = np.fft.rfftfreq(n, d=1)
+        valid = []
+        for i in range(1, len(freqs)):
+            if freqs[i] > 0:
+                period = 1.0 / freqs[i]
+                if min_period <= period <= max_period:
+                    valid.append((period, power[i]))
+        if not valid: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+        valid.sort(key=lambda x: x[1], reverse=True)
+        mean_p = np.mean(power[1:])
+        cycles = []
+        for period, pwr in valid[:top_n]:
+            sig = pwr / mean_p if mean_p > 0 else 0
+            if sig > 3.0:
+                cycles.append({"period": round(period, 1), "significance": round(float(sig), 2)})
+        se = max((c['significance'] for c in cycles), default=0)
+        return {"has_cycle": len(cycles) > 0, "cycles": cycles,
+                "dominant_period": cycles[0]['period'] if cycles else 0,
+                "spectral_edge": round(float(se), 2)}
+    except: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+
+# ==============================================================================
+# V21 ENGINE #4: TRANSITION MATRIX (Markov Chain)
+# ==============================================================================
+
+def transition_matrix_v21(series, n_states=3, max_n=500):
+    """Detecta dependencias Markovianas nos retornos."""
+    try:
+        vals = np.array(series.dropna().values[-max_n:], dtype=float)
+        log_ret = np.diff(np.log(vals))
+        n = len(log_ret)
+        if n < 80: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
+                           "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+                           "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+        thr = np.percentile(log_ret, [33.3, 66.7])
+        states = np.digitize(log_ret, thr)
+        mat = np.zeros((n_states, n_states))
+        for i in range(len(states) - 1):
+            mat[states[i], states[i + 1]] += 1
+        row_s = mat.sum(axis=1, keepdims=True); row_s[row_s == 0] = 1
+        prob = mat / row_s
+        exp = np.outer(mat.sum(axis=1), mat.sum(axis=0)) / max(mat.sum(), 1)
+        exp[exp == 0] = 1e-10
+        chi2_val = float(np.sum((mat - exp) ** 2 / exp))
+        df = (n_states - 1) ** 2
+        p_val = 1 - chi2_dist.cdf(chi2_val, df)
+        has_dep = p_val < 0.05
+        labels = ["DOWN", "NEUTRAL", "UP"]
+        max_dev = 0; best_t = ""
+        for i in range(n_states):
+            for j in range(n_states):
+                d = abs(prob[i, j] - 1.0 / n_states)
+                if d > max_dev: max_dev = d; best_t = f"{labels[i]}->{labels[j]}: {prob[i,j]:.2f}"
+        return {"has_dependence": has_dep, "chi2": round(chi2_val, 2),
+                "p_value": round(float(p_val), 4), "transition_edge": round(float(max_dev * 100), 1),
+                "best_transition": best_t,
+                "p_reversal_up": round(float(prob[0, 2]), 3) if n_states > 2 else 0.33,
+                "p_reversal_down": round(float(prob[2, 0]), 3) if n_states > 2 else 0.33,
+                "p_momentum_up": round(float(prob[2, 2]), 3) if n_states > 2 else 0.33,
+                "p_momentum_down": round(float(prob[0, 0]), 3) if n_states > 2 else 0.33,
+                "matrix": {labels[i]: {labels[j]: round(float(prob[i,j]),3) for j in range(n_states)} for i in range(n_states)}}
+    except: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
+                    "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+                    "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+
+# ==============================================================================
+# V21 ENGINE #5: COMPOUND PREDICTABILITY INDEX (CPI)
 # ==============================================================================
 
 def compound_predictability_index(series, vr_r=None, acf_r=None):
-    # Simplificado do V21 para usar a V22 Math Engine dentro do Sniper Core
-    return {"cpi": 50, "regime": "MODERATE"} # Placeholder
+    """CPI 0-100. >60=FORTE, 35-60=MODERADO, <35=FRACO (nao operar)."""
+    try:
+        se_val, _ = sample_entropy_v21(series)
+        se_sc = max(0, 25 - se_val * 12.5)
+        pe_val, _ = permutation_entropy_v21(series)
+        pe_sc = max(0, 25 - pe_val * 25)
+        if vr_r is None: vr_r = variance_ratio_test(series)
+        vr_sc = min(25, vr_r.get('n_significant', 0) * 6.25) if vr_r.get('has_edge') else 0
+        if acf_r is None: acf_r = autocorrelation_analysis(series)
+        acf_sc = min(25, len(acf_r.get('significant_lags', [])) * 6.25)
+        cpi = se_sc + pe_sc + vr_sc + acf_sc
+        if cpi >= 60: regime = "HIGHLY_PREDICTABLE"
+        elif cpi >= 45: regime = "PREDICTABLE"
+        elif cpi >= 35: regime = "MODERATE"
+        else: regime = "UNPREDICTABLE"
+        return {"cpi": round(float(cpi), 1), "regime": regime,
+                "components": {"se": round(float(se_sc),1), "pe": round(float(pe_sc),1),
+                               "vr": round(float(vr_sc),1), "acf": round(float(acf_sc),1)},
+                "se_raw": se_val, "pe_raw": pe_val}
+    except: return {"cpi": 0, "regime": "ERROR", "components": {}, "se_raw": 2.0, "pe_raw": 1.0}
+
+# ==============================================================================
+# V21 ENGINE #6: REGIME TRANSITION DETECTION
+# ==============================================================================
 
 def detect_regime_transition(df, lb_cur=30, lb_past=80):
+    """Detecta MUDANCAS de regime (mais lucrativo que regime estatico)."""
     try:
         if len(df) < lb_past + 20: return "STABLE", 1.0, ""
-        # Logica basica mantida
-        adx_now = df['ADX'].iloc[-1]
-        adx_past = df['ADX'].iloc[-lb_cur]
-        if adx_now > 25 and adx_past < 20:
-             return "BREAKOUT_TRANSITION", 1.4, f"Adx {adx_past:.0f}->{adx_now:.0f}"
+        cur_r, cur_sc = classify_regime(df, lookback=lb_cur)
+        past_r, past_sc = classify_regime(df.iloc[:-lb_cur], lookback=min(lb_past, len(df) - lb_cur - 1))
+        adx_now = df['ADX'].iloc[-1]; adx_past = df['ADX'].iloc[-lb_cur] if len(df) > lb_cur else adx_now
+        adx_acc = adx_now - adx_past
+        bb_now = df['BB_width'].iloc[-1]; bb_past = df['BB_width'].iloc[-lb_cur] if len(df) > lb_cur else bb_now
+        bb_ch = (bb_now - bb_past) / bb_past if bb_past > 0 else 0
+        if "RANGING" in past_r and "TRENDING" in cur_r:
+            return "BREAKOUT_TRANSITION", 1.4, f"Range->Trend (ADX +{adx_acc:.1f})"
+        elif "TRENDING" in past_r and "RANGING" in cur_r:
+            return "EXHAUSTION", 0.5, f"Trend->Range (ADX {adx_acc:.1f})"
+        elif "RANGING" in past_r and "RANGING" in cur_r and bb_ch < -0.3:
+            return "COMPRESSION_BUILDING", 1.2, f"Squeeze (BB {bb_ch:.0%})"
+        elif "TRENDING" in past_r and "TRENDING" in cur_r and adx_acc > 5:
+            return "TREND_ACCEL", 1.3, f"Accel (ADX +{adx_acc:.1f})"
+        elif "TRENDING" in past_r and "TRENDING" in cur_r and adx_acc < -5:
+            return "TREND_DECEL", 0.7, f"Decel (ADX {adx_acc:.1f})"
         return "STABLE", 1.0, ""
     except: return "STABLE", 1.0, ""
 
-def calculate_dynamic_bias(h4, h1):
-    # Logica V22 vai sobrepor com T-Stat, mas mantemos para backward compatibility
-    return "NEUTRAL", 50.0, 0.0
+# ==============================================================================
+# V21 FIX-B: DYNAMIC BIAS com Score de Confianca
+# ==============================================================================
 
-def enhanced_momentum_v21(h4, h1, m15, direction):
-    return 50.0
+def calculate_dynamic_bias(h4, h1):
+    """Bias com score -80 a +80. Substitui comparacao binaria."""
+    try:
+        c4 = h4.iloc[-1]; c1 = h1.iloc[-1]
+        sc = 0.0
+        if c4['ATR'] > 0:
+            dist_a = (c4['close'] - c4['EMA_200']) / c4['ATR']
+            sc += max(-20, min(20, dist_a * 4))
+        if len(h4) > 20 and c4['ATR'] > 0:
+            sl = (h4['EMA_200'].iloc[-1] - h4['EMA_200'].iloc[-20]) / (c4['ATR'] * 20)
+            sc += max(-15, min(15, sl * 50))
+        if c4['EMA_20'] > c4['EMA_50'] > c4['EMA_200']: sc += 20
+        elif c4['EMA_20'] < c4['EMA_50'] < c4['EMA_200']: sc -= 20
+        elif c4['EMA_20'] > c4['EMA_50']: sc += 8
+        elif c4['EMA_20'] < c4['EMA_50']: sc -= 8
+        h1_bull = c1['close'] > c1['EMA_200']; h4_bull = c4['close'] > c4['EMA_200']
+        if h1_bull == h4_bull: sc += 15 if h1_bull else -15
+        if len(h4) >= 3:
+            hn = h4['MACD_hist'].iloc[-1]; hp = h4['MACD_hist'].iloc[-2]
+            if hn > hp and hn > 0: sc += 10
+            elif hn < hp and hn < 0: sc -= 10
+            elif hn > hp: sc += 5
+            elif hn < hp: sc -= 5
+        if sc > 15: bias = "BULLISH"
+        elif sc < -15: bias = "BEARISH"
+        else: bias = "NEUTRAL"
+        conf = min(abs(sc), 80) / 80 * 100
+        return bias, round(float(conf), 1), round(float(sc), 1)
+    except: return "NEUTRAL", 0.0, 0.0
 
 # ==============================================================================
-# DISTRIBUIÇÃO V20/V21 (mantido)
+# V21 PREC #1: ENHANCED MOMENTUM (0-100)
+# ==============================================================================
+
+def enhanced_momentum_v21(h4, h1, m15, direction):
+    """Multi-dimensional momentum: MACD hist + RSI zone + DI."""
+    try:
+        sc = 0.0; is_b = direction == "BULLISH"
+        for tf, w in [(h4, 15), (h1, 12), (m15, 8)]:
+            if len(tf) >= 3:
+                h = tf['MACD_hist']
+                acc = h.iloc[-1] - h.iloc[-2]
+                if is_b:
+                    if h.iloc[-1] > 0 and acc > 0: sc += w
+                    elif h.iloc[-1] > 0: sc += w * 0.5
+                    elif acc > 0: sc += w * 0.3
+                else:
+                    if h.iloc[-1] < 0 and acc < 0: sc += w
+                    elif h.iloc[-1] < 0: sc += w * 0.5
+                    elif acc < 0: sc += w * 0.3
+        rsi = h1['RSI'].iloc[-1] if pd.notna(h1['RSI'].iloc[-1]) else 50
+        if is_b:
+            if 45 < rsi < 65: sc += 25
+            elif 35 < rsi < 45: sc += 15
+            elif rsi > 70: sc += 5
+        else:
+            if 35 < rsi < 55: sc += 25
+            elif 55 < rsi < 65: sc += 15
+            elif rsi < 30: sc += 5
+        c1 = h1.iloc[-1]
+        dip = c1.get('+DI', 0) if pd.notna(c1.get('+DI', np.nan)) else 0
+        dim = c1.get('-DI', 0) if pd.notna(c1.get('-DI', np.nan)) else 0
+        if dip + dim > 0:
+            ds = abs(dip - dim) / (dip + dim)
+            if is_b and dip > dim: sc += min(20, ds * 40)
+            elif not is_b and dim > dip: sc += min(20, ds * 40)
+        return round(min(100, sc), 1)
+    except: return 0.0
+
+# ==============================================================================
+# V21 PREC #2: EDGE CORRELATION MATRIX
+# ==============================================================================
+
+def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
+                                 divergence, fib_level, sr_touch, align_type, vol_confirmed):
+    """Conta confluencias INDEPENDENTES (nao correlacionadas)."""
+    try:
+        groups = {}
+        g1 = 0
+        if vr.get('has_edge') and vr.get('dominant_type') == 'MEAN_REVERT': g1 += 1
+        if acf.get('has_pattern') and acf.get('dominant_type') == 'MEAN_REVERT': g1 += 0.5
+        if hurst_val < 0.48: g1 += 0.5
+        groups['STAT_MR'] = min(1.0, g1)
+        g2 = 0
+        if vr.get('has_edge') and vr.get('dominant_type') == 'TRENDING': g2 += 1
+        if acf.get('has_pattern') and acf.get('dominant_type') == 'MOMENTUM': g2 += 0.5
+        if hurst_val > 0.53: g2 += 0.5
+        groups['STAT_TREND'] = min(1.0, g2)
+        groups['GENERATOR'] = 1.0 if gen_bonus > 0 else 0.0
+        g4 = 0
+        if abs(zscore) > 1.5: g4 += 0.5
+        if dist.get('percentile', 50) < 15 or dist.get('percentile', 50) > 85: g4 += 0.5
+        groups['DISTRIBUTION'] = min(1.0, g4)
+        groups['PATTERNS'] = min(1.0, 0.7 if divergence else 0.0)
+        g6 = 0
+        if fib_level: g6 += 0.4
+        if sr_touch: g6 += 0.3
+        if align_type not in ["NONE", None]: g6 += 0.3
+        groups['STRUCTURE'] = min(1.0, g6)
+        groups['VOLUME'] = 1.0 if vol_confirmed else 0.0
+        n_act = sum(1 for v in groups.values() if v >= 0.5)
+        tot = sum(groups.values())
+        ql = "ELITE" if n_act >= 5 else "STRONG" if n_act >= 4 else "MODERATE" if n_act >= 3 else "WEAK"
+        return {"n_independent": n_act, "total_strength": round(tot, 1), "groups": groups, "quality": ql}
+    except: return {"n_independent": 0, "total_strength": 0, "groups": {}, "quality": "WEAK"}
+
+# ==============================================================================
+# V21 PREC #3: OPTIMAL HOLDING PERIOD
+# ==============================================================================
+
+def optimal_holding_period(acf_result, setup_type):
+    """Calcula tempo otimo de trade baseado no edge decay."""
+    try:
+        base = {"SWING": 40, "DAY": 20, "MEAN_REVERSION": 15,
+                "GEN_VOL_COMPRESS": 25, "GEN_SPIKE_DRIFT": 30,
+                "GEN_STEP_REVERT": 12, "GEN_PRICE_DEV": 20,
+                "BREAKOUT": 35, "PERFECT_STORM": 60}
+        mc = base.get(setup_type, 30)
+        sig_l = acf_result.get('significant_lags', [])
+        if sig_l:
+            ml = max(sig_l); hl = ml * 3
+            mc = min(mc, max(10, hl * 2))
+        return {"max_candles": int(mc), "time_stop": int(mc * 1.5), "edge_halflife": int(mc // 2)}
+    except: return {"max_candles": 30, "time_stop": 45, "edge_halflife": 15}
+
+# ==============================================================================
+# V21 PREC #4: CONDITIONAL ENTRY ENGINE
+# ==============================================================================
+
+def conditional_entry_v21(setup_type, direction, price, ema20, ema50, atr, bb_lo, bb_hi):
+    """Calcula preco de entrada ideal em vez de entrar no close."""
+    try:
+        is_l = "LONG" in str(direction) or "BULLISH" in str(direction)
+        if setup_type == "SWING":
+            if is_l:
+                ideal = max(ema20 - atr * 0.2, (ema20 + ema50) / 2)
+                return (price, "MARKET_IN_ZONE") if price < ideal + atr * 0.3 else (ideal, "LIMIT_VALUE_ZONE")
+            else:
+                ideal = min(ema20 + atr * 0.2, (ema20 + ema50) / 2)
+                return (price, "MARKET_IN_ZONE") if price > ideal - atr * 0.3 else (ideal, "LIMIT_VALUE_ZONE")
+        elif setup_type == "MEAN_REVERSION":
+            if is_l:
+                ideal = bb_lo + atr * 0.3
+                return (price, "MARKET_BB_ZONE") if price < ideal + atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
+            else:
+                ideal = bb_hi - atr * 0.3
+                return (price, "MARKET_BB_ZONE") if price > ideal - atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
+        elif "BREAKOUT" in str(setup_type):
+            return (price - atr * 0.3, "LIMIT_PULLBACK") if is_l else (price + atr * 0.3, "LIMIT_PULLBACK")
+        return price, "MARKET"
+    except: return price, "MARKET"
+
+
+# DISTRIBUIÇÃO V20 (mantido do V19, corrigido)
 # ==============================================================================
 
 class DistributionAnalyzer:
@@ -772,17 +1296,36 @@ class DistributionAnalyzer:
     def analyze(df, window=150):
         try:
             log_returns = np.log(df['close'] / df['close'].shift(1)).dropna()
-            if len(log_returns) < window: return {"skewness": 0, "tail_risk": "NORMAL", "percentile": 50}
+            if len(log_returns) < window:
+                return {"skewness": 0, "kurtosis": 3, "tail_risk": "NORMAL",
+                        "percentile": 50, "is_normal": True, "signal": "NEUTRAL"}
             recent = log_returns.tail(window)
             skewness = float(recent.skew())
             kurtosis = float(recent.kurtosis()) + 3
-            percentile = 50
-            return {"skewness": round(skewness, 3), "kurtosis": round(kurtosis, 3), "tail_risk": "NORMAL", "percentile": percentile}
+            jb = (window / 6) * (skewness**2 + (1/4)*(kurtosis - 3)**2)
+            is_normal = jb < 5.99
+            if kurtosis > 5: tail_risk = "FAT_TAILS"
+            elif kurtosis > 4: tail_risk = "HEAVY_TAILS"
+            elif kurtosis < 2.5: tail_risk = "THIN_TAILS"
+            else: tail_risk = "NORMAL"
+            z_return = float((recent.iloc[-1] - recent.mean()) / recent.std()) if recent.std() > 0 else 0
+            recent_cum = float(recent.tail(10).sum())
+            all_windows = [float(log_returns.iloc[i:i+10].sum()) for i in range(0, len(log_returns)-10, 5)]
+            percentile = sum(1 for w in all_windows if w < recent_cum) / len(all_windows) * 100 if all_windows else 50
+            signal = "NEUTRAL"
+            if abs(skewness) > 0.5:
+                signal = "POSITIVE_SKEW" if skewness > 0 else "NEGATIVE_SKEW"
+            if tail_risk == "FAT_TAILS" and abs(z_return) > 2:
+                signal = "EXTREME_TAIL_EVENT"
+            return {"skewness": round(skewness, 3), "kurtosis": round(kurtosis, 3),
+                    "jarque_bera": round(jb, 2), "is_normal": is_normal, "tail_risk": tail_risk,
+                    "z_return": round(z_return, 2), "percentile": round(percentile, 1), "signal": signal}
         except:
-            return {"skewness": 0, "kurtosis": 3, "tail_risk": "NORMAL", "percentile": 50}
+            return {"skewness": 0, "kurtosis": 3, "tail_risk": "NORMAL", "percentile": 50,
+                    "is_normal": True, "signal": "NEUTRAL"}
 
 # ==============================================================================
-# KELLY CRITERION (Mantido)
+# 🟢 PRECISION #5: ADAPTIVE KELLY CRITERION (não if/elif primitivo)
 # ==============================================================================
 
 class AdaptiveLearnerV20:
@@ -791,10 +1334,31 @@ class AdaptiveLearnerV20:
         adjusted = profile.copy()
         if not bt_results or bt_results.get('TOTAL_TRADES', 0) < 5:
             return adjusted
+        wr = bt_results.get('WR', 50)
+        pf = bt_results.get('PF', 1.0)
+        dd = bt_results.get('DD', 0)
+        # Kelly Criterion contínuo: f* = (p×b - q) / b
+        p = wr / 100
+        b = pf if pf > 0 else 1.0
+        q = 1 - p
+        kelly = (p * b - q) / b if b > 0 else 0
+        kelly = max(0.0, min(kelly, 0.25))
+        # DD penalty contínuo
+        dd_penalty = max(0.3, 1.0 - dd / 20)
+        # Risk multiplier
+        adjusted['risk_mult'] = round(profile['risk_mult'] * (0.5 + kelly * 2) * dd_penalty, 3)
+        adjusted['risk_mult'] = max(0.2, min(adjusted['risk_mult'], 2.5))
+        # SL contínuo
+        sl_adj = 1.0 + max(0, dd - 5) * 0.03 - max(0, wr - 60) * 0.005
+        adjusted['sl_atr_mult'] = round(profile['sl_atr_mult'] * max(0.8, min(sl_adj, 1.3)), 2)
+        # TP baseado em kurtosis
+        kurt = dist_analysis.get('kurtosis', 3)
+        tp_mult = 1.0 + max(0, kurt - 3) * 0.1
+        adjusted['tp2_r'] = round(min(profile['tp2_r'] * tp_mult, 10.0), 1)
         return adjusted
 
 # ==============================================================================
-# SCALING ENGINE
+# SCALING ENGINE V20 (mantido, funcional)
 # ==============================================================================
 
 class ScalingEngine:
@@ -802,18 +1366,36 @@ class ScalingEngine:
     def calculate_pyramid(grade, score, capital, risk_pct, entry, sl, atr, profile):
         risk_per_unit = abs(entry - sl)
         if risk_per_unit == 0:
-            return {"levels": [], "total_risk_pct": risk_pct, "n_levels": 0}
+            return {"levels": [{"entry": entry, "risk_pct": risk_pct, "size": 0, "trigger": "BASE"}],
+                    "total_risk_pct": risk_pct, "total_size": 0, "n_levels": 1}
         levels = []
-        # Simplified V21 logic
-        levels.append({"entry": round(entry,5), "risk_pct": round(risk_pct,2), "trigger": "SINGLE ENTRY"})
-        return {"levels": levels, "total_risk_pct": risk_pct, "n_levels": 1}
+        rm = profile.get('risk_mult', 1.0)
+        if grade == "S" and score >= 140:
+            for mult, rp, off, trig in [(1.5, risk_pct*1.5, 0, "STORM ENTRY"),
+                                         (1.0, risk_pct, 0.5, "+0.5 ATR → add (SL→BE)"),
+                                         (0.5, risk_pct*0.5, 1.5, "+1.5 ATR → add")]:
+                e = entry + atr*off*(1 if entry>sl else -1) if off else entry
+                levels.append({"entry": round(e,5), "risk_pct": round(rp,2),
+                    "size": round(capital*rp/100*rm/risk_per_unit,2), "trigger": trig})
+        elif grade in ["A++","A+"] and score >= 90:
+            for mult, rp, off, trig in [(1.0, risk_pct, 0, "BASE ENTRY"),
+                                         (0.5, risk_pct*0.5, 0.8, "+0.8 ATR → add (SL→BE)")]:
+                e = entry + atr*off*(1 if entry>sl else -1) if off else entry
+                levels.append({"entry": round(e,5), "risk_pct": round(rp,2),
+                    "size": round(capital*rp/100*rm/risk_per_unit,2), "trigger": trig})
+        else:
+            levels.append({"entry": round(entry,5), "risk_pct": round(risk_pct,2),
+                "size": round(capital*risk_pct/100*rm/risk_per_unit,2), "trigger": "SINGLE ENTRY"})
+        return {"levels": levels, "total_risk_pct": round(sum(l['risk_pct'] for l in levels),2),
+                "total_size": round(sum(l['size'] for l in levels),2), "n_levels": len(levels)}
 
 # ==============================================================================
 # NETWORK — Deriv API
 # ==============================================================================
 DERIV_SERVERS = [
     "wss://ws.binaryws.com/websockets/v3?app_id=1089",
-    "wss://ws.derivws.com/websockets/v3?app_id=1089"
+    "wss://ws.derivws.com/websockets/v3?app_id=1089",
+    "wss://green.binaryws.com/websockets/v3?app_id=1089"
 ]
 
 async def socket_req(url, req):
@@ -832,9 +1414,10 @@ def get_assets():
         if res and 'active_symbols' in res:
             return {x['display_name'].upper(): x['symbol'] for x in res['active_symbols']
                     if x['market'] == 'synthetic_index'}
-    return {} # Return empty dict on failure instead of None to prevent iter error
+    return None
 
 async def fetch_multi_tf(code):
+    """H1=800, H4=400, M15=2000, M5=500"""
     reqs = [
         {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 800, "end": "latest"},
         {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 400, "end": "latest"},
@@ -850,7 +1433,8 @@ async def fetch_multi_tf(code):
                     results.append(json.loads(await asyncio.wait_for(ws.recv(), 15)))
                 if all('candles' in x for x in results):
                     return results[0]['candles'], results[1]['candles'], results[2]['candles'], results[3]['candles'], None
-        except: continue
+        except:
+            continue
     return None, None, None, None, "CONNECTION LOST"
 
 async def fetch_single(code, granularity, count):
@@ -861,7 +1445,7 @@ async def fetch_single(code, granularity, count):
     return None
 
 # ==============================================================================
-# INDICADORES TÉCNICOS
+# INDICADORES TÉCNICOS (limpo, sem mudanças — funcional)
 # ==============================================================================
 
 def prep_df(data):
@@ -872,427 +1456,1629 @@ def prep_df(data):
     df.set_index('date', inplace=True)
     return df
 
+def calculate_rsi_wilder(series, period=14):
+    delta = series.diff(); gain = delta.where(delta>0,0.0); loss = -delta.where(delta<0,0.0)
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    for i in range(period, len(series)):
+        if pd.notna(avg_gain.iloc[i-1]):
+            avg_gain.iloc[i] = (avg_gain.iloc[i-1]*(period-1)+gain.iloc[i])/period
+            avg_loss.iloc[i] = (avg_loss.iloc[i-1]*(period-1)+loss.iloc[i])/period
+    rs = avg_gain / avg_loss.replace(0,np.nan)
+    return 100 - (100/(1+rs))
+
+def calculate_macd(df, fast=12, slow=26, signal=9):
+    ema_f = df['close'].ewm(span=fast,adjust=False).mean()
+    ema_s = df['close'].ewm(span=slow,adjust=False).mean()
+    df['MACD'] = ema_f-ema_s; df['MACD_signal'] = df['MACD'].ewm(span=signal,adjust=False).mean()
+    df['MACD_hist'] = df['MACD']-df['MACD_signal']; return df
+
+def calculate_adx(df, window=14):
+    df['trh']=df['high']-df['low']; df['trc']=abs(df['high']-df['close'].shift()); df['trl']=abs(df['low']-df['close'].shift())
+    df['TR']=df[['trh','trc','trl']].max(axis=1)
+    df['+DM']=np.where((df['high']>df['high'].shift())&(df['low']<=df['low'].shift()),df['high']-df['high'].shift(),0)
+    df['-DM']=np.where((df['low']<df['low'].shift())&(df['high']>=df['high'].shift()),df['low'].shift()-df['low'],0)
+    df['+DM']=np.where(df['+DM']>df['-DM'],df['+DM'],0); df['-DM']=np.where(df['-DM']>df['+DM'],df['-DM'],0)
+    df['TR_E']=df['TR'].ewm(span=window,adjust=False).mean()
+    df['+DM_E']=df['+DM'].ewm(span=window,adjust=False).mean(); df['-DM_E']=df['-DM'].ewm(span=window,adjust=False).mean()
+    df['+DI']=(df['+DM_E']/df['TR_E'])*100; df['-DI']=(df['-DM_E']/df['TR_E'])*100
+    di_sum=(df['+DI']+df['-DI']).replace(0,np.nan); df['DX']=(abs(df['+DI']-df['-DI'])/di_sum)*100
+    df['ADX']=df['DX'].ewm(span=window,adjust=False).mean()
+    df.drop(columns=['trh','trc','trl','TR','+DM','-DM','TR_E','+DM_E','-DM_E','DX'],inplace=True)
+    # V21: +DI and -DI PRESERVED (not dropped)
+    return df
+
+def calculate_zscore(series, window=50):
+    mean = series.rolling(window=window).mean(); std = series.rolling(window=window).std()
+    return (series-mean)/std.replace(0,np.nan)
+
+# 🟠 MATH FIX #2: HURST COM VALIDAÇÃO R²
+def calculate_hurst_exponent(series, max_lag=100):
+    try:
+        ts = series.dropna().values
+        if len(ts) < 50: return 0.5, "RANDOM_WALK", 0.0
+        lags = range(10, min(max_lag, len(ts)//3))
+        rs_values = []
+        for lag in lags:
+            n_chunks = len(ts)//lag
+            if n_chunks < 1: continue
+            rs_lag = []
+            for i in range(n_chunks):
+                chunk = ts[i*lag:(i+1)*lag]; mean_val = np.mean(chunk); dev = chunk-mean_val
+                cum = np.cumsum(dev); R = np.max(cum)-np.min(cum); S = np.std(chunk, ddof=1)
+                if S > 0: rs_lag.append(R/S)
+            if rs_lag: rs_values.append((np.log(lag), np.log(np.mean(rs_lag))))
+        if len(rs_values) < 3: return 0.5, "INSUFFICIENT_DATA", 0.0
+        x = np.array([v[0] for v in rs_values]); y = np.array([v[1] for v in rs_values])
+        coeffs = np.polyfit(x, y, 1); H = max(0.0, min(1.0, coeffs[0]))
+        # R² VALIDATION
+        y_pred = coeffs[0]*x + coeffs[1]
+        ss_res = np.sum((y-y_pred)**2); ss_tot = np.sum((y-np.mean(y))**2)
+        r_squared = 1 - ss_res/ss_tot if ss_tot > 0 else 0
+        if r_squared < 0.7:
+            return round(H,3), "UNRELIABLE", round(r_squared,3)
+        if H > 0.6: regime = "STRONG_TREND"
+        elif H > 0.53: regime = "WEAK_TREND"
+        elif H > 0.47: regime = "RANDOM_WALK"
+        elif H > 0.4: regime = "WEAK_MEAN_REVERT"
+        else: regime = "STRONG_MEAN_REVERT"
+        return round(H,3), regime, round(r_squared,3)
+    except:
+        return 0.5, "ERROR", 0.0
+
+def find_pivot_highs(data, order=5):
+    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
+    for i in range(order, len(values)-order):
+        if np.isnan(values[i]): continue
+        if all(values[i]>values[i-j] and values[i]>values[i+j] for j in range(1,order+1)): pivots.append(i)
+    return np.array(pivots)
+
+def find_pivot_lows(data, order=5):
+    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
+    for i in range(order, len(values)-order):
+        if np.isnan(values[i]): continue
+        if all(values[i]<values[i-j] and values[i]<values[i+j] for j in range(1,order+1)): pivots.append(i)
+    return np.array(pivots)
+
+def detect_divergence(df, indicator='RSI', order=5):
+    try:
+        if len(df) < (order*2+5) or indicator not in df.columns: return None, 0, ""
+        ph=find_pivot_highs(df['high'],order); pl=find_pivot_lows(df['low'],order)
+        ih=find_pivot_highs(df[indicator],order); il=find_pivot_lows(df[indicator],order)
+        if len(ph)>=2 and len(ih)>=2:
+            ph1,ph2=ph[-2],ph[-1]; ih1=ih[np.argmin(np.abs(ih-ph1))]; ih2=ih[np.argmin(np.abs(ih-ph2))]
+            if abs(ih1-ph1)<=3 and abs(ih2-ph2)<=3:
+                if df['high'].iloc[ph2]>df['high'].iloc[ph1] and df[indicator].iloc[ih2]<df[indicator].iloc[ih1]:
+                    s=min((df['high'].iloc[ph2]-df['high'].iloc[ph1])/df['high'].iloc[ph1]*100+(df[indicator].iloc[ih1]-df[indicator].iloc[ih2])/max(df[indicator].iloc[ih1],1)*100,10)
+                    if s>1: return "BEARISH_DIVERGENCE",-int(min(s*3,20)),f"Preço HH vs {indicator} LH"
+        if len(pl)>=2 and len(il)>=2:
+            pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
+            if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
+                if df['low'].iloc[pl2]<df['low'].iloc[pl1] and df[indicator].iloc[il2]>df[indicator].iloc[il1]:
+                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl1])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
+                    if s>1: return "BULLISH_DIVERGENCE",int(min(s*3,20)),f"Preço LL vs {indicator} HL"
+        if len(pl)>=2 and len(il)>=2:
+            pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
+            if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
+                if df['low'].iloc[pl2]>df['low'].iloc[pl1] and df[indicator].iloc[il2]<df[indicator].iloc[il1]:
+                    return "HIDDEN_BULLISH",15,"Hidden: HL vs LL"
+        if len(ph)>=2 and len(ih)>=2:
+            ph1,ph2=ph[-2],ph[-1]; ih1=ih[np.argmin(np.abs(ih-ph1))]; ih2=ih[np.argmin(np.abs(ih-ph2))]
+            if abs(ih1-ph1)<=3 and abs(ih2-ph2)<=3:
+                if df['high'].iloc[ph2]<df['high'].iloc[ph1] and df[indicator].iloc[ih2]>df[indicator].iloc[ih1]:
+                    return "HIDDEN_BEARISH",-15,"Hidden: LH vs HH"
+        return None, 0, ""
+    except: return None, 0, ""
+
+def detect_sr_clustered(df, window=100, min_touches=3):
+    try:
+        if len(df)<window or 'ATR' not in df.columns: return []
+        recent=df.tail(window); atr=recent['ATR'].iloc[-1]
+        if pd.isna(atr) or atr==0: return []
+        tolerance=atr*0.3
+        hp=find_pivot_highs(recent['high'],3); lp=find_pivot_lows(recent['low'],3)
+        prices=sorted([recent['high'].iloc[i] for i in hp]+[recent['low'].iloc[i] for i in lp])
+        if not prices: return []
+        clusters,current=[],[prices[0]]
+        for i in range(1,len(prices)):
+            if prices[i]-current[-1]<=tolerance: current.append(prices[i])
+            else:
+                if len(current)>=min_touches: clusters.append(current)
+                current=[prices[i]]
+        if len(current)>=min_touches: clusters.append(current)
+        cp=df['close'].iloc[-1]
+        levels=[{'price':round(np.mean(c),4),'touches':len(c),'type':'RESISTANCE' if np.mean(c)>cp else 'SUPPORT',
+                'strength':len(c)+(1 if max(c)-min(c)<tolerance*0.5 else 0),
+                'zone_high':round(max(c),4),'zone_low':round(min(c),4)} for c in clusters]
+        levels.sort(key=lambda x:x['strength'],reverse=True); return levels[:6]
+    except: return []
+
+def calculate_fibonacci(df, lookback=100):
+    try:
+        if len(df)<lookback: return {},None,None
+        recent=df.tail(lookback); hp=find_pivot_highs(recent['high'],7); lp=find_pivot_lows(recent['low'],7)
+        if len(hp)==0 or len(lp)==0: return {},None,None
+        sh=recent['high'].iloc[hp[-1]]; sl_v=recent['low'].iloc[lp[-1]]
+        if pd.isna(sh) or pd.isna(sl_v) or sh==sl_v: return {},None,None
+        diff=sh-sl_v
+        if hp[-1]>lp[-1]:
+            d="UPTREND"; fibs={'23.6%':sh-diff*0.236,'38.2%':sh-diff*0.382,'50.0%':sh-diff*0.50,'61.8%':sh-diff*0.618,'78.6%':sh-diff*0.786}
+        else:
+            d="DOWNTREND"; fibs={'23.6%':sl_v+diff*0.236,'38.2%':sl_v+diff*0.382,'50.0%':sl_v+diff*0.50,'61.8%':sl_v+diff*0.618,'78.6%':sl_v+diff*0.786}
+        return fibs,d,{'high':sh,'low':sl_v}
+    except: return {},None,None
+
+def check_fib_confluence(price, fibs, atr):
+    try:
+        if not fibs or pd.isna(price) or pd.isna(atr) or atr==0: return None,0
+        for name,lvl in fibs.items():
+            if pd.notna(lvl) and abs(price-lvl)<atr*0.4:
+                return name,(15 if '61.8' in name else 10 if '50.0' in name or '38.2' in name else 5)
+        return None,0
+    except: return None,0
+
+def detect_bb_cycle(df, profile, lookback=30):
+    try:
+        if len(df)<lookback: return "UNKNOWN",0,0
+        recent=df.tail(lookback); bw=recent['BB_width']; avg=bw.mean(); cur=bw.iloc[-1]
+        if avg==0: return "UNKNOWN",0,0
+        ratio=cur/avg; threshold=profile.get('bb_squeeze_threshold',0.6)
+        sc=sum(bw<avg*threshold)
+        if ratio<threshold: return "SQUEEZE",ratio,sc
+        elif ratio>1.5: return "EXPANSION",ratio,0
+        return "NORMAL",ratio,0
+    except: return "UNKNOWN",0,0
+
+def count_consecutive(df, lookback=20):
+    try:
+        recent=df.tail(lookback); dirs=(recent['close']>recent['open']).astype(int)
+        cd=dirs.iloc[-1]; streak=0
+        for i in range(len(dirs)-1,-1,-1):
+            if dirs.iloc[i]==cd: streak+=1
+            else: break
+        return streak, "BULLISH" if cd==1 else "BEARISH"
+    except: return 0, "UNKNOWN"
+
+def detect_roc_extreme(df, profile, periods=[5,10,20]):
+    try:
+        results={}; threshold=profile.get('roc_extreme_pct',1.0)
+        for p in periods:
+            if len(df)<p+1: continue
+            roc=((df['close'].iloc[-1]-df['close'].iloc[-p-1])/df['close'].iloc[-p-1])*100
+            if abs(roc)>threshold*2: status="EXTREME"
+            elif abs(roc)>threshold: status="ELEVATED"
+            else: status="NORMAL"
+            results[f"ROC_{p}"]={'value':round(roc,3),'status':status,'direction':"UP" if roc>0 else "DOWN"}
+        overall="NORMAL"
+        for r in results.values():
+            if r['status']=="EXTREME": overall="EXTREME"; break
+            elif r['status']=="ELEVATED": overall="ELEVATED"
+        return overall,results
+    except: return "NORMAL",{}
+
+# 🟡 EDGE #8: TRIGGER CANDLE CONFIRMATION
+def trigger_candle_confirmed(df, direction):
+    """Verifica se último candle confirma a entrada"""
+    try:
+        if len(df) < 3: return False, "NO_DATA"
+        last = df.iloc[-1]; prev = df.iloc[-2]
+        body = abs(last['close']-last['open']); rng = last['high']-last['low']
+        body_pct = body/rng if rng > 0 else 0
+        if direction == "BULLISH":
+            bullish = last['close'] > last['open']
+            above_prev = last['close'] > prev['close']
+            strong = body_pct > 0.5
+            if bullish and above_prev and strong: return True, "STRONG_TRIGGER"
+            elif bullish and above_prev: return True, "WEAK_TRIGGER"
+            return False, "NO_TRIGGER"
+        else:
+            bearish = last['close'] < last['open']
+            below_prev = last['close'] < prev['close']
+            strong = body_pct > 0.5
+            if bearish and below_prev and strong: return True, "STRONG_TRIGGER"
+            elif bearish and below_prev: return True, "WEAK_TRIGGER"
+            return False, "NO_TRIGGER"
+    except: return False, "ERROR"
+
+# 🟢 PRECISION #3: SMART TP COM S/R AWARENESS
+def smart_tp(entry, direction, risk, base_r1, base_r2, sr_levels):
+    """Ajusta TP se S/R forte no caminho"""
+    raw_tp1 = entry + base_r1 * risk if direction=="LONG" else entry - base_r1 * risk
+    raw_tp2 = entry + base_r2 * risk if direction=="LONG" else entry - base_r2 * risk
+    for sr in (sr_levels or []):
+        if sr.get('strength',0) < 4: continue
+        sp = sr['price']
+        if direction == "LONG":
+            if entry < sp < raw_tp1: raw_tp1 = sp - risk * 0.1; break
+        else:
+            if raw_tp1 < sp < entry: raw_tp1 = sp + risk * 0.1; break
+    return round(raw_tp1, 5), round(raw_tp2, 5)
+
+def detect_micro_pullback(df, direction, atr):
+    try:
+        if len(df)<5: return None,"MARKET"
+        last=df.tail(3); curr=last.iloc[-1]; prev=last.iloc[-2]
+        if direction=="BULLISH":
+            if curr['close']<prev['close'] and curr['close']>curr['EMA_20'] and curr['low']>curr['EMA_50']:
+                return (curr['low']+curr['EMA_20'])/2, "MICRO_PULLBACK"
+            if abs(curr['low']-curr['EMA_20'])<atr*0.3 and curr['close']>curr['EMA_20']:
+                return curr['EMA_20']+atr*0.1, "EMA_RETEST"
+        elif direction=="BEARISH":
+            if curr['close']>prev['close'] and curr['close']<curr['EMA_20'] and curr['high']<curr['EMA_50']:
+                return (curr['high']+curr['EMA_20'])/2, "MICRO_PULLBACK"
+            if abs(curr['high']-curr['EMA_20'])<atr*0.3 and curr['close']<curr['EMA_20']:
+                return curr['EMA_20']-atr*0.1, "EMA_RETEST"
+        return None,"MARKET"
+    except: return None,"MARKET"
+
+def detect_patterns(df):
+    patterns,scores=[],[]
+    for i in range(1,len(df)):
+        c,p=df.iloc[i],df.iloc[i-1]; pl,sc=[],0
+        body=abs(c['close']-c['open']); rng=c['high']-c['low']
+        if rng>0:
+            uw=c['high']-max(c['open'],c['close']); lw=min(c['open'],c['close'])-c['low']
+            if lw>0 and body/rng<0.35 and uw<body:
+                r=lw/max(body,0.0001)
+                if r>3: pl.append("PIN_BULL_STRONG"); sc+=10
+                elif r>2: pl.append("PIN_BULL_MOD"); sc+=5
+            elif uw>0 and body/rng<0.35 and lw<body:
+                r=uw/max(body,0.0001)
+                if r>3: pl.append("PIN_BEAR_STRONG"); sc+=10
+                elif r>2: pl.append("PIN_BEAR_MOD"); sc+=5
+        cb=abs(c['close']-c['open']); pb=abs(p['close']-p['open'])
+        ct,cb2=max(c['open'],c['close']),min(c['open'],c['close'])
+        pt,pb3=max(p['open'],p['close']),min(p['open'],p['close'])
+        if c['close']>c['open'] and p['close']<p['open'] and cb2<pb3 and ct>pt:
+            r=cb/max(pb,0.0001)
+            if r>2: pl.append("ENGULF_BULL_STRONG"); sc+=10
+            else: pl.append("ENGULF_BULL"); sc+=5
+        elif c['close']<c['open'] and p['close']>p['open'] and cb2<pb3 and ct>pt:
+            r=cb/max(pb,0.0001)
+            if r>2: pl.append("ENGULF_BEAR_STRONG"); sc+=10
+            else: pl.append("ENGULF_BEAR"); sc+=5
+        if c['high']<=p['high'] and c['low']>=p['low']: pl.append("INSIDE_BAR"); sc+=5
+        if rng>0 and body/rng<0.1: pl.append("DOJI"); sc+=3
+        patterns.append(pl); scores.append(sc)
+    df['patterns']=[[]]+patterns; df['pattern_score']=[0]+scores; return df
+
+def detect_swing_points(df, window=5):
+    df['swing_high']=False; df['swing_low']=False
+    for i in range(window,len(df)):
+        lb=df.iloc[max(0,i-window):i+1]
+        if df['high'].iloc[i]==lb['high'].max(): df.iloc[i,df.columns.get_loc('swing_high')]=True
+        if df['low'].iloc[i]==lb['low'].min(): df.iloc[i,df.columns.get_loc('swing_low')]=True
+    return df
+
+def classify_market_structure(df):
+    sh=df[df['swing_high']]['high'].tail(4); sl=df[df['swing_low']]['low'].tail(4)
+    if len(sh)<2 or len(sl)<2: return "INSUFFICIENT"
+    hh=sh.iloc[-1]>sh.iloc[-2]; hl=sl.iloc[-1]>sl.iloc[-2]
+    ll=sl.iloc[-1]<sl.iloc[-2]; lh=sh.iloc[-1]<sh.iloc[-2]
+    if hh and hl: return "UPTREND_STRONG"
+    elif ll and lh: return "DOWNTREND_STRONG"
+    elif hh or hl: return "UPTREND_WEAK"
+    elif ll or lh: return "DOWNTREND_WEAK"
+    return "RANGE_BOUND"
+
+def classify_regime(df, lookback=50):
+    try:
+        if len(df)<lookback: return "UNKNOWN",0
+        recent=df.tail(lookback); c=recent.iloc[-1]; adx=c['ADX']
+        slope=(recent['EMA_50'].iloc[-1]-recent['EMA_50'].iloc[-10])/(c['ATR']*10) if c['ATR']>0 else 0
+        bb_ratio=c['BB_width']/recent['BB_width'].mean() if recent['BB_width'].mean()>0 else 1
+        sc=0
+        if adx>30: sc+=3
+        elif adx>20: sc+=2
+        elif adx>15: sc+=1
+        if abs(slope)>0.3: sc+=2
+        elif abs(slope)>0.15: sc+=1
+        if bb_ratio>1.3: sc+=1
+        elif bb_ratio<0.7: sc-=1
+        if sc>=4: return "TRENDING_STRONG",sc
+        elif sc>=2: return "TRENDING_WEAK",sc
+        elif sc<=0: return "RANGING",sc
+        return "TRANSITIONAL",sc
+    except: return "UNKNOWN",0
+
+def analyze_tick_volume(df, lookback=20):
+    try:
+        if len(df)<lookback: return "NORMAL",1.0
+        recent=df.tail(lookback); ranges=recent['high']-recent['low']; bodies=abs(recent['close']-recent['open'])
+        rr=ranges.iloc[-1]/ranges.mean() if ranges.mean()>0 else 1
+        br=bodies.iloc[-1]/bodies.mean() if bodies.mean()>0 else 1
+        proxy=(rr+br)/2
+        if proxy>2.0: return "VERY_HIGH",proxy
+        elif proxy>1.5: return "HIGH",proxy
+        elif proxy>0.7: return "NORMAL",proxy
+        return "LOW",proxy
+    except: return "NORMAL",1.0
+
+def confirm_breakout_volume(df):
+    try:
+        if len(df)<20: return False,0
+        ranges=df['high']-df['low']; ratio=ranges.iloc[-1]/ranges.iloc[-20:-1].mean() if ranges.iloc[-20:-1].mean()>0 else 1
+        return ratio>1.3, ratio
+    except: return False,0
+
 def indicators(df):
     df['EMA_20']=df['close'].ewm(span=20,adjust=False).mean()
     df['EMA_50']=df['close'].ewm(span=50,adjust=False).mean()
     df['EMA_200']=df['close'].ewm(span=200,adjust=False).mean()
-    
-    # RSI
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-
-    # ADX Simples
-    df['tr'] = np.maximum(df['high'] - df['low'], np.abs(df['high'] - df['close'].shift()))
-    df['ATR'] = df['tr'].ewm(span=14,adjust=False).mean()
-    
-    # +DI/-DI calculation simplified for V22
-    up = df['high'].diff(); down = -df['low'].diff()
-    pdm = np.where((up > down) & (up > 0), up, 0)
-    mdm = np.where((down > up) & (down > 0), down, 0)
-    pdi = pd.Series(pdm).ewm(alpha=1/14).mean() / df['ATR'] * 100
-    mdi = pd.Series(mdm).ewm(alpha=1/14).mean() / df['ATR'] * 100
-    dx = abs(pdi-mdi)/(pdi+mdi)*100
-    df['ADX'] = dx.ewm(alpha=1/14).mean()
-    df['+DI'] = pdi; df['-DI'] = mdi
-    
-    # MACD
-    ema12 = df['close'].ewm(span=12).mean()
-    ema26 = df['close'].ewm(span=26).mean()
-    df['MACD'] = ema12 - ema26
-    df['MACD_signal'] = df['MACD'].ewm(span=9).mean()
-    df['MACD_hist'] = df['MACD'] - df['MACD_signal']
-    
-    # BB
-    df['BB_middle']=df['close'].rolling(20).mean()
-    df['BB_std']=df['close'].rolling(20).std()
-    df['BB_upper']=df['BB_middle']+df['BB_std']*2
-    df['BB_lower']=df['BB_middle']-df['BB_std']*2
+    df['RSI']=calculate_rsi_wilder(df['close'],14)
+    hl=df['high']-df['low']; hc=(df['high']-df['close'].shift()).abs(); lc=(df['low']-df['close'].shift()).abs()
+    df['tr']=pd.concat([hl,hc,lc],axis=1).max(axis=1); df['ATR']=df['tr'].ewm(span=14,adjust=False).mean()
+    df=calculate_adx(df); df=calculate_macd(df)
+    df['BB_middle']=df['close'].rolling(20).mean(); df['BB_std']=df['close'].rolling(20).std()
+    df['BB_upper']=df['BB_middle']+df['BB_std']*2; df['BB_lower']=df['BB_middle']-df['BB_std']*2
     df['BB_width']=((df['BB_upper']-df['BB_lower'])/df['BB_middle'].replace(0,np.nan))*100
-    
-    # Z-Score
-    df['ZSCORE'] = (df['close'] - df['BB_middle']) / df['BB_std']
-    
-    return df.dropna()
+    df['ZSCORE']=calculate_zscore(df['close'],50)
+    df=detect_patterns(df); df=detect_swing_points(df); df.dropna(inplace=True); return df
 
-def calculate_hurst_exponent(series, max_lag=100):
-    try:
-        ts = series.dropna().values
-        lags = range(2, 20)
-        tau = [np.sqrt(np.std(np.subtract(ts[lag:], ts[:-lag]))) for lag in lags]
-        poly = np.polyfit(np.log(lags), np.log(tau), 1)
-        h = poly[0]*2.0
-        return h, "N/A", 0.9 # Return stub r2
-    except:
-        return 0.5, "ERROR", 0.0
+def detect_alignment(h4r, h1r, m15r, d):
+    sc=0
+    if d=="BULLISH":
+        if h4r['close']>h4r['EMA_20']>h4r['EMA_50']>h4r['EMA_200']: sc+=10
+        if h1r['close']>h1r['EMA_20']>h1r['EMA_50']>h1r['EMA_200']: sc+=10
+        if m15r['close']>m15r['EMA_20']>m15r['EMA_50']>m15r['EMA_200']: sc+=10
+    else:
+        if h4r['close']<h4r['EMA_20']<h4r['EMA_50']<h4r['EMA_200']: sc+=10
+        if h1r['close']<h1r['EMA_20']<h1r['EMA_50']<h1r['EMA_200']: sc+=10
+        if m15r['close']<m15r['EMA_20']<m15r['EMA_50']<m15r['EMA_200']: sc+=10
+    if sc==30: return "PERFECT",25
+    elif sc>=20: return "STRONG",15
+    elif sc>=10: return "WEAK",5
+    return "NONE",0
 
-# Helpers preserved
-def find_pivot_highs(data, order=5): return []
-def find_pivot_lows(data, order=5): return []
-def detect_divergence(df, indicator='RSI', order=5): return None, 0, ""
-def detect_sr_clustered(df, window=100, min_touches=3): return []
-def calculate_fibonacci(df, lookback=100): return {},None,None
-def check_fib_confluence(price, fibs, atr): return None,0
-def detect_bb_cycle(df, profile, lookback=30): return "NORMAL",1.0,0
-def count_consecutive(df, lookback=20): return 0,"NEUTRAL"
-def detect_roc_extreme(df, profile, periods=[5]): return "NORMAL",{}
-def trigger_candle_confirmed(df, direction): return True, "V22_AUTO"
-def smart_tp(entry, direction, risk, base_r1, base_r2, sr_levels): return entry+risk*base_r1, entry+risk*base_r2 # Simple stub
-def detect_micro_pullback(df, direction, atr): return None,"MARKET"
-def detect_patterns(df): df['patterns']=[[]]*len(df); df['pattern_score']=0; return df
-def detect_swing_points(df, window=5): df['swing_high']=False; df['swing_low']=False; return df
-def classify_market_structure(df): return "N/A"
-def classify_regime(df, lookback=50): return "V22_DYNAMIC", 0
-def analyze_tick_volume(df, lookback=20): return "NORMAL",1.0
-def detect_alignment(h4r, h1r, m15r, d): return "NONE",0
-def check_momentum(h4,h1,m15,d): return 0
-def detect_swing_level(df, direction, atr_mult=1.5): return df['close'].iloc[-1]
+def check_momentum(h4,h1,m15,d):
+    sc=0
+    if d=="BULLISH":
+        if h4['MACD'].iloc[-1]>0:sc+=1
+        if h1['MACD'].iloc[-1]>0:sc+=1
+        if m15['MACD'].iloc[-1]>0:sc+=1
+    else:
+        if h4['MACD'].iloc[-1]<0:sc+=1
+        if h1['MACD'].iloc[-1]<0:sc+=1
+        if m15['MACD'].iloc[-1]<0:sc+=1
+    return sc
 
-# Backtest Stub
-def run_walk_forward_v21(df, bias, profile, n_folds=4):
-    return {"WR":55,"NET":10,"DD":5,"PF":1.2,"SHARPE":0.5,"SORTINO":0.5,"TOTAL_TRADES":20,"WF_STABLE":True,"FOLD_WRS":[],"SETUP_STATS":{},"RESULTS":[]}
-
-def monte_carlo_bootstrap(results):
-    return {"median":0,"p5":0,"p95":0,"p25":0,"p75":0,"positive_pct":60}
+def detect_swing_level(df, direction, atr_mult=1.5):
+    if direction=="BUY":
+        sw=df[df['swing_low']]['low']
+        return (sw.iloc[-1]-df['ATR'].iloc[-1]*atr_mult) if not sw.empty else df['low'].tail(20).min()-df['ATR'].iloc[-1]*atr_mult
+    else:
+        sw=df[df['swing_high']]['high']
+        return (sw.iloc[-1]+df['ATR'].iloc[-1]*atr_mult) if not sw.empty else df['high'].tail(20).max()+df['ATR'].iloc[-1]*atr_mult
 
 # ==============================================================================
-# CHART V22 UPGRADE (ADICIONAR KALMAN VISUALIZATION)
+# 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
+# ==============================================================================
+
+def run_walk_forward_v21(df, bias, profile, n_folds=4):
+    """V21: VR e ACF recalculados POR FOLD (sem look-ahead bias)"""
+    spread = profile.get('spread', 0.05)
+    sl_mult = profile.get('sl_atr_mult', 2.5)
+    fold_size = len(df) // (n_folds + 1)
+    all_trades = []
+
+    for fold in range(n_folds):
+        ts = fold_size * (fold + 1)
+        te = fold_size * (fold + 2) if fold < n_folds - 1 else len(df)
+        if ts >= len(df) - 80:
+            break
+        si = max(200, ts)
+
+        # V21 FIX-A: Recalcular edge tests usando APENAS dados de treino
+        train_data = df.iloc[:ts]
+        fold_vr = variance_ratio_test(train_data['close'])
+        fold_acf = autocorrelation_analysis(train_data['close'])
+
+        for i in range(si, min(te, len(df) - 60)):
+            row = df.iloc[i]
+            if pd.isna(row['ADX']) or pd.isna(row['ATR']) or row['ATR'] == 0:
+                continue
+            sig = None
+            atr = row['ATR']
+            entry = sl = risk = 0
+            setup = "NONE"
+
+            # SETUP 1: TREND (V21: ADX minimo 22, nao 15)
+            if row['ADX'] > max(profile.get('adx_strong', 25), 22):
+                if bias == "BULLISH" and row['close'] > row['EMA_200'] and row['RSI'] < 60:
+                    sig = "BUY"; setup = "SWING"
+                elif bias == "BEARISH" and row['close'] < row['EMA_200'] and row['RSI'] > 40:
+                    sig = "SELL"; setup = "SWING"
+
+            # SETUP 2: MEAN REVERSION (Z-Score extreme)
+            if not sig and 'ZSCORE' in df.columns:
+                z = row['ZSCORE']
+                if pd.notna(z) and abs(z) > profile.get('zscore_extreme', 2.0) * 0.7:
+                    if z < -1.5:
+                        sig = "BUY"; setup = "MEAN_REVERSION"
+                    elif z > 1.5:
+                        sig = "SELL"; setup = "MEAN_REVERSION"
+
+            # SETUP 3: VOL COMPRESS (se edge detectado por VR)
+            if not sig and fold_vr.get('has_edge') and fold_vr.get('dominant_type') == 'MEAN_REVERT':
+                z = row.get('ZSCORE', 0)
+                if pd.notna(z) and z < -1.0:
+                    sig = "BUY"; setup = "VOL_COMPRESS"
+                elif pd.notna(z) and z > 1.0:
+                    sig = "SELL"; setup = "VOL_COMPRESS"
+
+            # SETUP 4: ACF MOMENTUM (se autocorrelação significativa)
+            if not sig and fold_acf.get('has_pattern') and fold_acf.get('dominant_type') == 'MOMENTUM':
+                if i >= 2:
+                    prev_ret = df['close'].iloc[i] - df['close'].iloc[i-1]
+                    if prev_ret > atr * 0.3:
+                        sig = "BUY"; setup = "ACF_MOMENTUM"
+                    elif prev_ret < -atr * 0.3:
+                        sig = "SELL"; setup = "ACF_MOMENTUM"
+
+            if not sig:
+                continue
+
+            # Executar trade
+            entry = row['close'] + (spread if sig == "BUY" else -spread)
+            sl_base = detect_swing_level(df.iloc[:i+1], sig, sl_mult)
+            if sig == "BUY":
+                sl = max(entry - sl_mult * atr, sl_base)
+            else:
+                sl = min(entry + sl_mult * atr, sl_base)
+            risk = abs(entry - sl)
+            if risk == 0: risk = atr
+
+            tp1_r = profile.get('tp1_r', 3.0) if setup != "MEAN_REVERSION" else 2.0
+            tp2_r = profile.get('tp2_r', 5.0) if setup != "MEAN_REVERSION" else 3.0
+            tp1 = entry + tp1_r * risk if sig == "BUY" else entry - tp1_r * risk
+            tp2 = entry + tp2_r * risk if sig == "BUY" else entry - tp2_r * risk
+
+            # 🟢 PRECISION #2: TRAILING ADAPTATIVO
+            trail_mult = 2.0  # default
+            if setup == "SWING": trail_mult = 2.5
+            elif setup == "MEAN_REVERSION": trail_mult = 1.2
+            elif setup == "VOL_COMPRESS": trail_mult = 1.5
+
+            p1_open, p2_open = True, True
+            r1, r2 = 0, 0
+            csl = sl
+            for f in range(i + 1, min(i + 80, len(df))):
+                nx = df.iloc[f]
+                if sig == "BUY":
+                    if nx['low'] <= csl:
+                        if p1_open: r1 = (csl - entry) / risk
+                        if p2_open: r2 = (csl - entry) / risk
+                        break
+                    if p1_open and nx['high'] >= tp1:
+                        r1 = tp1_r - spread/risk; p1_open = False; csl = entry + spread
+                    if not p1_open and p2_open:
+                        csl = max(csl, nx['high'] - trail_mult * atr)
+                        if nx['high'] >= tp2:
+                            r2 = tp2_r - spread/risk; p2_open = False; break
+                else:
+                    if nx['high'] >= csl:
+                        if p1_open: r1 = (entry - csl) / risk
+                        if p2_open: r2 = (entry - csl) / risk
+                        break
+                    if p1_open and nx['low'] <= tp1:
+                        r1 = tp1_r - spread/risk; p1_open = False; csl = entry - spread
+                    if not p1_open and p2_open:
+                        csl = min(csl, nx['low'] + trail_mult * atr)
+                        if nx['low'] <= tp2:
+                            r2 = tp2_r - spread/risk; p2_open = False; break
+
+            result = r1 * 0.5 + r2 * 0.5
+            if not (p1_open and p2_open):
+                all_trades.append({'fold': fold, 'result': result, 'setup': setup, 'win': result > 0})
+
+    if not all_trades:
+        return {"WR":0,"NET":0,"DD":0,"PF":0,"SHARPE":0,"SORTINO":0,"TOTAL_TRADES":0,
+                "WF_STABLE":False,"FOLD_WRS":[],"RESULTS":[]}
+
+    results = [t['result'] for t in all_trades]
+    wins = [r for r in results if r > 0]
+    losses = [r for r in results if r <= 0]
+    wr = len(wins)/len(results)*100
+    net = sum(results)
+    gp = sum(wins) if wins else 0
+    gl = abs(sum(losses)) if losses else 0
+    pf = gp/gl if gl > 0 else (gp if gp > 0 else 0)
+    cum = np.cumsum(results)
+    peak = np.maximum.accumulate(cum)
+    dd = float((peak - cum).max()) if len(cum) > 0 else 0
+    rs = pd.Series(results)
+    sharpe = float(rs.mean()/rs.std()*np.sqrt(252)) if len(rs) >= 2 and rs.std() > 0 else 0
+    ds = rs[rs<0]
+    sortino = float(rs.mean()/ds.std()*np.sqrt(252)) if len(ds) >= 2 and ds.std() > 0 else 0
+
+    # Per-fold WRs
+    fold_wrs = []
+    for fold_id in range(n_folds):
+        ft = [t for t in all_trades if t['fold'] == fold_id]
+        if ft:
+            fold_wrs.append(round(sum(1 for t in ft if t['win'])/len(ft)*100, 1))
+
+    # Per-setup stats
+    setup_stats = {}
+    for setup_name in set(t['setup'] for t in all_trades):
+        st = [t for t in all_trades if t['setup'] == setup_name]
+        sw = [t for t in st if t['win']]
+        setup_stats[setup_name] = {"trades": len(st), "wr": round(len(sw)/len(st)*100,1) if st else 0}
+
+    return {"WR":round(wr,1),"NET":round(net,1),"DD":round(dd,1),"PF":round(pf,2),
+            "SHARPE":round(sharpe,2),"SORTINO":round(sortino,2),"TOTAL_TRADES":len(results),
+            "WF_STABLE":len(fold_wrs)>=2 and all(w>30 for w in fold_wrs),
+            "FOLD_WRS":fold_wrs,"SETUP_STATS":setup_stats,"RESULTS":results}
+
+# ==============================================================================
+# 🔴 BUG FIX #6: MONTE CARLO BOOTSTRAP REAL
+# ==============================================================================
+
+def monte_carlo_bootstrap(results, n_sim=1000, n_trades=50):
+    """Bootstrap dos resultados REAIS do backtest"""
+    try:
+        if len(results) < 5:
+            return {"median":0,"p5":0,"p95":0,"p25":0,"p75":0,"positive_pct":0}
+        arr = np.array(results)
+        sims = np.array([np.sum(np.random.choice(arr, size=min(n_trades, len(arr)), replace=True))
+                         for _ in range(n_sim)])
+        return {"median":round(float(np.median(sims)),1),
+                "p5":round(float(np.percentile(sims,5)),1),
+                "p95":round(float(np.percentile(sims,95)),1),
+                "p25":round(float(np.percentile(sims,25)),1),
+                "p75":round(float(np.percentile(sims,75)),1),
+                "positive_pct":round(float(np.mean(sims>0)*100),1)}
+    except:
+        return {"median":0,"p5":0,"p95":0,"p25":0,"p75":0,"positive_pct":0}
+
+# ==============================================================================
+# SCORING V20 — 16 fatores (14 + VR + ACF)
+# ==============================================================================
+
+@dataclass
+class SetupScore:
+    trend_strength:float; momentum_align:float; patterns:float
+    value_zone:float; historical:float; base_total:float
+    divergence_bonus:float; fib_bonus:float; sr_bonus:float
+    alignment_bonus:float; storm_bonus:float; regime_bonus:float
+    volume_bonus:float; hurst_bonus:float; zscore_bonus:float
+    consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
+    vr_bonus:float; acf_bonus:float
+    cpi_bonus:float; markov_bonus:float; spectral_bonus:float
+    bonus_total:float; total:float; grade:str
+
+def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
+                    win_rate, profit_factor, profile, **bonuses):
+    ts=25 if adx>profile.get('adx_strong',25) else(15 if adx>profile.get('adx_trend_min',15) else 0)
+    mp=(momentum_score/3)*20
+    dr=dist_ema50/atr if atr>0 else 999
+    vs=15 if dr<0.5 else(10 if dr<1.0 else(5 if dr<1.5 else 0))
+    hs=min((win_rate*0.15)+(profit_factor*5),25)
+    base=ts+mp+pattern_score+vs+hs
+    keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
+          'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
+          'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
+          'cpi_bonus','markov_bonus','spectral_bonus']
+    bonus=min(sum(bonuses.get(k,0) for k in keys),100)  # V21: max 100
+    total=base+bonus
+    if total>=175: g="S"
+    elif total>=145: g="A++"
+    elif total>=115: g="A+"
+    elif total>=85: g="A"
+    elif total>=60: g="B"
+    elif total>=40: g="C"
+    else: g="D"
+    return SetupScore(ts,mp,pattern_score,vs,hs,base,
+        *[bonuses.get(k,0) for k in keys],bonus,total,g)
+
+# ==============================================================================
+# STORM DETECTOR V20
+# ==============================================================================
+
+def calculate_storm_bonus(sd):
+    met, lst = 0, []
+    checks = [
+        (sd.get('adx',0)>30,"ADX>30"),(sd.get('momentum_score',0)==3,"Mom 3/3"),
+        (sd.get('pattern_score',0)>=10,"Padrões"),(sd.get('divergence') is not None,"Div"),
+        (sd.get('fib'),"Fib"),(sd.get('sr_touch'),"S/R"),(sd.get('alignment'),"Align"),
+        (sd.get('bb_squeeze'),"BB Squeeze"),(sd.get('trending'),"Trending"),
+        (sd.get('volume'),"Volume"),(sd.get('hurst_trending'),"Hurst"),
+        (sd.get('zscore'),"Z-Score"),(sd.get('gen_signal'),"Generator"),
+        (sd.get('dist'),"Distrib"),(sd.get('vr_edge'),"VR Edge"),(sd.get('acf_edge'),"ACF Edge"),
+    ]
+    for c,l in checks:
+        if c: met+=1; lst.append(l)
+    if met>=11: return "PERFECT_STORM",25,lst
+    elif met>=8: return "STRONG_CONFLUENCE",20,lst
+    elif met>=6: return "GOOD_CONFLUENCE",15,lst
+    elif met>=4: return "MODERATE",10,lst
+    return None,0,lst
+
+# ==============================================================================
+# CHART V20
 # ==============================================================================
 
 def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=None, fib_levels=None):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3.5, 1],
                                      facecolor='#09090b', gridspec_kw={'hspace': 0.08})
-    ax1.set_facecolor('#09090b'); ax2.set_facecolor('#09090b')
+    ax1.set_facecolor('#09090b')
+    ax2.set_facecolor('#09090b')
 
-    # Candles
+    # Candles — thin, clean
     for i in range(len(df)):
-        c = '#22c55e' if df['close'].iloc[i] >= df['open'].iloc[i] else '#ef4444'
-        ax1.plot([df.index[i]]*2, [df['low'].iloc[i], df['high'].iloc[i]], color=c, lw=0.6)
-        ax1.plot([df.index[i]]*2, [df['open'].iloc[i], df['close'].iloc[i]], color=c, lw=2.8)
+        bull = df['close'].iloc[i] >= df['open'].iloc[i]
+        c = '#22c55e' if bull else '#ef4444'
+        ca = 0.9 if i > len(df) - 30 else 0.45  # Fade older candles
+        ax1.plot([df.index[i]]*2, [df['low'].iloc[i], df['high'].iloc[i]], color=c, lw=0.6, alpha=ca)
+        ax1.plot([df.index[i]]*2, [df['open'].iloc[i], df['close'].iloc[i]], color=c, lw=2.8, alpha=ca, solid_capstyle='round')
 
-    # 🟢 V22: Kalman Visualization
-    try:
-        kf = AdvancedMathEngineV22.kalman_filter_drift(df['close'])
-        ax1.plot(df.index, kf, color='#22d3ee', lw=1.5, alpha=0.9, label="V22 Kalman Trend")
-    except: pass
-    
-    # EMAs
-    ax1.plot(df.index, df['EMA_20'], color='#3b82f6', lw=1, alpha=0.5)
-    
-    # Trade Levels
-    if entry: ax1.axhline(y=entry, color='#fafafa', ls='-')
-    if sl: ax1.axhline(y=sl, color='#ef4444', ls='-')
-    if tp1: ax1.axhline(y=tp1, color='#22c55e', ls='--')
+    # EMAs — subtle
+    ax1.plot(df.index, df['EMA_20'], color='#3b82f6', lw=1, alpha=0.5, label='20')
+    ax1.plot(df.index, df['EMA_50'], color='#f59e0b', lw=1, alpha=0.4, label='50')
+    ax1.plot(df.index, df['EMA_200'], color='#6b7280', lw=1.2, alpha=0.3, label='200')
 
-    # Titles and Grids
-    ax1.text(0.01, 0.97, title, transform=ax1.transAxes, color='#a1a1aa')
-    ax1.grid(True, alpha=0.04); ax1.spines['bottom'].set_color('#1e1e23')
-    
-    # MACD
+    # BB — very subtle fill
+    ax1.fill_between(df.index, df['BB_upper'], df['BB_lower'], alpha=0.02, color='#a1a1aa')
+
+    # S/R — clean zones
+    if sr_levels:
+        for sr in sr_levels[:3]:
+            c = '#ef4444' if sr['type'] == 'RESISTANCE' else '#22c55e'
+            ax1.axhspan(sr['zone_low'], sr['zone_high'], alpha=0.04, color=c, linewidth=0)
+            ax1.axhline(y=sr['price'], color=c, ls='-', alpha=0.15, lw=0.5)
+
+    # Fib — dotted, faint
+    if fib_levels:
+        for n, p in fib_levels.items():
+            if pd.notna(p):
+                ax1.axhline(y=p, color='#a1a1aa', ls=':', alpha=0.12, lw=0.5)
+
+    # Trade levels — clean, minimal
+    if entry:
+        ax1.axhline(y=entry, color='#fafafa', ls='-', lw=1.5, alpha=0.9)
+        ax1.text(df.index[-1], entry, '  ENTRY', fontsize=8, color='#fafafa',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if sl:
+        ax1.axhline(y=sl, color='#ef4444', ls='-', lw=1.2, alpha=0.7)
+        ax1.text(df.index[-1], sl, '  SL', fontsize=8, color='#ef4444',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if tp1:
+        ax1.axhline(y=tp1, color='#22c55e', ls='--', lw=1, alpha=0.6)
+        ax1.text(df.index[-1], tp1, '  TP1', fontsize=8, color='#22c55e',
+                 fontweight='500', va='center', fontfamily='Inter')
+    if tp2:
+        ax1.axhline(y=tp2, color='#22c55e', ls='-', lw=1.2, alpha=0.7)
+        ax1.text(df.index[-1], tp2, '  TP2', fontsize=8, color='#22c55e',
+                 fontweight='500', va='center', fontfamily='Inter')
+
+    # Title — minimal
+    ax1.text(0.01, 0.97, title, transform=ax1.transAxes, fontsize=11,
+             color='#a1a1aa', fontweight='400', va='top', fontfamily='Inter')
+    ax1.legend(loc='upper right', fontsize=7, facecolor='#09090b', edgecolor='#1e1e23',
+               labelcolor='#52525b', framealpha=0.8)
+
+    # Grid — barely visible
+    ax1.grid(True, alpha=0.04, color='#27272a', linewidth=0.5)
+    ax1.tick_params(colors='#3f3f46', labelsize=8, length=0)
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    ax1.spines['bottom'].set_color('#1e1e23')
+    ax1.spines['left'].set_color('#1e1e23')
+
+    # MACD — clean bars
     hist = df['MACD_hist']
+    colors = ['#22c55e' if x > 0 else '#ef4444' for x in hist]
+    alphas = [0.6 if abs(x) > hist.abs().mean() else 0.3 for x in hist]
     for i, (idx, val) in enumerate(zip(df.index, hist)):
-        c = '#22c55e' if val > 0 else '#ef4444'
-        ax2.bar(idx, val, color=c, alpha=0.6)
-    
+        ax2.bar(idx, val, color=colors[i], alpha=alphas[i], width=0.8)
+    ax2.plot(df.index, df['MACD'], color='#3b82f6', lw=0.8, alpha=0.6)
+    ax2.plot(df.index, df['MACD_signal'], color='#a1a1aa', lw=0.8, alpha=0.4)
+    ax2.axhline(y=0, color='#27272a', lw=0.5)
+    ax2.grid(True, alpha=0.03, color='#27272a', linewidth=0.5)
+    ax2.tick_params(colors='#3f3f46', labelsize=7, length=0)
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+    ax2.spines['bottom'].set_color('#1e1e23')
+    ax2.spines['left'].set_color('#1e1e23')
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=100, facecolor='#09090b', bbox_inches='tight')
-    plt.close(fig); buf.seek(0)
+    plt.savefig(buf, format='png', dpi=140, facecolor='#09090b', bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
     return Image.open(buf)
 
 def convert_np(obj):
     if isinstance(obj,dict): return {k:convert_np(v) for k,v in obj.items()}
-    elif isinstance(obj, np.integer): return int(obj)
-    elif isinstance(obj, np.floating): return float(obj)
-    elif isinstance(obj, float) and pd.isna(obj): return None
+    elif isinstance(obj,list): return [convert_np(i) for i in obj]
+    elif isinstance(obj,np.integer): return int(obj)
+    elif isinstance(obj,np.floating): return float(obj)
+    elif isinstance(obj,np.ndarray): return obj.tolist()
+    elif isinstance(obj,np.bool_): return bool(obj)
+    elif isinstance(obj,float) and pd.isna(obj): return None
     return obj
 
 # ==============================================================================
-# SNIPER CORE V22 — THE MAESTRO
+# SYSTEM PROMPT V20
 # ==============================================================================
 
-def sniper_core_v22(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_pct=1.0):
-    # Setup
+SYSTEM_PROMPT = """
+FUNÇÃO: ANALISTA V21.0 — PREDICTABILITY ENGINE [Gemini 3 Pro]
+Missão: Explorar edges estatísticos reais nos sintéticos Deriv
+
+**RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
+
+**V21.0 — PREDICTABILITY ENGINE (V20 + 16 melhorias):**
+Base V20 (20 correções) PLUS:
+- Sample Entropy (previsibilidade do gerador CSPRNG)
+- Permutation Entropy (determinismo na ordem)
+- Spectral Analysis FFT (ciclos ocultos)
+- Transition Matrix Markov (dependências sequenciais)
+- Compound Predictability Index CPI 0-100
+- Regime Transition Detection (early swing capture)
+- Dynamic Bias com score de confiança (não binário)
+- Enhanced Momentum (MACD hist + RSI zone + DI spread)
+- Edge Correlation Matrix (confluência real vs inflada)
+- Optimal Holding Period (time-stop por edge decay)
+- Look-ahead bias removido do backtest (VR/ACF por fold)
+- +DI/-DI preservados do cálculo ADX
+- DAY setup não é mais catch-all (ADX mínimo 22)
+- VOL naming corrigido (OVEREXTENDED vs COMPRESSED)
+- Breakout com confirmação real (close > SR)
+- CPI gate: bloqueia trades em séries imprevisíveis
+
+**FORMATO:**
+
+## ⚡ VEREDICTO V20.0: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE}/200 | **CPI:** {CPI}/100
+**Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
+
+### 🧮 MODELO DO GERADOR
+- Sigma calibrado: {X}% | Vol Ratio (3 janelas): S={short} M={med} L={long}
+- Consensus: {SIGNAL} → Direção: {compress_direction}
+- Preço teórico z: {z_price} ({deviation_signal})
+
+### 📊 EDGE ESTATÍSTICO
+- Variance Ratio: {VR edge type} ({N} períodos significativos)
+- Autocorrelação: lag-1={acf_1} ({type})
+- Vol Clustering: {regime}
+- Distribuição: Skew={S} Kurt={K} Tails={T}
+
+### 🎯 PLANO DE TRADE
+{Entradas + Pirâmide + Smart TP}
+
+### ⚠️ CONFLUÊNCIAS + RISCOS
+
+*V20 Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
+e Autocorrelação, NÃO em indicadores clássicos. Se VR mostra random walk,
+dizer claramente que não há edge estatístico operável.}
+"""
+
+# ==============================================================================
+# SNIPER CORE V20.0 — STATISTICAL EDGE ENGINE
+# ==============================================================================
+
+def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_pct=1.0):
     profile = get_profile(name)
     h1 = indicators(prep_df(h1_raw))
     h4 = indicators(prep_df(h4_raw))
     m15 = indicators(prep_df(m15_raw))
-    c1, c4 = h1.iloc[-1], h4.iloc[-1]
-    
+    m5 = indicators(prep_df(m5_raw)) if m5_raw else None
+    c1, c4, cm = h1.iloc[-1], h4.iloc[-1], m15.iloc[-1]
+    c5 = m5.iloc[-1] if m5 is not None and len(m5) > 0 else None
+
+    # V21 FIX-B: Dynamic Bias
+    bias, bias_confidence, bias_score = calculate_dynamic_bias(h4, h1)
+    bias_old = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
+    if bias == "NEUTRAL": bias = bias_old  # fallback
+    adx = c4['ADX']
+    structure = classify_market_structure(h1)
+    regime, regime_sc = classify_regime(h1)
+    momentum_old = check_momentum(h4, h1, m15, bias)
+    momentum_v21 = enhanced_momentum_v21(h4, h1, m15, bias)
+    momentum = momentum_old  # keep for scoring compatibility
+
+    # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
+
+    # 🟠 FIX #1: CALIBRAR SIGMA REAL
     sigma_calibrated = calibrate_sigma(h1, ppy)
 
-    # 🟢 1. MATH ENGINE CALCULATIONS (V22)
-    # Drift Validation (T-Stat)
-    drift_data = AdvancedMathEngineV22.calculate_drift_tstat(h1['close'].tail(100))
-    # Entropy (Noise Gate)
-    pe = AdvancedMathEngineV22.calculate_permutation_entropy(h1['close'].tail(150))
-    # Hurst & VR
-    hurst_val, _, _ = calculate_hurst_exponent(h1['close'])
-    vr_res = variance_ratio_test(h1['close'])
-
-    # 🔵 2. SCORE UNIFICADO (V22)
-    # 0-100 Score combining drift strength, persistence and edge
-    trend_score = RegimeClassifierV22.calculate_unified_trend_score(
-        hurst_val, drift_data, c1.get('ADX', 20), vr_res, 1.0
-    )
-    
-    # Classificar Regime Estrutural
-    regime = RegimeClassifierV22.classify_structural_regime(hurst_val, vr_res, drift_data)
-    
-    # 🔵 3. GENERATORS V22
-    # Executa gerador específico com upgrades (Kalman / Decay)
+    # ═══ GENERATOR MODEL V20 ═══
     gen_type = profile.get('gen_type', 'GBM')
-    if gen_type == 'GBM':
-        gen = GeneratorModelV22.analyze_gbm(h1, profile, sigma_calibrated, ppy)
-    elif gen_type in ['BOOM', 'CRASH']:
-        gen = GeneratorModelV22.analyze_crash_boom(h1, profile, ppy)
+    if gen_type == "GBM":
+        gen = GeneratorModelV20.analyze_gbm(h1, profile, sigma_calibrated, ppy)
+    elif gen_type in ["BOOM", "CRASH"]:
+        gen = GeneratorModelV20.analyze_crash_boom(h1, profile, ppy)
+    elif gen_type == "STEP":
+        gen = GeneratorModelV20.analyze_step(h1, profile, ppy)
     else:
-        gen = GeneratorModelV22.analyze_step(h1, profile, ppy)
+        gen = {"signal": "NEUTRAL", "confidence": 0}
 
-    # 🟣 4. LÓGICA DE DECISÃO V22
-    decision = "MONITORING"
-    reason = "Awaiting Setup"
-    setup_type = "NONE"
-    
-    # Bias direcional validado pelo T-Stat
-    bias = "NEUTRAL"
-    if drift_data.get('t_stat') > 1.2: bias = "BULLISH"
-    elif drift_data.get('t_stat') < -1.2: bias = "BEARISH"
-    
-    # --- ÁRVORE DE DECISÃO V22 ---
-    
-    # REGRA 0: ENTROPY GATE (Block Chaotic/Noise Regimes)
-    if pe > 0.94:
-        decision = "BLOCKED"
-        reason = f"High Entropy ({pe:.2f}) - Chaotic"
-        
-    elif regime == "RANDOM_WALK":
-        decision = "BLOCKED"
-        reason = "Random Walk Regime - No Edge"
-        
-    # REGRA 1: TREND (Estrutural via Score)
-    elif regime == "TRENDING" and trend_score > 60:
-        if bias == "BULLISH":
-            decision = "LONG (V22 TREND)"
-            setup_type = "TREND_FLOW"
-            reason = f"Unified Score {trend_score}"
-        elif bias == "BEARISH":
-            decision = "SHORT (V22 TREND)"
-            setup_type = "TREND_FLOW"
-            reason = f"Unified Score {trend_score}"
-            
-    # REGRA 2: CRASH/BOOM (V22 Nonlinear Drift)
-    elif gen_type in ['BOOM', 'CRASH'] and gen.get('signal') != "NEUTRAL":
-        sig = gen['signal']
-        if "DRIFT" in sig:
-             direction = gen.get('drift_direction')
-             decision = f"LONG (V22 DRIFT)" if direction=="UP" else f"SHORT (V22 DRIFT)"
-             setup_type = "GEN_SPIKE_DRIFT"
-             reason = f"Nonlinear Decay {gen.get('decay_strength'):.2f}"
+    # ═══ EDGE TESTS V20 ═══
+    vr = variance_ratio_test(h1['close'])
+    acf = autocorrelation_analysis(h1['close'])
+    vol_cluster = volatility_clustering_test(h1['close'])
+    dist = DistributionAnalyzer.analyze(h1)
 
-    # REGRA 3: MEAN REVERSION (Apenas Extremos V22)
-    elif regime == "MEAN_REVERSION":
-        z = gen.get('z_price', 0)
-        if abs(z) > 2.0:
-            if z > 2.0: 
-                decision = "SHORT (MR EXTENSION)"
-                setup_type = "REVERSION"
-                reason = f"Z-Score +{z} Extreme"
-            elif z < -2.0:
-                decision = "LONG (MR EXTENSION)"
-                setup_type = "REVERSION"
-                reason = f"Z-Score {z} Extreme"
+    # ═══ V21 PREDICTABILITY ENGINES ═══
+    cpi = compound_predictability_index(h1['close'], vr, acf)
+    # CORREÇÃO: Definir cpi_val aqui para uso posterior nos bônus
+    cpi_val = cpi.get('cpi', 0)
 
-    # Targets e Simulação
-    sim = run_walk_forward_v21(h1, bias, profile)
-    adjusted_profile = AdaptiveLearnerV20.adjust_profile(profile, sim, {})
-    mc = monte_carlo_bootstrap(sim['RESULTS'])
-    
-    # Cálculo SL/TP
-    entry = float(c1['close'])
-    sl_mult = adjusted_profile['sl_atr_mult']
-    sl = entry - c1['ATR']*sl_mult if "LONG" in decision else entry + c1['ATR']*sl_mult
-    tp1 = entry + c1['ATR']*3.0 if "LONG" in decision else entry - c1['ATR']*3.0
-    tp2 = entry + c1['ATR']*5.0 if "LONG" in decision else entry - c1['ATR']*5.0
-    
-    # Pyramid logic (simple wrapper)
-    pyramid = ScalingEngine.calculate_pyramid("A", trend_score, capital, risk_pct, entry, sl, c1['ATR'], adjusted_profile)
+    spectral = spectral_analysis_v21(h1['close'])
+    markov = transition_matrix_v21(h1['close'])
+    regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
 
-    # Imagens
+    # ═══ CLASSIC STATS ═══
+    hurst_val, hurst_regime, hurst_r2 = calculate_hurst_exponent(h1['close'])
+    z_current = float(cm['ZSCORE']) if pd.notna(cm.get('ZSCORE')) else 0
+    bb_cycle, bb_ratio, bb_squeeze_count = detect_bb_cycle(h1, profile)
+    consec_count, consec_dir = count_consecutive(m15)
+    roc_status, roc_details = detect_roc_extreme(m15, profile)
+
+    # Divergências
+    rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
+    macd_div, macd_db, macd_dd = detect_divergence(m15, 'MACD', 4)
+    divergence = rsi_div or macd_div
+    div_bonus = max(rsi_db, macd_db); div_detail = rsi_dd or macd_dd
+
+    # S/R, Fib
+    sr_levels = detect_sr_clustered(h1)
+    sr_bonus, sr_touch, closest_sr = 0, False, None
+    if sr_levels:
+        closest_sr = min(sr_levels, key=lambda x: abs(x['price']-c1['close']))
+        if abs(closest_sr['price']-c1['close']) < c1['ATR']*0.5:
+            sr_bonus = min(closest_sr['strength']*3, 15); sr_touch = True
+    fibs, fib_dir, _ = calculate_fibonacci(h1)
+    fib_level, fib_bonus = check_fib_confluence(c1['close'], fibs, c1['ATR'])
+
+    align_type, align_bonus = detect_alignment(c4, c1, cm, bias)
+    vol_st, vol_proxy = analyze_tick_volume(m15)
+    vol_confirmed = vol_proxy > 1.3; vol_bonus = 5 if vol_confirmed else 0
+    regime_bonus = 5 if "TRENDING" in regime else 0
+    pat_score = min(cm.get('pattern_score', 0), 15)
+    bb_compression = bb_cycle == "SQUEEZE"
+
+    # BONUSES V20
+    gen_bonus = 0; gen_signal = gen.get('signal', 'NEUTRAL')
+    if gen_type == "GBM":
+        if gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 30:
+            gen_bonus = min(int(gen['consensus_confidence'] / 8), 12)
+        if abs(gen.get('z_price',0)) > 2:
+            gen_bonus += 5
+    elif gen_type in ["BOOM","CRASH"]:
+        if gen.get('spike_phase') in ["DRIFT_STRONG","DRIFT_NORMAL"]:
+            gen_bonus = min(int(gen.get('decay_strength',0)*8), 12)
+    elif gen_type == "STEP":
+        if gen.get('signal') in ["EXTREME_DEVIATION","HIGH_DEVIATION"]:
+            gen_bonus = min(int(gen.get('confidence',0)/8), 12)
+
+    hurst_bonus = 0; hurst_trending = False
+    if hurst_r2 >= 0.7:
+        if hurst_val > profile.get('hurst_trend_min',0.53): hurst_bonus=10; hurst_trending=True
+        elif hurst_val < 0.45: hurst_bonus=5
+
+    zscore_bonus = 0; zscore_favorable = False
+    if bias=="BULLISH" and z_current < -profile.get('zscore_extreme',2)*0.6:
+        zscore_bonus=10; zscore_favorable=True
+    elif bias=="BEARISH" and z_current > profile.get('zscore_extreme',2)*0.6:
+        zscore_bonus=10; zscore_favorable=True
+
+    consec_reversal = consec_count >= profile.get('consecutive_reversal',6)
+    consecutive_bonus = 0
+    if consec_reversal and ((bias=="BULLISH" and consec_dir=="BEARISH") or (bias=="BEARISH" and consec_dir=="BULLISH")):
+        consecutive_bonus = 10
+
+    dist_bonus = 0; dist_favorable = False
+    if dist['tail_risk'] in ["FAT_TAILS","HEAVY_TAILS"]: dist_bonus += 3
+    if dist['percentile'] < 10 and bias=="BULLISH": dist_bonus+=7; dist_favorable=True
+    elif dist['percentile'] > 90 and bias=="BEARISH": dist_bonus+=7; dist_favorable=True
+
+    vr_bonus = 0
+    if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
+
+    # V21: CPI bonus (AGORA FUNCIONA PORQUE cpi_val ESTÁ DEFINIDO)
+    cpi_bonus = 0
+    if cpi_val >= 60: cpi_bonus = 12
+    elif cpi_val >= 45: cpi_bonus = 8
+    elif cpi_val >= 35: cpi_bonus = 4
+
+    # V21: Markov bonus
+    markov_bonus = 0
+    if markov.get('has_dependence'): markov_bonus = min(int(markov.get('transition_edge',0) / 2), 8)
+
+    # V21: Spectral bonus
+    spectral_bonus = 0
+    if spectral.get('has_cycle'): spectral_bonus = min(int(spectral.get('spectral_edge',0) * 2), 8)
+    acf_bonus = 0
+    if acf.get('has_pattern'): acf_bonus = min(len(acf.get('significant_lags',[]))*3, 10)
+
+    # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
+    sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
+
+    # ADAPTIVE (usa resultado do único backtest)
+    adapted_profile = AdaptiveLearnerV20.adjust_profile(profile, sim, dist)
+
+    # 🔴 FIX #6: Monte Carlo REAL
+    mc = monte_carlo_bootstrap(sim.get('RESULTS', []))
+
+    # ═══ V21: CPI GATE — Nao operar se imprevisivel ═══
+    cpi_regime = cpi.get('regime', 'ERROR')
+
+    # ═══ SETUP DETECTION V21 — PREDICTABILITY-GATED ═══
+    sig = "MONITORING"; entry = float(c1['close']); sl_val = float(c1['close'])
+    entry_type = "Wait"; sl_reason = "Pivot"; trade_style = None; setup_type = None
+    vc = profile['vol_class']
+
+    # M5 trigger check
+    trigger_ok, trigger_type = (True, "N/A")
+    if m5 is not None and len(m5) > 0:
+        trigger_ok, trigger_type = trigger_candle_confirmed(m5, bias)
+
+    mp_price, mp_type = detect_micro_pullback(m15, bias, c1['ATR'])
+
+    def try_setup(direction):
+        nonlocal sig, sl_val, entry_type, trade_style, setup_type, entry
+        is_long = direction == "BULLISH"
+        div_block = divergence and (("BEARISH" in str(divergence) and is_long and "HIDDEN" not in str(divergence)) or
+                                     ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
+        if div_block:
+            sig = f"BLOCKED (DIV: {div_detail})"; return
+
+        # REGIME-SPECIFIC STRATEGY
+        # TRENDING → Swing/Breakout
+        # RANGING → Mean Reversion
+        # VOL_COMPRESS → Contra o movimento
+        # TRANSITIONAL → Esperar ou size reduzido
+
+        # 1. GENERATOR SETUPS (PRIORIDADE)
+        if gen_type == "GBM" and gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 40:
+            # 🔴 FIX #2: Direção CONTRA o movimento
+            cd = gen.get('compress_direction','NEUTRAL')
+            if (cd == "BULLISH" and is_long) or (cd == "BEARISH" and not is_long):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (VOL COMPRESS)"
+                sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                entry_type = f"GBM Compress → {cd} (ratio={gen.get('vol_ratio',1):.2f})"
+                trade_style = "REVERSAL"; setup_type = "GEN_VOL_COMPRESS"
+                return
+
+        if gen_type == "GBM" and abs(gen.get('z_price',0)) > 2:
+            zp = gen['z_price']
+            if (zp < -2 and is_long) or (zp > 2 and not is_long):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (PRICE DEVIATION)"
+                sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                entry_type = f"Preço {zp:.1f}σ do teórico"
+                trade_style = "REVERSAL"; setup_type = "GEN_PRICE_DEV"
+                return
+
+        # 🔴 FIX #3: Crash/Boom — drift direction real
+        if gen_type in ["BOOM","CRASH"]:
+            phase = gen.get('spike_phase','')
+            drift_dir = gen.get('drift_direction','')
+            if phase in ["DRIFT_STRONG","DRIFT_NORMAL"]:
+                if (drift_dir=="UP" and is_long) or (drift_dir=="DOWN" and not is_long):
+                    d = "LONG" if is_long else "SHORT"
+                    sig = f"{d} (SPIKE DRIFT {phase})"
+                    sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                    entry_type = f"Drift {drift_dir} ({gen.get('last_spike_bars',0)} bars)"
+                    trade_style = "DAY"; setup_type = "GEN_SPIKE_DRIFT"
+                    return
+
+        if gen_type == "STEP":
+            dev = gen.get('deviation_sigma',0)
+            if (dev < -1.5 and is_long) or (dev > 1.5 and not is_long):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (STEP REVERT)"
+                sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                entry_type = f"Step {dev:.1f}σ deviation"
+                trade_style = "REVERSAL"; setup_type = "GEN_STEP_REVERT"
+                return
+
+        # 2. REGIME-SPECIFIC CLASSIC SETUPS
+        if "TRENDING" in regime and adx > adapted_profile.get('adx_strong',25):
+            if (is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5) or \
+               (not is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (SWING)"
+                sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult'])
+                entry_type = f"Swing — {mp_type}"
+                trade_style = "SWING"; setup_type = "SWING"
+                if mp_price and mp_type != "MARKET": entry = mp_price
+                return
+
+        if "RANGING" in regime or hurst_val < 0.48:
+            if abs(z_current) > profile.get('zscore_extreme',2)*0.6:
+                if (z_current < 0 and is_long) or (z_current > 0 and not is_long):
+                    d = "LONG" if is_long else "SHORT"
+                    sig = f"{d} (MEAN REVERSION)"
+                    sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                    entry_type = f"MR Z={z_current:.1f}"
+                    trade_style = "REVERSAL"; setup_type = "MEAN_REVERSION"
+                    return
+
+        # 3. DAY
+        # V21 FIX-C: DAY requires ADX >= 22 (not catch-all)
+        if adx > max(adapted_profile.get('adx_trend_min',15), 22):
+            d = "LONG" if is_long else "SHORT"
+            sig = f"{d} (DAY)"
+            sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult']*0.8)
+            entry_type = f"Day — {mp_type}"
+            trade_style = "DAY"; setup_type = "DAY"
+            if mp_price and mp_type != "MARKET": entry = mp_price
+            return
+
+        # 4. BREAKOUT
+        # V21 PREC #5: Breakout needs close ABOVE/BELOW SR (not just near)
+        if sr_touch and closest_sr:
+            bk_ok, bk_r = confirm_breakout_volume(m15)
+            broke_through = (is_long and c1['close'] > closest_sr['price'] + c1['ATR']*0.1) or \
+                            (not is_long and c1['close'] < closest_sr['price'] - c1['ATR']*0.1)
+            if bk_ok and broke_through:
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (BREAKOUT)"
+                sl_val = closest_sr['price'] - c1['ATR'] if is_long else closest_sr['price'] + c1['ATR']
+                entry_type = f"Breakout S/R (×{bk_r:.1f})"
+                trade_style = "BREAKOUT"; setup_type = "BREAKOUT"
+                return
+
+    # For Crash/Boom: try BOTH directions (drift can be opposite to bias)
+    if gen_type in ["BOOM","CRASH"]:
+        drift_dir = gen.get('drift_direction','')
+        if drift_dir == "UP": try_setup("BULLISH")
+        elif drift_dir == "DOWN": try_setup("BEARISH")
+        if sig == "MONITORING": try_setup(bias)
+    else:
+        try_setup(bias)
+
+    # Spread
+    if "LONG" in sig: entry += profile['spread']
+    elif "SHORT" in sig: entry -= profile['spread']
+
+    # Clamp SL
+    if "LONG" in sig and (entry - sl_val) > adapted_profile['sl_atr_mult'] * c1['ATR']:
+        sl_val = entry - adapted_profile['sl_atr_mult'] * c1['ATR']
+    elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * c1['ATR']:
+        sl_val = entry + adapted_profile['sl_atr_mult'] * c1['ATR']
+
+    # Storm
+    storm_data = {'adx':adx,'momentum_score':momentum,'pattern_score':pat_score,
+        'divergence':divergence,'fib':fib_level is not None,'sr_touch':sr_touch,
+        'alignment':align_type=="PERFECT",'bb_squeeze':bb_compression,
+        'trending':"TRENDING" in regime,'volume':vol_confirmed,'hurst_trending':hurst_trending,
+        'zscore':zscore_favorable,'gen_signal':gen_bonus>0,'dist':dist_favorable,
+        'vr_edge':vr.get('has_edge',False),'acf_edge':acf.get('has_pattern',False)}
+    storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
+
+    if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
+        sig = sig.replace("LONG","LONG ⭐STORM⭐").replace("SHORT","SHORT ⭐STORM⭐")
+        setup_type = "PERFECT_STORM"
+
+    # V21: Independent Edge Correlation
+    indep_edges = calculate_independent_edges(
+        vr, acf, hurst_val, gen_bonus, dist, z_current,
+        divergence, fib_level, sr_touch, align_type, vol_confirmed)
+
+    final_db = 0
+    if divergence and (("LONG" in sig and "BULLISH" in str(divergence)) or ("SHORT" in sig and "BEARISH" in str(divergence))):
+        final_db = abs(div_bonus)
+
+    score = calculate_score(
+        adx=adx, momentum_score=momentum, pattern_score=pat_score,
+        dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
+        win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
+        divergence_bonus=final_db, fib_bonus=fib_bonus, sr_bonus=sr_bonus,
+        alignment_bonus=align_bonus, storm_bonus=storm_bonus,
+        regime_bonus=regime_bonus, volume_bonus=vol_bonus,
+        hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
+        consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
+        distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
+        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus)
+
+    # Filters
+    configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
+               "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
+               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4)}
+    ms, mpf = configs.get(setup_type, (70, 1.4))
+    is_gen_setup = setup_type and "GEN" in str(setup_type)
+    if "BLOCKED" not in sig and sig != "MONITORING":
+        fails = []
+        if score.total < ms: fails.append(f"SCORE={score.total:.0f}<{ms}")
+        if cpi_val < 25 and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<25")
+        if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
+        if sim['PF'] < mpf and not is_gen_setup: fails.append(f"PF={sim['PF']}<{mpf}")
+        if fails: sig = f"BLOCKED ({', '.join(fails)})"
+
+    # Targets — 🟢 PRECISION #3: Smart TP
+    risk = abs(entry - sl_val)
+    if risk == 0: risk = float(c1['ATR'])
+    tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
+          "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
+          "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
+          "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r'])}
+    r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
+    direction = "LONG" if "LONG" in sig else "SHORT"
+    tp1, tp2 = smart_tp(entry, direction, risk, r1, r2, sr_levels)
+
+    # Pyramid
+    pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
+
+    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+
     imgs = [
-        plot_candles(h4.tail(150), f"H4 Structural (Drift T: {drift_data.get('t_stat'):.1f})"),
-        plot_candles(h1.tail(200), f"H1 Kalman Trend | Entropy: {pe:.2f}", entry if "BLOCKED" not in decision else None, sl, tp1),
-        plot_candles(m15.tail(200), f"M15 Generator: {gen.get('signal')}")
+        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
+        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
+        plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
     ]
 
-    # V22 Dictionary (Mapeado para UI antiga mas com dados novos)
+    # V21: Optimal holding
+    hold = optimal_holding_period(acf, setup_type)
+
+    confs = []
+    if cpi_val >= 45: confs.append(f"\U0001f9e0 CPI: {cpi_val:.0f} ({cpi_regime})")
+    if markov.get('has_dependence'): confs.append(f"\U0001f52e Markov: {markov['best_transition']}")
+    if spectral.get('has_cycle'): confs.append(f"\U0001f4c8 Cycle: {spectral['dominant_period']:.0f} bars")
+    if rt_detail: confs.append(f"\U0001f504 {regime_transition}: {rt_detail}")
+    if gen_bonus>0: confs.append(f"🧮 Gen: {gen_signal} (+{gen_bonus})")
+    if vr.get('has_edge'): confs.append(f"📐 VR: {vr['dominant_type']} ({vr.get('n_significant',0)} sig)")
+    if acf.get('has_pattern'): confs.append(f"📊 ACF: {acf['dominant_type']} (lag-1={acf.get('acf_1',0):.3f})")
+    if vol_cluster.get('has_clustering'): confs.append(f"🔥 VolCluster: {vol_cluster['vol_regime']}")
+    if dist_favorable: confs.append(f"📊 Dist P{dist['percentile']:.0f}")
+    if divergence: confs.append(f"🔍 {divergence}")
+    if fib_level: confs.append(f"📐 Fib {fib_level}")
+    if sr_touch: confs.append(f"🎯 S/R")
+    if align_type!="NONE": confs.append(f"⭐ Align {align_type}")
+    if storm_level: confs.append(f"🌟 {storm_level} ({len(storm_criteria)}/16)")
+    if hurst_trending: confs.append(f"🧬 Hurst {hurst_val}")
+    if zscore_favorable: confs.append(f"📊 Z {z_current:.1f}")
+    if bb_compression: confs.append("💥 BB Squeeze")
+    if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
+
+    risks = []
+    if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
+    if regime_transition == "EXHAUSTION": risks.append("\u26a0\ufe0f Regime EXHAUSTION")
+    if indep_edges['quality'] == "WEAK": risks.append(f"\u26a0\ufe0f Edges WEAK ({indep_edges['n_independent']} indep)")
+    if "RANGING" in regime: risks.append("⚠️ RANGING")
+    if not sim['WF_STABLE']: risks.append("⚠️ WF instável")
+    if mc.get('positive_pct',0)<55: risks.append(f"⚠️ MC {mc['positive_pct']}%")
+    if roc_status=="EXTREME": risks.append("⚠️ ROC EXTREMO")
+    if hurst_regime=="RANDOM_WALK": risks.append("⚠️ Random Walk")
+    if hurst_regime=="UNRELIABLE": risks.append(f"⚠️ Hurst unreliable R²={hurst_r2}")
+    if not vr.get('has_edge'): risks.append("⚠️ VR: sem edge estatístico")
+    if gen.get('spike_phase')=="SPIKE_IMMINENT": risks.append("💥 SPIKE IMINENTE")
+    if not trigger_ok and c5 is not None: risks.append(f"⚠️ M5 sem trigger ({trigger_type})")
+
     return {
-        "FINAL_DECISION": decision, 
-        "SETUP_TYPE": setup_type,
-        "SETUP_SCORE": float(trend_score), # Score Unificado V22
-        "SETUP_GRADE": "S" if trend_score>80 else "A", 
-        "GEN_TYPE": gen_type,
-        "GEN_SIGNAL": str(gen.get('signal')), 
-        "GEN_BONUS": 10,
-        "GEN_ANALYSIS": convert_np(gen),
-        "ENTROPY": float(pe), 
-        "DRIFT_T": float(drift_data.get('t_stat',0)), 
-        "HURST": float(hurst_val),
-        "ZSCORE": float(c1.get('ZSCORE', 0)),
-        "REGIME": regime,
+        "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
+        "SETUP_SCORE": float(round(score.total,1)), "BASE_SCORE": float(round(score.base_total,1)),
+        "BONUS_SCORE": float(round(score.bonus_total,1)), "SETUP_GRADE": score.grade,
+        "INDEX_PROFILE": vc, "GEN_TYPE": gen_type,
+        "GEN_ANALYSIS": convert_np(gen), "GEN_SIGNAL": gen_signal, "GEN_BONUS": gen_bonus,
         "SIGMA_CALIBRATED": sigma_calibrated,
-        "WIN_RATE": sim['WR'], "PROFIT_FACTOR": sim['PF'], "TOTAL_TRADES": sim['TOTAL_TRADES'],
-        "MAX_DRAWDOWN": sim['DD'], "SHARPE": sim['SHARPE'], "SORTINO": sim['SORTINO'],
-        "ENTRY": entry, "SL": sl, "TP1": tp1, "TP2": tp2,
-        "PYRAMID": convert_np(pyramid), "IMAGES": imgs,
-        "CONFLUENCES": [f"V22 Regime: {regime}", f"Score: {trend_score}"],
-        "RISKS": [f"High Noise ({pe:.2f})" if pe > 0.8 else "Stable Flow"],
-        "ADAPTED_PROFILE": convert_np(adjusted_profile),
-        "MC_MEDIAN": mc['median'], "MC_P5": mc['p5'], "MC_P95": mc['p95'], "MC_POSITIVE": mc['positive_pct'],
-        # Extra Fields
-        "VOL_CLUSTER": {"vol_regime": "N/A"}, "ACF_TEST": {}, "VR_TEST": vr_res, "DIST_ANALYSIS": {}, 
-        "BB_CYCLE": "N/A", "CONSECUTIVE": 0, "CONSECUTIVE_DIR": "N/A"
+        "VR_TEST": convert_np(vr), "VR_BONUS": vr_bonus,
+        "ACF_TEST": convert_np(acf), "ACF_BONUS": acf_bonus,
+        "VOL_CLUSTER": convert_np(vol_cluster),
+        "DIST_ANALYSIS": convert_np(dist), "DIST_BONUS": dist_bonus,
+        "HURST": float(hurst_val), "HURST_REGIME": hurst_regime, "HURST_R2": float(hurst_r2),
+        "ZSCORE": float(round(z_current,2)),
+        "BB_CYCLE": bb_cycle, "CONSECUTIVE": int(consec_count), "CONSECUTIVE_DIR": consec_dir,
+        "ROC_STATUS": roc_status, "MARKET_STRUCTURE": structure, "MARKET_REGIME": regime,
+        "TRIGGER_OK": trigger_ok, "TRIGGER_TYPE": trigger_type,
+        "CONFLUENCES": confs, "RISKS": risks, "MOMENTUM": f"{momentum}/3",
+        "ENTRY_TYPE": entry_type, "SL_REASON": sl_reason,
+        "WIN_RATE": float(sim['WR']), "NET_PROFIT": float(sim['NET']),
+        "MAX_DRAWDOWN": float(sim['DD']), "PROFIT_FACTOR": float(sim['PF']),
+        "SHARPE": float(sim['SHARPE']), "SORTINO": float(sim['SORTINO']),
+        "WF_STABLE": sim['WF_STABLE'], "FOLD_WRS": sim['FOLD_WRS'],
+        "TOTAL_TRADES": int(sim['TOTAL_TRADES']),
+        "SETUP_STATS": convert_np(sim.get('SETUP_STATS',{})),
+        "MC_MEDIAN": float(mc.get('median',0)), "MC_P5": float(mc.get('p5',0)),
+        "MC_P95": float(mc.get('p95',0)), "MC_POSITIVE": float(mc.get('positive_pct',0)),
+        "ENTRY": float(round(entry,5)), "SL": float(round(sl_val,5)),
+        "TP1": float(round(tp1,5)), "TP2": float(round(tp2,5)),
+        "PYRAMID": convert_np(pyramid), "ADAPTED_PROFILE": convert_np({k:v for k,v in adapted_profile.items() if k in ['risk_mult','sl_atr_mult','tp2_r']}),
+        "IMAGES": imgs, "ATR": float(c1['ATR']),
+        "CPI": convert_np(cpi), "CPI_VAL": cpi_val,
+        "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
+        "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
+        "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
+        "MOMENTUM_V21": momentum_v21,
+        "INDEPENDENT_EDGES": convert_np(indep_edges),
+        "HOLDING_PERIOD": convert_np(hold),
+        "SCORE_BREAKDOWN": convert_np({
+            "ADX":score.trend_strength,"MOM":score.momentum_align,"PAT":score.patterns,
+            "VAL":score.value_zone,"HIST":score.historical,
+            "DIV":score.divergence_bonus,"FIB":score.fib_bonus,"SR":score.sr_bonus,
+            "ALIGN":score.alignment_bonus,"STORM":score.storm_bonus,"REGIME":score.regime_bonus,
+            "VOL":score.volume_bonus,"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
+            "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
+            "VR":score.vr_bonus,"ACF":score.acf_bonus,
+            "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus
+        }),
     }
 
-async def quick_scan(code, name): return None
+# ==============================================================================
+# SCANNER V20 — 🟢 FIX #4: Todos os gen types
+# ==============================================================================
+
+async def quick_scan(code, name):
+    try:
+        raw = await fetch_single(code, 3600, 300)
+        if not raw: return None
+        df = indicators(prep_df(raw)); profile = get_profile(name)
+        if len(df) < 50: return None
+        c = df.iloc[-1]; ppy = detect_periods_per_year(df)
+        hurst_val, _, hr2 = calculate_hurst_exponent(df['close'])
+        z = float(c['ZSCORE']) if pd.notna(c.get('ZSCORE')) else 0
+        vr = variance_ratio_test(df['close'])
+        gt = profile.get('gen_type','GBM')
+        if gt == 'GBM':
+            sig_cal = calibrate_sigma(df, ppy)
+            gen = GeneratorModelV20.analyze_gbm(df, profile, sig_cal, ppy)
+        elif gt in ['BOOM','CRASH']:
+            gen = GeneratorModelV20.analyze_crash_boom(df, profile, ppy)
+        elif gt == 'STEP':
+            gen = GeneratorModelV20.analyze_step(df, profile, ppy)
+        else: gen = {}
+        regime, _ = classify_regime(df)
+        qs = 0
+        if c['ADX'] > profile.get('adx_strong',25): qs += 25
+        elif c['ADX'] > profile.get('adx_trend_min',15): qs += 12
+        if abs(z) > profile.get('zscore_extreme',2)*0.6: qs += 18
+        if hurst_val > profile.get('hurst_trend_min',0.53) or hurst_val < 0.45: qs += 12
+        if gen.get('signal','NEUTRAL') not in ['NEUTRAL','VOL_NORMAL']: qs += 20
+        if vr.get('has_edge'): qs += 15
+        if "TRENDING" in regime: qs += 8
+        # V21: CPI in scanner
+        cpi_r = compound_predictability_index(df['close'], vr)
+        cpi_v = cpi_r.get('cpi', 0)
+        if cpi_v >= 50: qs += 15
+        elif cpi_v >= 35: qs += 8
+        bias = "BULLISH" if c['close'] > c['EMA_200'] else "BEARISH"
+        return {"name":name,"code":code,"score":qs,"bias":bias,"adx":round(c['ADX'],1),
+                "hurst":round(hurst_val,3),"zscore":round(z,2),"regime":regime,
+                "gen_signal":gen.get('signal','N/A'),"vr_edge":vr.get('has_edge',False),
+                "cpi":round(cpi_v,1),
+                "vr_type":vr.get('dominant_type','?'),"cpi_regime":cpi_r.get('regime','?'),"profile":profile['vol_class']}
+    except: return None
 
 # ==============================================================================
-# UI STREAMLIT (Mantida Original do V21)
+# STREAMLIT UI V20 — MODERN MINIMAL
 # ==============================================================================
 
 # ── SIDEBAR ──
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V22</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V20</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
         api = st.secrets["GEMINI_API_KEY"]
         st.markdown("<span class='pill pill-green' style='font-size:11px;'>API Connected</span>", unsafe_allow_html=True)
     else:
-        api = st.text_input("Gemini API Key", type="password", label_visibility="collapsed", placeholder="Enter API key...")
+        api = st.text_input("Gemini API Key", type="password", label_visibility="collapsed",
+                             placeholder="Enter API key...")
+
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    mode = st.radio("Mode", ["Analysis", "Scanner"], label_visibility="collapsed", horizontal=True)
+
+    mode = st.radio("Mode", ["Analysis", "Scanner"], label_visibility="collapsed",
+                     horizontal=True)
+
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    capital = st.number_input("Capital", min_value=100, value=10000, step=100, label_visibility="collapsed")
+
+    capital = st.number_input("Capital", min_value=100, value=10000, step=100,
+                               label_visibility="collapsed")
     st.caption("Capital ($)")
     risk_pct = st.slider("Risk", 0.5, 3.0, 1.0, 0.1, label_visibility="collapsed")
     st.caption(f"Risk per trade: {risk_pct}%")
 
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Statistical Edge Engine V22<br>
-        Kalman Drift · T-Stat Check<br>
-        Entropy Gate · Unified Score
+        Statistical Edge Engine<br>
+        VR · ACF · GARCH · Kelly<br>
+        Sigma Calibrated · Smart TP
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V22</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V21</span>
 </div>""", unsafe_allow_html=True)
 
-with st.spinner("Loading assets..."):
-    # Mocking assets loader for provided snippet scope; usually requires live conn
-    assets = get_assets() 
+with st.spinner("Loading assets..."): assets = get_assets()
+if not assets: st.error("Connection failed"); st.stop()
 
+# ==============================================================================
 # ANALYSIS MODE
+# ==============================================================================
 if mode == "Analysis":
     left, right = st.columns([1, 3])
 
     with left:
-        target = st.selectbox("Asset", list(assets.keys()), label_visibility="collapsed") if assets else st.selectbox("Asset", ["Select"])
-        if assets:
-            prof = get_profile(target)
-            st.markdown(f"""<div style='padding:10px 14px;background:#111113;border:1px solid #1e1e23;
-                border-radius:8px;margin:8px 0 16px;'>
-                <span style='color:#fafafa;font-size:13px;font-weight:500;'>{prof['vol_class']}</span><br>
-                <span class='mono text-xs muted'>{prof.get('gen_type','—')}</span>
-            </div>""", unsafe_allow_html=True)
+        target = st.selectbox("Asset", list(assets.keys()), label_visibility="collapsed")
+        prof = get_profile(target)
+        st.markdown(f"""<div style='padding:10px 14px;background:#111113;border:1px solid #1e1e23;
+            border-radius:8px;margin:8px 0 16px;'>
+            <span style='color:#fafafa;font-size:13px;font-weight:500;'>{prof['vol_class']}</span><br>
+            <span class='mono text-xs muted'>{prof.get('gen_type','—')}</span>
+        </div>""", unsafe_allow_html=True)
         run = st.button("Analyze", use_container_width=True)
 
     with right:
-        if run and assets:
-            status = st.status("Analyzing V22...", expanded=True)
-            status.write("Running V22 Math Engine (Kalman/Entropy)...")
-            h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
-            
-            if not h1r:
-                status.update(label="Error fetching", state="error")
-                st.error("No data available.")
-            else:
-                status.write("Calculating Structural Drifts...")
-                
-                # EXECUTE V22 CORE
-                data = sniper_core_v22(target, h1r, h4r, m15r, m5r, capital, risk_pct)
-                imgs = data.pop("IMAGES")
-                
-                # Gemini Insight
-                ai_text = "No API key"
-                if api:
-                    try:
-                        status.write("Generative Insight...")
-                        genai.configure(api_key=api)
-                        model = genai.GenerativeModel("gemini-pro")
-                        prompt = f"Trade: {data['FINAL_DECISION']}. Score: {data['SETUP_SCORE']}. Entropy: {data['ENTROPY']:.2f}. Hurst: {data['HURST']:.2f}. Regime: {data['REGIME']}. Summarize strategy."
-                        ai_text = model.generate_content(prompt).text
-                    except: pass
-                
-                status.update(label="Complete", state="complete")
+        if run:
+            if not api: st.error("API key required"); st.stop()
 
-                # ── OUTPUT DISPLAY ──
-                g = data['SETUP_GRADE']
-                d_dec = data['FINAL_DECISION']
-                tag = "tag-long" if "LONG" in d_dec else "tag-short" if "SHORT" in d_dec else "tag-blocked"
-                
-                # Score Card V22
-                st.markdown(f"""
-                <div class='grade-{g.lower().replace("s","s")}' style='margin:8px 0 20px;'>
-                    <div class='grade-letter'>{g}</div>
-                    <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
-                        {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 100</span>
+            status = st.status("Analyzing...", expanded=True)
+            status.write("Fetching multi-timeframe data...")
+            h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
+            if err: status.update(state='error'); st.error(err); st.stop()
+            status.write("Running statistical analysis...")
+            data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
+            imgs = data.pop("IMAGES")
+            status.write("Generating AI insights...")
+            genai.configure(api_key=api)
+            dc = convert_np(data)
+            try:
+                model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
+                ai = model.generate_content([SYSTEM_PROMPT, f"V20 DATA: {json.dumps(dc)}"] + imgs).text
+                status.update(label="Complete", state="complete")
+            except Exception as e:
+                ai = f"AI unavailable: {str(e)[:120]}"
+                status.update(label="Done", state="complete")
+
+            # ── GRADE CARD ──
+            g = data['SETUP_GRADE']
+            grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
+            score_pct = min(data['SETUP_SCORE'] / 170 * 100, 100)
+            bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
+
+            # Decision tag
+            d = data['FINAL_DECISION']
+            if "LONG" in d:
+                tag = f"<span class='tag-long'>LONG</span>"
+            elif "SHORT" in d:
+                tag = f"<span class='tag-short'>SHORT</span>"
+            elif "BLOCKED" in d:
+                tag = f"<span class='tag-blocked'>BLOCKED</span>"
+            else:
+                tag = f"<span class='tag-monitoring'>MONITORING</span>"
+
+            st.markdown(f"""
+            <div class='{grade_class}' style='margin:8px 0 20px;'>
+                <div class='grade-letter'>{g}</div>
+                <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
+                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 170</span>
+                </div>
+                <div class='score-bar-outer'>
+                    <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
+                </div>
+                <div style='margin-top:12px;'>{tag}</div>
+                <div style='color:#52525b;font-size:12px;margin-top:6px;'>
+                    {data.get('SETUP_TYPE','—')} · {data['GEN_TYPE']}
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+            # ── GENERATOR MODEL ──
+            st.markdown("## Generator")
+            ga = data.get('GEN_ANALYSIS', {})
+            g1, g2, g3, g4 = st.columns(4)
+            g1.metric("Type", data['GEN_TYPE'])
+            g2.metric("Signal", data['GEN_SIGNAL'])
+            g3.metric("σ Real", f"{data.get('SIGMA_CALIBRATED',0) or 0:.4f}")
+            g4.metric("Bonus", f"+{data['GEN_BONUS']}")
+
+            if data['GEN_TYPE'] == 'GBM':
+                wins = ga.get('windows', {})
+                w1, w2, w3 = st.columns(3)
+                for col, lbl in [(w1,"SHORT"),(w2,"MEDIUM"),(w3,"LONG")]:
+                    w = wins.get(lbl, {})
+                    sig = w.get('signal', '—')
+                    delta_color = "normal" if sig == "VOL_NORMAL" else ("inverse" if sig == "VOL_COMPRESS" else "normal")
+                    col.metric(f"Vol {lbl}", f"{w.get('vol_ratio',1):.3f}", sig, delta_color=delta_color)
+                pc, pz = st.columns(2)
+                pc.metric("Direction", ga.get('compress_direction', '—'))
+                pz.metric("Price Z", f"{ga.get('z_price',0):.2f}")
+
+            # ── STATISTICAL EDGE ──
+            st.markdown("## Edge Analysis")
+            e1, e2, e3, e4 = st.columns(4)
+            vrt = data.get('VR_TEST', {})
+            e1.metric("Variance Ratio",
+                       "Edge Found" if vrt.get('has_edge') else "No Edge",
+                       vrt.get('dominant_type', ''))
+            acft = data.get('ACF_TEST', {})
+            e2.metric("Autocorrelation",
+                       acft.get('dominant_type', '—'),
+                       f"lag1 = {acft.get('acf_1',0):.4f}")
+            vc = data.get('VOL_CLUSTER', {})
+            e3.metric("Vol Cluster", vc.get('vol_regime', '—'))
+            e4.metric("Hurst",
+                       f"{data['HURST']:.3f}",
+                       f"R² = {data.get('HURST_R2',0):.2f}")
+
+            # ── DISTRIBUTION ──
+            # ═══ V21: PREDICTABILITY INDEX ═══
+            st.markdown("## Predictability")
+            cpi_data = data.get('CPI', {})
+            cpi_v = cpi_data.get('cpi', 0)
+            cpi_reg = cpi_data.get('regime', '?')
+            comps = cpi_data.get('components', {})
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            cpi_color = '#22c55e' if cpi_v >= 60 else '#f59e0b' if cpi_v >= 35 else '#ef4444'
+            pc1.metric("CPI", f"{cpi_v:.0f}/100", cpi_reg)
+            pc2.metric("SampleEn", f"{comps.get('se',0):.0f}/25")
+            pc3.metric("PermEn", f"{comps.get('pe',0):.0f}/25")
+            pc4.metric("VR+ACF", f"{comps.get('vr',0)+comps.get('acf',0):.0f}/50")
+
+            mrkv = data.get('MARKOV', {})
+            spec = data.get('SPECTRAL', {})
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Markov", "Dep Found" if mrkv.get('has_dependence') else "No Dep", mrkv.get('best_transition',''))
+            mc2.metric("Cycles", f"{spec.get('dominant_period',0):.0f} bars" if spec.get('has_cycle') else "None")
+            mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
+
+            st.markdown("## Distribution")
+            da = data.get('DIST_ANALYSIS', {})
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Skewness", f"{da.get('skewness',0):.3f}")
+            d2.metric("Kurtosis", f"{da.get('kurtosis',3):.3f}")
+            d3.metric("Tails", da.get('tail_risk', '—'))
+            d4.metric("Percentile", f"{da.get('percentile',50):.0f}%")
+
+            # ── BACKTEST ──
+            st.markdown("## Validation")
+            v1, v2, v3, v4, v5, v6 = st.columns(6)
+            v1.metric("Win Rate", f"{data['WIN_RATE']}%")
+            v2.metric("Profit Factor", f"{data['PROFIT_FACTOR']}")
+            v3.metric("Sharpe", f"{data['SHARPE']}")
+            v4.metric("Sortino", f"{data['SORTINO']}")
+            v5.metric("Max DD", f"{data['MAX_DRAWDOWN']}R")
+            v6.metric("Trades", f"{data['TOTAL_TRADES']}")
+
+            # Setup breakdown
+            if data.get('SETUP_STATS'):
+                parts = " · ".join(f"{k} {v['trades']}t/{v['wr']}%" for k,v in data['SETUP_STATS'].items())
+                st.markdown(f"<p class='mono text-xs muted' style='margin-top:-8px;'>{parts}</p>",
+                            unsafe_allow_html=True)
+
+            # Monte Carlo
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("MC Median", f"{data['MC_MEDIAN']}R")
+            mc2.metric("MC P5", f"{data['MC_P5']}R")
+            mc3.metric("MC Positive", f"{data['MC_POSITIVE']}%")
+
+            # ── CONFLUENCES & RISKS ──
+            if data['CONFLUENCES'] or data['RISKS']:
+                st.markdown("## Confluences")
+                conf_html = ""
+                for c in data.get('CONFLUENCES', []):
+                    conf_html += f"<span class='pill pill-green'>{c}</span> "
+                for r in data.get('RISKS', []):
+                    conf_html += f"<span class='pill pill-red'>{r}</span> "
+                st.markdown(conf_html, unsafe_allow_html=True)
+
+            # ── TRADE PLAN ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            is_active = any(x in d for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION",
+                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+            if is_active:
+                st.markdown("## Trade Plan")
+
+                # Entry/SL/TP as clean card
+                entry_color = "#22c55e" if "LONG" in d else "#ef4444"
+                st.markdown(f"""<div class='card'>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Entry</span>
+                        <span class='plan-value' style='color:{entry_color};'>{data['ENTRY']}</span>
+                        <span class='plan-note'>{data['ENTRY_TYPE']}</span>
                     </div>
-                    <div style='margin-top:12px;'><span class='{tag}'>{d_dec}</span></div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Stop</span>
+                        <span class='plan-value' style='color:#ef4444;'>{data['SL']}</span>
+                        <span class='plan-note'>ATR x{data.get('ADAPTED_PROFILE',{}).get('sl_atr_mult','—')}</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>TP 1</span>
+                        <span class='plan-value' style='color:#22c55e;'>{data['TP1']}</span>
+                        <span class='plan-note'>Smart TP (S/R aware)</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>TP 2</span>
+                        <span class='plan-value' style='color:#22c55e;'>{data['TP2']}</span>
+                        <span class='plan-note'>Trail target</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Trigger</span>
+                        <span class='plan-value'>{"✓" if data.get('TRIGGER_OK') else "✗"}</span>
+                        <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
+                    </div>
                 </div>""", unsafe_allow_html=True)
 
-                # V22 Stats Grid
-                st.markdown("## V22 Diagnostics")
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Entropy (Pe)", f"{data['ENTROPY']:.2f}", delta="Chaos" if data['ENTROPY']>0.94 else "Stable", delta_color="inverse")
-                col2.metric("Drift T-Stat", f"{data['DRIFT_T']:.2f}", delta="Significant" if abs(data['DRIFT_T'])>2 else "Noise")
-                col3.metric("Regime", data['REGIME'])
-                col4.metric("Generator", data['GEN_SIGNAL'])
+                # Pyramid
+                pyr = data.get('PYRAMID', {})
+                if pyr.get('n_levels', 0) > 1:
+                    st.markdown("## Pyramid")
+                    pyr_html = "<div class='card'>"
+                    for i, l in enumerate(pyr.get('levels', [])):
+                        pyr_html += f"""<div class='plan-row'>
+                            <span class='plan-label'>Level {i+1}</span>
+                            <span class='plan-value'>{l['entry']}</span>
+                            <span class='plan-note'>{l['risk_pct']}% · {l['trigger']}</span>
+                        </div>"""
+                    pyr_html += f"""<div class='plan-row' style='border-top:1px solid #27272a;'>
+                        <span class='plan-label'>Total</span>
+                        <span class='plan-value'>{pyr['total_risk_pct']}%</span>
+                        <span class='plan-note'>{pyr['n_levels']} levels</span>
+                    </div></div>"""
+                    st.markdown(pyr_html, unsafe_allow_html=True)
 
-                # Stats Grid 2 (Legacy/Supporting)
-                col5, col6, col7 = st.columns(3)
-                col5.metric("Win Rate", f"{data['WIN_RATE']}%")
-                col6.metric("Exp Value (MC)", f"{data['MC_MEDIAN']}R")
-                col7.metric("Hurst", f"{data['HURST']:.2f}")
+            elif "BLOCKED" in d:
+                reason = d.replace("BLOCKED (","").rstrip(")")
+                st.markdown(f"""<div class='card' style='border-color:#ef444420;'>
+                    <span style='color:#ef4444;font-size:14px;font-weight:500;'>Blocked</span><br>
+                    <span class='mono text-sm muted'>{reason}</span>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown("""<div class='card'>
+                    <span style='color:#f59e0b;font-size:14px;font-weight:500;'>Monitoring</span><br>
+                    <span class='text-sm muted'>No setup detected. Waiting for conditions.</span>
+                </div>""", unsafe_allow_html=True)
 
-                # Trade Plan
-                if "BLOCKED" not in d_dec and "MONITORING" not in d_dec:
-                    st.markdown("## Trade Plan")
-                    st.markdown(f"""<div class='card'>
-                        <div class='plan-row'><span class='plan-label'>Entry</span><span class='plan-value'>{data['ENTRY']}</span></div>
-                        <div class='plan-row'><span class='plan-label'>SL</span><span class='plan-value' style='color:#ef4444'>{data['SL']}</span></div>
-                        <div class='plan-row'><span class='plan-label'>TP1</span><span class='plan-value' style='color:#22c55e'>{data['TP1']}</span></div>
-                        <div class='plan-row'><span class='plan-label'>TP2</span><span class='plan-value' style='color:#22c55e'>{data['TP2']}</span></div>
-                    </div>""", unsafe_allow_html=True)
-                    
-                # Charts
-                st.markdown("## Charts (Kalman Integrated)")
-                t1, t2, t3 = st.tabs(["H4 Macro", "H1 Trend", "M15 Gen"])
-                t1.image(imgs[0], use_container_width=True)
-                t2.image(imgs[1], use_container_width=True)
-                t3.image(imgs[2], use_container_width=True)
+            # ── CHARTS ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            st.markdown("## Charts")
+            tabs = st.tabs(["H4", "H1", "M15"])
+            for i, t in enumerate(tabs):
+                with t:
+                    st.image(imgs[i], use_container_width=True)
 
-                if api:
-                    st.markdown("## AI Analysis")
-                    st.info(ai_text)
+            # ── AI INSIGHT ──
+            st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+            st.markdown("## AI Analysis")
+            st.markdown(f"""<div class='card-accent'>
+                {ai}
+            </div>""", unsafe_allow_html=True)
 
-# Scanner Mode (Simple Stub)
+# ==============================================================================
+# SCANNER MODE
+# ==============================================================================
 elif mode == "Scanner":
-    st.info("Switch to Analysis mode for full V22 Logic details.")
+    st.markdown("## Scanner")
+    st.markdown("<p class='text-sm muted' style='margin-top:-8px;'>Scan all synthetic indices for statistical edge opportunities.</p>",
+                unsafe_allow_html=True)
+
+    if st.button("Scan All Assets", use_container_width=True):
+        with st.spinner("Scanning..."):
+            async def run_scan():
+                return await asyncio.gather(*[quick_scan(c, n) for n, c in assets.items()])
+            results = asyncio.run(run_scan())
+            valid = sorted([r for r in results if r], key=lambda x: x['score'], reverse=True)
+
+        if valid:
+            st.markdown(f"<p class='text-sm muted' style='margin:12px 0;'>{len(valid)} assets scanned</p>",
+                        unsafe_allow_html=True)
+
+            for i, r in enumerate(valid[:12]):
+                score = r['score']
+                sc = "#22c55e" if score >= 50 else "#f59e0b" if score >= 30 else "#52525b"
+                bias_c = "#22c55e" if r['bias'] == "BULLISH" else "#ef4444"
+                vr_tag = "<span class='pill pill-green' style='font-size:10px;'>VR Edge</span>" if r.get('vr_edge') else ""
+
+                st.markdown(f"""<div class='scan-row'>
+                    <span class='scan-rank'>#{i+1}</span>
+                    <span class='scan-name'>{r['name']}</span>
+                    <span class='scan-score' style='color:{sc};'>{score}</span>
+                    <div>
+                        <span class='pill' style='font-size:10px;color:{bias_c};border-color:{bias_c}30;'>{r['bias']}</span>
+                        {vr_tag}
+                    </div>
+                    <span class='scan-meta' style='min-width:260px;text-align:right;'>
+                        ADX {r['adx']} · H {r['hurst']} · Z {r['zscore']} · {r['regime'][:8]} · {r['gen_signal'][:12]}
+                    </span>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("No results found")
