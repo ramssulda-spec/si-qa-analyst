@@ -3242,30 +3242,45 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         vr, acf, hurst_val, gen_bonus, dist, z_current,
         divergence, fib_level, sr_touch, align_type, vol_confirmed)
 
-    final_db = 0
-    if divergence and (("LONG" in sig and "BULLISH" in str(divergence)) or ("SHORT" in sig and "BEARISH" in str(divergence))):
-        final_db = abs(div_bonus)
-
-    # Prepare inputs for scoring
-    dist_ema = abs(h1['close'].iloc[-1] - h1['EMA_50'].iloc[-1])
+    # STORM & CONFLUENCE PREP
+    sd = {
+        'adx': h1['ADX'].iloc[-1], 'momentum_score': momentum, 
+        'pattern_score': cm.get('pattern_score',0), 'divergence': divergence,
+        'fib': fib_level, 'sr_touch': sr_touch, 'alignment': align_type,
+        'bb_squeeze': bb_compression, 'trending': "TRENDING" in regime,
+        'volume': vol_confirmed, 'hurst_trending': hurst_regime=="STRONG_TREND",
+        'zscore': abs(z_current)>2, 'gen_signal': gen_signal!="NEUTRAL",
+        'dist': dist['signal']!="NEUTRAL", 'vr_edge': vr.get('has_edge'),
+        'acf_edge': acf.get('has_pattern'),
+        'ribbon_quality': ema_ribbon.get('quality'),
+        'coherence': trend_coherence.get('coherence'),
+        'candle_quality': candle_struct.get('quality'),
+        'mom_accel': mom_accel.get('phase') != "NEUTRAL",
+    }
+    storm_type, storm_val, storm_list = calculate_storm_bonus(sd)
+    
+    # SCORE CALCULATION INPUTS
+    dist_ema_val = abs(h1['close'].iloc[-1] - h1['EMA_50'].iloc[-1])
+    mom_accel_bonus_val = mom_accel.get('confidence', 0) / 10
+    
     score = calculate_score(
-        h1['ADX'].iloc[-1], momentum_v21, candle_struct.get('score',0), dist_ema, h1['ATR'].iloc[-1],
+        h1['ADX'].iloc[-1], momentum_v21, candle_struct.get('score',0), dist_ema_val, h1['ATR'].iloc[-1],
         sim['WR'], sim['PF'], profile,
-        divergence_bonus=div_bonus if not div_detail else div_bonus/2,
-        fib_bonus=fib_conf[1], sr_bonus=sr_levels[0]['strength']*2 if sr_levels else 0,
-        alignment_bonus=15 if trend_alignment=="FULL_ALIGNMENT" else 5,
-        storm_bonus=storm_val, regime_bonus=10 if current_regime=="TRENDING" else 0,
-        volume_bonus=10 if vol_confirmed else 0, hurst_bonus=10 if hurst_regime=="STRONG_TREND" else 0,
+        divergence_bonus=div_bonus, 
+        fib_bonus=fib_bonus, sr_bonus=sr_bonus,
+        alignment_bonus=align_bonus,
+        storm_bonus=storm_val, regime_bonus=regime_bonus,
+        volume_bonus=vol_bonus, hurst_bonus=10 if hurst_regime=="STRONG_TREND" else 0,
         zscore_bonus=5 if abs(z_current)>2 else 0, consecutive_bonus=5 if consec_count>3 else 0,
-        generator_bonus=gen_conf/10, distribution_bonus=5 if dist['signal']!="NEUTRAL" else 0,
-        vr_bonus=10 if vr_res['has_edge'] else 0, acf_bonus=10 if acf_res['has_pattern'] else 0,
-        cpi_bonus=max(0, cpi_v-40)/2, markov_bonus=10 if mrkv['has_dependence'] else 0,
-        spectral_bonus=10 if spec['has_cycle'] else 0,
+        generator_bonus=gen_bonus, distribution_bonus=5 if dist['signal']!="NEUTRAL" else 0,
+        vr_bonus=10 if vr.get('has_edge') else 0, acf_bonus=10 if acf.get('has_pattern') else 0,
+        cpi_bonus=max(0, cpi.get('cpi',0)-40)/2, markov_bonus=10 if markov.get('has_dependence') else 0,
+        spectral_bonus=10 if spectral.get('has_cycle') else 0,
         adx_slope_bonus=adx_slope.get('bonus', 0),
         ribbon_bonus=ema_ribbon.get('bonus', 0),
         coherence_bonus=trend_coherence.get('bonus', 0),
         candle_bonus=candle_struct.get('score', 0)/4,
-        mom_accel_bonus=mom_accel_bonus,
+        mom_accel_bonus=mom_accel_bonus_val,
         adaptive_bonus=adaptive_bonus,
         step_bonus=step_bonus
     )
