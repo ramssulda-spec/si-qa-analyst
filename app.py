@@ -1797,6 +1797,120 @@ class AdaptiveLearnerV20:
         return adjusted
 
 # ==============================================================================
+# ==============================================================================
+# V22 ENGINE #1: DATA INTEGRITY CHECK
+# ==============================================================================
+
+def check_data_integrity(df, timeframe_minutes=60):
+    """Signals invalid if data has gaps or is stale."""
+    try:
+        if len(df) < 20: return False, "INSUFFICIENT_DATA"
+        last_time = df.index[-1]
+        now = datetime.utcnow()
+        # Allow 5 min tolerance for server sync + candle close
+        if (now - last_time).total_seconds() > (timeframe_minutes * 60 + 300):
+            return False, f"STALE_DATA (Last: {last_time.strftime('%H:%M')})"
+        
+        # Check for internal gaps
+        expected_diff = df.index[1:] - df.index[:-1]
+        # Median interval
+        median_diff = expected_diff.median().total_seconds()
+        # Find gaps > 3x median
+        gaps = sum(expected_diff.total_seconds() > median_diff * 3)
+        if gaps > len(df) * 0.05: # > 5% gaps
+            return False, f"DATA_GAPS ({gaps} gaps detected)"
+            
+        return True, "OK"
+    except:
+        return True, "CHECK_SKIPPED" # Fail open to avoid blocking if time fails
+
+# ==============================================================================
+# V22 ENGINE #2: ADAPTIVE RSI (Cycle-Tuned)
+# ==============================================================================
+
+def calculate_adaptive_rsi_v22(series, cycle_period):
+    """RSI tuned to the dominant market cycle length."""
+    try:
+        # Constrain period: min 4, max 50, default 14
+        if cycle_period is None or cycle_period < 4: period = 14
+        else: period = int(max(4, min(cycle_period, 50)))
+        
+        delta = series.diff()
+        gain = delta.where(delta>0, 0.0)
+        loss = -delta.where(delta<0, 0.0)
+        
+        avg_gain = gain.rolling(window=period, min_periods=period).mean()
+        avg_loss = loss.rolling(window=period, min_periods=period).mean()
+        
+        # Wilder smoothing
+        for i in range(period, len(series)):
+            if pd.notna(avg_gain.iloc[i-1]):
+                avg_gain.iloc[i] = (avg_gain.iloc[i-1]*(period-1) + gain.iloc[i])/period
+                avg_loss.iloc[i] = (avg_loss.iloc[i-1]*(period-1) + loss.iloc[i])/period
+        
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100 - (100 / (1 + rs))
+        return rsi, period
+    except:
+        return calculate_rsi_wilder(series, 14), 14
+
+# ==============================================================================
+# V22 ENGINE #3: STEP INDEX ASYMMETRY
+# ==============================================================================
+
+def step_asymmetry_v22(df, window=20):
+    """Detects 'coiling' in Step Index via tick/candle asymmetry."""
+    try:
+        recent = df.tail(window)
+        # Up candles body sum vs Down candles body sum
+        ups = recent[recent['close'] > recent['open']]
+        downs = recent[recent['close'] < recent['open']]
+        
+        up_force = (ups['close'] - ups['open']).sum()
+        down_force = (downs['open'] - downs['close']).sum()
+        
+        total_vol = up_force + down_force
+        if total_vol == 0: return 0, "NEUTRAL"
+        
+        imbalance = (up_force - down_force) / total_vol # -1 to 1
+        
+        if imbalance > 0.6: regime = "BULL_DOMINANCE"
+        elif imbalance < -0.6: regime = "BEAR_DOMINANCE"
+        elif abs(imbalance) < 0.15: regime = "COILING" # High tension
+        else: regime = "BALANCED"
+        
+        return round(float(imbalance), 2), regime
+    except:
+        return 0, "NEUTRAL"
+
+# ==============================================================================
+# V22 ENGINE #4: SHADOW LEVELS (Volatility Projection)
+# ==============================================================================
+
+def calculate_shadow_levels_v22(df, lookback=50):
+    """Dynamic S/R based on volatility expansion limits."""
+    try:
+        recent = df.tail(lookback)
+        last_close = float(recent['close'].iloc[-1])
+        atr = float(recent['ATR'].iloc[-1])
+        
+        # Weekly/Daily approximations for Volatility Indices
+        # Projected Daily Range (PDR)
+        pdr_top = last_close + (atr * 2.5)
+        pdr_bottom = last_close - (atr * 2.5)
+        
+        # Mean Reversion Bands
+        ema = float(recent['EMA_50'].iloc[-1])
+        
+        return {
+            "pdr_top": round(pdr_top, 4),
+            "pdr_bottom": round(pdr_bottom, 4),
+            "mean_dist": round((last_close - ema) / atr, 2)
+        }
+    except:
+        return {"pdr_top": 0, "pdr_bottom": 0, "mean_dist":0}
+
+# ==============================================================================
 # SCALING ENGINE V20 (mantido, funcional)
 # ==============================================================================
 
@@ -2485,7 +2599,7 @@ class SetupScore:
     vr_bonus:float; acf_bonus:float
     cpi_bonus:float; markov_bonus:float; spectral_bonus:float
     adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
-    candle_bonus:float; mom_accel_bonus:float
+    candle_bonus:float; mom_accel_bonus:float; adaptive_bonus:float; step_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
@@ -2500,15 +2614,16 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
           'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'cpi_bonus','markov_bonus','spectral_bonus',
-          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
-    bonus=min(sum(bonuses.get(k,0) for k in keys),130)  # V21+: raised cap for new engines
+          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus',
+          'adaptive_bonus', 'step_bonus']
+    bonus=min(sum(bonuses.get(k,0) for k in keys),140)  # V22: cap 140
     total=base+bonus
-    if total>=190: g="S"
-    elif total>=155: g="A++"
-    elif total>=125: g="A+"
-    elif total>=95: g="A"
-    elif total>=65: g="B"
-    elif total>=45: g="C"
+    if total>=200: g="S"
+    elif total>=165: g="A++"
+    elif total>=135: g="A+"
+    elif total>=105: g="A"
+    elif total>=75: g="B"
+    elif total>=55: g="C"
     else: g="D"
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in keys],bonus,total,g)
@@ -2651,31 +2766,25 @@ def convert_np(obj):
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V21+ — PRECISION PREDICTABILITY ENGINE [Gemini 3 Pro]
-Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica
+FUNÇÃO: ANALISTA V22+ — ADAPTIVE PRECISION ENGINE [Gemini 3 Pro]
+Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica e adaptabilidade dinâmica.
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V21+ — PRECISION ENGINE (V21 + 7 motores de precisão):**
-Base V21 (16 melhorias) PLUS:
-- ADX Slope Detection (captura tendências ANTES do ADX cruzar threshold)
-- EMA Ribbon Spread Analysis (qualidade da tendência via expansão da ribbon)
-- Multi-TF Trend Coherence Scoring (coerência H4→H1→M15→M5)
-- VWAP Proxy Analysis (zonas institucionais de entrada)
-- Candle Structure Scoring (qualidade dos candles para entrada)
-- Momentum Acceleration (timing ótimo via taxa de mudança do MACD)
-- Dynamic ATR Channel (entradas ajustadas por volatilidade)
-- Entry Refinement Engine (ATR channel + VWAP para entradas precisas)
+**V22+ — ADAPTIVE ENGINE (V21 + 3 motores adaptativos + Integrity):**
+Base V21 PLUS:
+- **Cycle-Tuned RSI**: RSI adapta seu período ao ciclo dominante do mercado (FFT).
+- **Step Asymmetry**: (Step Index) Detector de desequilíbrio de ticks/velas.
+- **Shadow Levels**: S/R projetados por expansão de volatilidade (targets dinâmicos).
+- **Data Integrity**: Bloqueia sinais em dados antigos ou com gaps.
 
 Base V21:
-- Sample Entropy, Permutation Entropy, FFT, Markov Chain
-- CPI 0-100, Regime Transition, Dynamic Bias
-- Enhanced Momentum, Edge Correlation Matrix
-- Optimal Holding Period, Look-ahead bias removido
+- ADX Slope, EMA Ribbon, Trend Coherence, VWAP Proxy, Candle Structure, Mom Accel, ATR Channel.
+- Sample Entropy, Permutation Entropy, FFT, Markov Chain, CPI 0-100.
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V21+: [ {DECISION} ]
+## ⚡ VEREDICTO V22+: [ {DECISION} ]
 **Grade:** {GRADE} | **Score:** {SCORE}/220 | **CPI:** {CPI}/100
 **Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
 
@@ -2684,32 +2793,31 @@ Base V21:
 - Consensus: {SIGNAL} → Direção: {compress_direction}
 - Preço teórico z: {z_price} ({deviation_signal})
 
-### 📊 EDGE ESTATÍSTICO
+### 📊 EDGE ESTATÍSTICO & V22
 - Variance Ratio: {VR edge type} ({N} períodos significativos)
 - Autocorrelação: lag-1={acf_1} ({type})
+- Cycle RSI: {rsi} (Period={period}) → Trend Alignment: {YES/NO}
+- Step Asym: {score} ({regime})
 - Vol Clustering: {regime}
-- Distribuição: Skew={S} Kurt={K} Tails={T}
 
-### 🎯 PRECISÃO DE ENTRADA
+### 🎯 PRECISÃO DE ENTRADA V21+
 - ADX Phase: {phase} (slope={slope})
-- EMA Ribbon: {quality} ({direction}) - Expanding: {Y/N}
+- EMA Ribbon: {quality} ({direction})
 - TF Coherence: {coherence} ({direction})
 - Candle Structure: {quality} ({pattern_type})
 - Mom Acceleration: {phase} (confidence={X}%)
-- ATR Channel: {quality} (position={X})
-- VWAP Zone: {zone} ({entry_quality})
+- ATR Channel/VWAP: {quality}/{entry_quality}
+- Shadow Levels: Top={pdr_top} Bottom={pdr_bottom}
 
 ### 🎯 PLANO DE TRADE
-{Entradas + Pirâmide + Smart TP}
+{Entradas + Pirâmide + Smart TP + Shadow Targets}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V21+ Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
-e Autocorrelação, combinados com PRECISÃO DE ENTRADA via EMA Ribbon,
-Trend Coherence e Momentum Acceleration. Se VR mostra random walk,
-dizer claramente que não há edge estatístico operável.
-Quando Trend Coherence é PERFECT, enfatizar alta confiança.
-Quando candle structure é WEAK, recomendar cautela ou esperar melhor setup.}
+*V22+ Insight:* {Baseado nos EDGES REAIS e PRECISÃO ADAPTATIVA.
+Se Cycle RSI alinhar com Trend Coherence, a probabilidade é muito alta.
+Step Index "COILING" = breakout iminente.
+Use Shadow Levels para take profit em regimes de alta volatilidade.}
 """
 
 # ==============================================================================
@@ -2724,6 +2832,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     m5 = indicators(prep_df(m5_raw)) if m5_raw else None
     c1, c4, cm = h1.iloc[-1], h4.iloc[-1], m15.iloc[-1]
     c5 = m5.iloc[-1] if m5 is not None and len(m5) > 0 else None
+
+    # V22: DATA INTEGRITY CHECK
+    integrity_ok, integrity_msg = check_data_integrity(h1)
+    if not integrity_ok:
+        return {
+            "FINAL_DECISION": f"BLOCKED ({integrity_msg})", "TRADE_STYLE": "N/A", "SETUP_TYPE": "N/A",
+            "SETUP_SCORE": 0, "BASE_SCORE": 0, "BONUS_SCORE": 0, "SETUP_GRADE": "D",
+            "IMAGES": [], "CONFLUENCES": [], "RISKS": [integrity_msg]
+        }
 
     # V21 FIX-B: Dynamic Bias
     bias, bias_confidence, bias_score = calculate_dynamic_bias(h4, h1)
@@ -2764,6 +2881,19 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     spectral = spectral_analysis_v21(h1['close'])
     markov = transition_matrix_v21(h1['close'])
     regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
+
+    # ═══ V22 ENGINES ═══
+    # Adaptive RSI (Cycle Tuned)
+    dom_period = spectral.get('dominant_period')
+    rsi_adaptive, rsi_period = calculate_adaptive_rsi_v22(h1['close'], dom_period)
+    
+    # Step Asymmetry (Only for Step Index)
+    step_asym = 0; step_regime = "NEUTRAL"
+    if "STEP" in name:
+        step_asym, step_regime = step_asymmetry_v22(m15)
+
+    # Shadow Levels
+    shadow = calculate_shadow_levels_v22(h1)
 
     # ═══ CLASSIC STATS ═══
     hurst_val, hurst_regime, hurst_r2 = calculate_hurst_exponent(h1['close'])
@@ -2908,6 +3038,18 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if (bias == "BULLISH" and mom_accel.get('phase') == "BULL_DECELERATING") or \
        (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
         mom_accel_bonus = -3  # Slight penalty
+
+    # V22: Adaptive RSI Bonus
+    adaptive_bonus = 0
+    if bias == "BULLISH" and 40 < rsi_adaptive < 60: adaptive_bonus = 5
+    elif bias == "BEARISH" and 40 < rsi_adaptive < 60: adaptive_bonus = 5
+    
+    # V22: Step Bonus
+    step_bonus = 0
+    if "STEP" in name and step_regime != "NEUTRAL":
+        if (bias == "BULLISH" and step_regime == "BULL_DOMINANCE") or \
+           (bias == "BEARISH" and step_regime == "BEAR_DOMINANCE"):
+           step_bonus = 8
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
@@ -3104,20 +3246,26 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         final_db = abs(div_bonus)
 
     score = calculate_score(
-        adx=adx, momentum_score=momentum, pattern_score=pat_score,
-        dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
-        win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
-        divergence_bonus=final_db, fib_bonus=fib_bonus, sr_bonus=sr_bonus,
-        alignment_bonus=align_bonus, storm_bonus=storm_bonus,
-        regime_bonus=regime_bonus, volume_bonus=vol_bonus,
-        hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
-        consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
-        distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
-        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
-        adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
-        coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
-        mom_accel_bonus=mom_accel_bonus)
-
+        adx, enhanced_mom, candle_struct['score'], dist_ema, atr,
+        win_rate, profit_factor, profile,
+        divergence_bonus=div_bonus if not div_detail else div_bonus/2,
+        fib_bonus=fib_conf[1], sr_bonus=sr_levels[0]['strength']*2 if sr_levels else 0,
+        alignment_bonus=15 if trend_alignment=="FULL_ALIGNMENT" else 5,
+        storm_bonus=storm_val, regime_bonus=10 if current_regime=="TRENDING" else 0,
+        volume_bonus=10 if vol_confirmed else 0, hurst_bonus=10 if hurst_regime=="STRONG_TREND" else 0,
+        zscore_bonus=5 if abs(z_current)>2 else 0, consecutive_bonus=5 if consec_count>3 else 0,
+        generator_bonus=gen_conf/10, distribution_bonus=5 if dist['signal']!="NEUTRAL" else 0,
+        vr_bonus=10 if vr_res['has_edge'] else 0, acf_bonus=10 if acf_res['has_pattern'] else 0,
+        cpi_bonus=max(0, cpi_v-40)/2, markov_bonus=10 if mrkv['has_dependence'] else 0,
+        spectral_bonus=10 if spec['has_cycle'] else 0,
+        adx_slope_bonus=adx_slope.get('bonus', 0),
+        ribbon_bonus=ema_ribbon.get('bonus', 0),
+        coherence_bonus=trend_coherence.get('bonus', 0),
+        candle_bonus=candle_struct.get('score', 0)/4,
+        mom_accel_bonus=mom_accel_bonus,
+        adaptive_bonus=adaptive_bonus,
+        step_bonus=step_bonus
+    )
     # Filters
     configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
                "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
@@ -3176,11 +3324,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if zscore_favorable: confs.append(f"📊 Z {z_current:.1f}")
     if bb_compression: confs.append("💥 BB Squeeze")
     if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
+
     # V21+ precision confluences
     if ema_ribbon.get('quality') in ['EXCELLENT','GOOD']:
         confs.append(f"🌈 Ribbon {ema_ribbon['quality']} ({ema_ribbon.get('direction','?')})")
     if trend_coherence.get('coherence') in ['PERFECT','STRONG']:
-        confs.append(f"🎯 TF Coherence {trend_coherence['coherence']} ({trend_coherence.get('coherent_direction','?')})")
+        confs.append(f"🎯 Coherence {trend_coherence['coherence']}")
     if candle_struct.get('quality') in ['EXCELLENT','GOOD']:
         confs.append(f"🔥 Candle {candle_struct['quality']} ({candle_struct.get('pattern_type','?')})")
     if mom_accel_bonus > 0:
@@ -3209,39 +3358,19 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
     if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
+    if adaptive_bonus > 0: confs.append(f"Cycle RSI ({rsi_adaptive:.0f})")
+    if step_bonus > 0: confs.append(f"Step Asym ({step_regime})")
 
+    # Risks
+    if abs(z_current) > 2.5: risks.append(f"Extreme Z ({z_current:.1f})")
+    if dist['tail_risk'] in ["FAT_TAILS", "HEAVY_TAILS"]: risks.append("Fat Tails risk")
+    if hurst_val < 0.45: risks.append(f"Mean Rev (H={hurst_val})")
+    if not vol_confirmed: risks.append("Vol mismatch")
+    if candle_struct.get('quality') == "WEAK": risks.append("Weak Entry Candle")
+    if step_regime == "COILING": risks.append("Step Coiling (Wait breakout)")
+
+    # ═══ RETURN DICT ═══
     return {
-        "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
-        "SETUP_SCORE": float(round(score.total,1)), "BASE_SCORE": float(round(score.base_total,1)),
-        "BONUS_SCORE": float(round(score.bonus_total,1)), "SETUP_GRADE": score.grade,
-        "INDEX_PROFILE": vc, "GEN_TYPE": gen_type,
-        "GEN_ANALYSIS": convert_np(gen), "GEN_SIGNAL": gen_signal, "GEN_BONUS": gen_bonus,
-        "SIGMA_CALIBRATED": sigma_calibrated,
-        "VR_TEST": convert_np(vr), "VR_BONUS": vr_bonus,
-        "ACF_TEST": convert_np(acf), "ACF_BONUS": acf_bonus,
-        "VOL_CLUSTER": convert_np(vol_cluster),
-        "DIST_ANALYSIS": convert_np(dist), "DIST_BONUS": dist_bonus,
-        "HURST": float(hurst_val), "HURST_REGIME": hurst_regime, "HURST_R2": float(hurst_r2),
-        "ZSCORE": float(round(z_current,2)),
-        "BB_CYCLE": bb_cycle, "CONSECUTIVE": int(consec_count), "CONSECUTIVE_DIR": consec_dir,
-        "ROC_STATUS": roc_status, "MARKET_STRUCTURE": structure, "MARKET_REGIME": regime,
-        "TRIGGER_OK": trigger_ok, "TRIGGER_TYPE": trigger_type,
-        "CONFLUENCES": confs, "RISKS": risks, "MOMENTUM": f"{momentum}/3",
-        "ENTRY_TYPE": entry_type, "SL_REASON": sl_reason,
-        "WIN_RATE": float(sim['WR']), "NET_PROFIT": float(sim['NET']),
-        "MAX_DRAWDOWN": float(sim['DD']), "PROFIT_FACTOR": float(sim['PF']),
-        "SHARPE": float(sim['SHARPE']), "SORTINO": float(sim['SORTINO']),
-        "WF_STABLE": sim['WF_STABLE'], "FOLD_WRS": sim['FOLD_WRS'],
-        "TOTAL_TRADES": int(sim['TOTAL_TRADES']),
-        "SETUP_STATS": convert_np(sim.get('SETUP_STATS',{})),
-        "MC_MEDIAN": float(mc.get('median',0)), "MC_P5": float(mc.get('p5',0)),
-        "MC_P95": float(mc.get('p95',0)), "MC_POSITIVE": float(mc.get('positive_pct',0)),
-        "ENTRY": float(round(entry,5)), "SL": float(round(sl_val,5)),
-        "TP1": float(round(tp1,5)), "TP2": float(round(tp2,5)),
-        "PYRAMID": convert_np(pyramid), "ADAPTED_PROFILE": convert_np({k:v for k,v in adapted_profile.items() if k in ['risk_mult','sl_atr_mult','tp2_r']}),
-        "IMAGES": imgs, "ATR": float(c1['ATR']),
-        "CPI": convert_np(cpi), "CPI_VAL": cpi_val,
-        "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
         "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
         "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
         "MOMENTUM_V21": momentum_v21,
@@ -3323,7 +3452,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V21</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V22</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -3491,8 +3620,8 @@ if mode == "Analysis":
             mc2.metric("Cycles", f"{spec.get('dominant_period',0):.0f} bars" if spec.get('has_cycle') else "None")
             mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
 
-            # ── V21+ ENTRY PRECISION ──
-            st.markdown("## Entry Precision V21+")
+            # ── V22+ ENTRY PRECISION ──
+            st.markdown("## Entry Precision V22+")
             adx_sl = data.get('ADX_SLOPE', {})
             ribbon = data.get('EMA_RIBBON', {})
             coherence = data.get('TREND_COHERENCE', {})
@@ -3500,6 +3629,9 @@ if mode == "Analysis":
             candle = data.get('CANDLE_STRUCT', {})
             maccel = data.get('MOM_ACCEL', {})
             atr_ch = data.get('ATR_CHANNEL', {})
+            adapt_rsi = data.get('ADAPTIVE_RSI', {})
+            step_asym = data.get('STEP_ASYM', {})
+            shadow = data.get('SHADOW_LEVELS', {})
 
             ep1, ep2, ep3, ep4 = st.columns(4)
             ep1.metric("ADX Slope", adx_sl.get('phase', '?'), f"slope={adx_sl.get('slope',0):.2f}")
@@ -3511,6 +3643,13 @@ if mode == "Analysis":
             ep5.metric("Candle Struct", candle.get('quality', '?'), candle.get('pattern_type', '?'))
             ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
+
+            ep8, ep9, ep10 = st.columns(3)
+            ep8.metric("Adaptive RSI", f"{adapt_rsi.get('rsi',50):.1f}", f"T={adapt_rsi.get('period',14)}")
+            ep9.metric("Step Asym", f"{step_asym.get('score',0):.2f}", step_asym.get('regime','NEUTRAL'))
+            
+            if shadow.get('pdr_top'):
+                ep10.metric("Shadow Levels", f"MeanDist {shadow['mean_dist']}", f"R:{shadow['pdr_top']:.2f}")
 
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
