@@ -3390,8 +3390,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ RETURN DICT ═══
     return {
         "FINAL_DECISION": f"{sig} [{setup_type}]" if sig in ["BUY", "SELL"] else sig,
-        "SIGNAL": sig, "SETUP": setup_type, "CONFIDENCE": score.total,
-        "GRADE": score.grade, "SCORE": score.total,
+        "SIGNAL": sig, "SETUP": setup_type, "SETUP_TYPE": setup_type,
+        "CONFIDENCE": score.total,
+        "GRADE": score.grade, "SETUP_GRADE": score.grade, "SCORE": score.total,
         "CPI": cpi_val, "CPI_REGIME": cpi_regime,
         "ENTRY": entry, "SL": sl_val, "TP1": tp1, "TP2": tp2,
         "RISK_PCT": risk_pct, "LEVERAGE": 1000, 
