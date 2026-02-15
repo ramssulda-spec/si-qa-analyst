@@ -3394,8 +3394,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "CONFIDENCE": score.total,
         "GRADE": score.grade, "SETUP_GRADE": score.grade, 
         "SCORE": score.total, "SETUP_SCORE": score.total,
-        "GEN_TYPE": gen_type,
-        "CPI": cpi_val, "CPI_REGIME": cpi_regime,
+        "GEN_TYPE": gen_type, "GEN_SIGNAL": gen_signal, "GEN_BONUS": gen_bonus,
+        "GEN_ANALYSIS": gen, "SIGMA_CALIBRATED": sigma_calibrated,
+        
+        "VR_TEST": vr, "ACF_TEST": acf, "VOL_CLUSTER": vol_cluster,
+        "HURST": hurst_val, "HURST_R2": hurst_r2,
+        
+        "CPI": cpi, "CPI_REGIME": cpi_regime,
         "ENTRY": entry, "SL": sl_val, "TP1": tp1, "TP2": tp2,
         "RISK_PCT": risk_pct, "LEVERAGE": 1000, 
         "PYRAMID": pyramid, "CONFLUENCES": confs, "RISKS": risks,
