@@ -3389,11 +3389,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ RETURN DICT ═══
     return {
+        "FINAL_DECISION": f"{sig} [{setup_type}]" if sig in ["BUY", "SELL"] else sig,
+        "SIGNAL": sig, "SETUP": setup_type, "CONFIDENCE": score.total,
+        "GRADE": score.grade, "SCORE": score.total,
+        "CPI": cpi_val, "CPI_REGIME": cpi_regime,
+        "ENTRY": entry, "SL": sl_val, "TP1": tp1, "TP2": tp2,
+        "RISK_PCT": risk_pct, "LEVERAGE": 1000, 
+        "PYRAMID": pyramid, "CONFLUENCES": confs, "RISKS": risks,
+        "IMAGES": imgs, "SIMULATION": sim,
+        
         "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
         "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
         "MOMENTUM_V21": momentum_v21,
         "INDEPENDENT_EDGES": convert_np(indep_edges),
         "HOLDING_PERIOD": convert_np(hold),
+        
         "SCORE_BREAKDOWN": convert_np({
             "ADX":score.trend_strength,"MOM":score.momentum_align,"PAT":score.patterns,
             "VAL":score.value_zone,"HIST":score.historical,
@@ -3405,8 +3415,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
             "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
             "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
-            "MOM_ACCEL":score.mom_accel_bonus
+            "MOM_ACCEL":score.mom_accel_bonus,
+            "ADAPTIVE":score.adaptive_bonus,
+            "STEP":score.step_bonus
         }),
+        
         # V21+ precision data
         "ADX_SLOPE": convert_np(adx_slope),
         "EMA_RIBBON": convert_np(ema_ribbon),
@@ -3415,6 +3428,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "CANDLE_STRUCT": convert_np(candle_struct),
         "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
+        # V22
+        "ADAPTIVE_RSI": {"rsi": rsi_adaptive, "period": rsi_period},
+        "STEP_ASYM": {"score": step_asym, "regime": step_regime},
+        "SHADOW_LEVELS": shadow,
     }
 
 # ==============================================================================
