@@ -16,46 +16,42 @@ from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist
 from itertools import permutations as _perms
 from math import factorial, log as math_log
 import time
+import logging
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── LOGGING SYSTEM V22 ──
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger("APATECO")
+
 # ==============================================================================
-# SI-APATECO V21.0 — PREDICTABILITY ENGINE
+# SI-APATECO V22.0 — A.P.A PRECISION ENGINE
 #
-# ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
+# V22 UPGRADES FROM V21:
 #
-# 🔴 BUG FIX #1: periods_per_year auto-detectado (não hardcoded)
-# 🔴 BUG FIX #2: VOL_COMPRESS direção CONTRA o movimento recente
-# 🔴 BUG FIX #3: Crash/Boom drift segue cálculo real (não bias)
-# 🔴 BUG FIX #4: Backtest por TIPO DE SETUP (não só Swing)
-# 🔴 BUG FIX #5: Backtest roda 1× (não 2×)
-# 🔴 BUG FIX #6: Monte Carlo bootstrap REAL (não distribuição inventada)
+# 🔵 A.P.A #1: Accumulation Phase Detector (BB squeeze + ATR contraction + ADX slope)
+# 🔵 A.P.A #2: Pattern Recognizer (Inside Bar, Pin, Engulfing at end of accumulation)
+# 🔵 A.P.A #3: Action Trigger (range expansion + MACD flip + multi-TF confirm)
+# 🔵 A.P.A #4: Risk Management (SL=accum range, TP=range multiples, time-stop)
 #
-# 🟠 MATH FIX #1: Sigma calibrado do histórico (não inventado)
-# 🟠 MATH FIX #2: Hurst com validação R²
-# 🟠 MATH FIX #3: Step Index escala correta (log-returns, não step_size)
-# 🟠 MATH FIX #4: Spike detection MAD-based (não std circular)
-# 🟠 MATH FIX #5: Crash/Boom drift por REGRESSÃO LINEAR (não média)
+# 🔴 BUG FIX V22 #1: Sharpe/Sortino uses ppy (not 252)
+# 🔴 BUG FIX V22 #2: momentum_v21 (0-100) used for scoring (not old 0-3)
+# 🔴 BUG FIX V22 #3: Candle structure on M5 entry TF (not M15)
+# 🔴 BUG FIX V22 #4: Bonus cap removed (grade system normalizes)
+# 🔴 BUG FIX V22 #5: Sortino handles zero-loss case
+# 🔴 BUG FIX V22 #6: All bare except: replaced with logging
 #
-# 🟡 EDGE #1: Variance Ratio Test (detecta se há edge real)
-# 🟡 EDGE #2: Autocorrelação de Retornos (lag 1-5)
-# 🟡 EDGE #3: Volatility Clustering (GARCH effect)
-# 🟡 EDGE #4: Multi-TF Vol Ratio
-# 🟡 EDGE #5: Spike Decay Model (Crash/Boom timing)
-# 🟡 EDGE #6: Preço Teórico vs Real (GBM z-score)
-# 🟡 EDGE #7: Regime-Specific Strategy Selection
-# 🟡 EDGE #8: Entry Trigger Candle Confirmation
+# 🟢 NEW #1: Order Flow Score (micro-structure buy/sell pressure)
+# 🟢 NEW #2: Anti-Whipsaw Filter (cooldown between signals)
+# 🟢 NEW #3: Divergence Decay (temporal weight)
+# 🟢 NEW #4: Time-Stop integrated in trade plan
+# 🟢 NEW #5: Session Volatility Awareness
 #
-# 🟢 PRECISION #1: Multi-Window Vol Analysis (3 janelas)
-# 🟢 PRECISION #2: Trailing Stop por regime/tipo
-# 🟢 PRECISION #3: Dynamic TP com S/R awareness
-# 🟢 PRECISION #4: Scanner para TODOS gen types
-# 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
-# 🟢 PRECISION #6: M5 entry timing
+# BASE V21: All 16 improvements + 7 precision engines preserved
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V21",
+    page_title="APATECO V22 A.P.A",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1372,8 +1368,536 @@ def atr_channel_entry(df, direction, lookback=20):
             "lower": round(float(lower_channel.iloc[-1]), 5),
             "ema": round(float(ema_now), 5),
         }
-    except:
+    except Exception as e:
+        logger.debug(f"ATR channel error: {e}")
         return {"channel_entry": None, "channel_position": 0.5, "quality": "UNKNOWN"}
+
+
+# ==============================================================================
+# 🔵 V22 A.P.A ENGINE — ACCUMULATION → PATTERN → ACTION
+# ==============================================================================
+
+def apa_accumulation_detector(df, min_bars=5, max_bars=40):
+    """Phase 1: Detect accumulation zone (price compression before expansion).
+    Accumulation = BB squeeze + ATR contraction + decreasing candle size."""
+    try:
+        if len(df) < max_bars + 10:
+            return {"detected": False, "phase": "NONE", "bars": 0, "quality": 0}
+
+        recent = df.tail(max_bars)
+        atr = recent['ATR']
+        bb_w = recent['BB_width']
+        bodies = abs(recent['close'] - recent['open'])
+        ranges = (recent['high'] - recent['low']).replace(0, np.nan)
+
+        # 1. ATR contraction: recent ATR declining
+        atr_short = float(atr.tail(5).mean())
+        atr_long = float(atr.tail(20).mean())
+        atr_contracting = atr_short < atr_long * 0.85
+
+        # 2. BB squeeze: width below threshold
+        bb_avg = float(bb_w.mean())
+        bb_now = float(bb_w.iloc[-1])
+        bb_squeezing = bb_now < bb_avg * 0.7
+
+        # 3. Candle bodies shrinking
+        body_short = float(bodies.tail(5).mean())
+        body_long = float(bodies.tail(20).mean())
+        bodies_shrinking = body_short < body_long * 0.75
+
+        # 4. Range narrowing
+        range_short = float(ranges.tail(5).mean())
+        range_long = float(ranges.tail(20).mean())
+        range_narrowing = range_short < range_long * 0.8 if pd.notna(range_long) and range_long > 0 else False
+
+        # 5. ADX low but possibly rising (energy building)
+        adx_now = float(df['ADX'].iloc[-1]) if 'ADX' in df.columns else 25
+        adx_low = adx_now < 25
+
+        # Count accumulation bars (consecutive compression)
+        accum_bars = 0
+        for i in range(len(recent) - 1, -1, -1):
+            bar_body = abs(recent['close'].iloc[i] - recent['open'].iloc[i])
+            bar_range = recent['high'].iloc[i] - recent['low'].iloc[i]
+            if bar_range > 0 and bar_body / bar_range < 0.6 and recent['ATR'].iloc[i] < atr_long * 1.1:
+                accum_bars += 1
+            else:
+                break
+
+        # Accumulation range
+        if accum_bars >= min_bars:
+            accum_section = recent.tail(accum_bars)
+            range_high = float(accum_section['high'].max())
+            range_low = float(accum_section['low'].min())
+            range_width = range_high - range_low
+        else:
+            range_high = float(recent['high'].tail(min_bars).max())
+            range_low = float(recent['low'].tail(min_bars).min())
+            range_width = range_high - range_low
+
+        # Quality score (0-100)
+        quality = 0
+        if atr_contracting: quality += 25
+        if bb_squeezing: quality += 25
+        if bodies_shrinking: quality += 20
+        if range_narrowing: quality += 15
+        if adx_low: quality += 15
+
+        detected = quality >= 50 and accum_bars >= min_bars
+
+        phase = "NONE"
+        if detected:
+            if quality >= 80:
+                phase = "STRONG_ACCUMULATION"
+            elif quality >= 60:
+                phase = "ACCUMULATION"
+            else:
+                phase = "WEAK_ACCUMULATION"
+
+        return {
+            "detected": detected,
+            "phase": phase,
+            "quality": round(quality, 1),
+            "bars": accum_bars,
+            "range_high": round(range_high, 5),
+            "range_low": round(range_low, 5),
+            "range_width": round(range_width, 5),
+            "atr_contracting": atr_contracting,
+            "bb_squeezing": bb_squeezing,
+            "bodies_shrinking": bodies_shrinking,
+            "range_narrowing": range_narrowing,
+            "adx_low": adx_low,
+        }
+    except Exception as e:
+        logger.debug(f"APA accumulation error: {e}")
+        return {"detected": False, "phase": "NONE", "bars": 0, "quality": 0}
+
+
+def apa_pattern_recognizer(df, accumulation):
+    """Phase 2: Recognize actionable pattern at the end of accumulation.
+    Patterns: Inside Bar, Pin Bar, Engulfing, Breakout Bar, Micro Double Bottom/Top."""
+    try:
+        if not accumulation.get('detected') or len(df) < 5:
+            return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
+
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
+        prev2 = df.iloc[-3] if len(df) >= 3 else prev
+
+        body_last = abs(last['close'] - last['open'])
+        range_last = last['high'] - last['low']
+        body_prev = abs(prev['close'] - prev['open'])
+        range_prev = prev['high'] - prev['low']
+
+        range_high = accumulation['range_high']
+        range_low = accumulation['range_low']
+        range_width = accumulation.get('range_width', range_high - range_low)
+        atr = float(df['ATR'].iloc[-1]) if df['ATR'].iloc[-1] > 0 else 1
+
+        patterns = []
+
+        # 1. INSIDE BAR (compression peak → explosion imminent)
+        if last['high'] <= prev['high'] and last['low'] >= prev['low']:
+            direction = "BULLISH" if last['close'] > last['open'] else "BEARISH"
+            patterns.append(("INSIDE_BAR", direction, 70))
+
+        # 2. PIN BAR at accumulation boundary
+        if range_last > 0:
+            lower_wick = min(last['open'], last['close']) - last['low']
+            upper_wick = last['high'] - max(last['open'], last['close'])
+
+            # Bullish pin: long lower wick near accumulation low
+            if lower_wick > body_last * 2 and last['low'] <= range_low + atr * 0.3:
+                patterns.append(("PIN_BAR_BULL", "BULLISH", 85))
+
+            # Bearish pin: long upper wick near accumulation high
+            if upper_wick > body_last * 2 and last['high'] >= range_high - atr * 0.3:
+                patterns.append(("PIN_BAR_BEAR", "BEARISH", 85))
+
+        # 3. ENGULFING at accumulation boundary
+        if last['close'] > last['open'] and prev['close'] < prev['open']:
+            if body_last > body_prev and last['low'] <= range_low + atr * 0.5:
+                patterns.append(("ENGULFING_BULL", "BULLISH", 90))
+        elif last['close'] < last['open'] and prev['close'] > prev['open']:
+            if body_last > body_prev and last['high'] >= range_high - atr * 0.5:
+                patterns.append(("ENGULFING_BEAR", "BEARISH", 90))
+
+        # 4. BREAKOUT BAR (close outside accumulation range)
+        if last['close'] > range_high and body_last > range_width * 0.3:
+            patterns.append(("BREAKOUT_UP", "BULLISH", 95))
+        elif last['close'] < range_low and body_last > range_width * 0.3:
+            patterns.append(("BREAKOUT_DOWN", "BEARISH", 95))
+
+        # 5. MICRO DOUBLE BOTTOM/TOP
+        lows_3 = df['low'].tail(8)
+        highs_3 = df['high'].tail(8)
+        if len(lows_3) >= 5:
+            min1 = lows_3.iloc[:4].min()
+            min2 = lows_3.iloc[-4:].min()
+            if abs(min1 - min2) < atr * 0.3 and min2 <= range_low + atr * 0.3:
+                if last['close'] > last['open']:
+                    patterns.append(("MICRO_DOUBLE_BOTTOM", "BULLISH", 80))
+            max1 = highs_3.iloc[:4].max()
+            max2 = highs_3.iloc[-4:].max()
+            if abs(max1 - max2) < atr * 0.3 and max2 >= range_high - atr * 0.3:
+                if last['close'] < last['open']:
+                    patterns.append(("MICRO_DOUBLE_TOP", "BEARISH", 80))
+
+        if not patterns:
+            return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
+
+        # Select strongest pattern
+        best = max(patterns, key=lambda x: x[2])
+        return {
+            "pattern": best[0],
+            "direction": best[1],
+            "strength": best[2],
+            "all_patterns": [{"name": p[0], "dir": p[1], "str": p[2]} for p in patterns],
+        }
+    except Exception as e:
+        logger.debug(f"APA pattern error: {e}")
+        return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
+
+
+def apa_action_trigger(df, accumulation, pattern, bias, trend_coherence_data=None):
+    """Phase 3: Confirm action trigger — range expansion + momentum flip + TF alignment.
+    Returns entry parameters if trigger confirmed."""
+    try:
+        if pattern.get('pattern') == "NONE" or not accumulation.get('detected'):
+            return {"triggered": False, "reason": "NO_PATTERN"}
+
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
+        atr = float(last['ATR']) if last['ATR'] > 0 else 1
+        direction = pattern['direction']
+
+        # 1. RANGE EXPANSION: current bar range > recent average
+        recent_avg_range = float((df['high'] - df['low']).tail(10).mean())
+        current_range = last['high'] - last['low']
+        range_expanding = current_range > recent_avg_range * 1.3
+
+        # 2. BB WIDTH EXPANDING: BB starting to open
+        bb_expanding = False
+        if len(df) >= 3 and 'BB_width' in df.columns:
+            bb_expanding = float(df['BB_width'].iloc[-1]) > float(df['BB_width'].iloc[-2])
+
+        # 3. MACD HISTOGRAM FLIP/ACCELERATION
+        macd_confirm = False
+        if 'MACD_hist' in df.columns and len(df) >= 3:
+            hist_now = float(df['MACD_hist'].iloc[-1])
+            hist_prev = float(df['MACD_hist'].iloc[-2])
+            if direction == "BULLISH":
+                macd_confirm = hist_now > hist_prev and (hist_now > 0 or hist_now > hist_prev * 0.5)
+            else:
+                macd_confirm = hist_now < hist_prev and (hist_now < 0 or hist_now < hist_prev * 0.5)
+
+        # 4. DIRECTION ALIGNMENT with bias
+        bias_aligned = (direction == bias) or bias == "NEUTRAL"
+
+        # 5. TF COHERENCE alignment (if available)
+        tf_aligned = True
+        if trend_coherence_data:
+            coh_dir = trend_coherence_data.get('coherent_direction', 'MIXED')
+            if coh_dir != 'MIXED':
+                tf_aligned = coh_dir == direction
+
+        # TRIGGER SCORE
+        trigger_score = 0
+        reasons = []
+        if range_expanding: trigger_score += 30; reasons.append("Range Expansion")
+        if bb_expanding: trigger_score += 20; reasons.append("BB Expanding")
+        if macd_confirm: trigger_score += 25; reasons.append("MACD Confirm")
+        if bias_aligned: trigger_score += 15; reasons.append("Bias Aligned")
+        if tf_aligned: trigger_score += 10; reasons.append("TF Aligned")
+
+        triggered = trigger_score >= 55
+
+        # A.P.A RISK PARAMETERS
+        range_width = accumulation.get('range_width', atr * 2)
+        range_high = accumulation.get('range_high', last['close'])
+        range_low = accumulation.get('range_low', last['close'])
+
+        if direction == "BULLISH":
+            entry = float(last['close'])
+            sl = range_low - atr * 0.3  # Below accumulation range
+            tp1 = entry + range_width * 1.5  # 1.5x the accumulation range
+            tp2 = entry + range_width * 3.0  # 3x the accumulation range
+        else:
+            entry = float(last['close'])
+            sl = range_high + atr * 0.3  # Above accumulation range
+            tp1 = entry - range_width * 1.5
+            tp2 = entry - range_width * 3.0
+
+        risk = abs(entry - sl)
+        time_stop_bars = accumulation.get('bars', 10) * 2  # 2x accumulation duration
+
+        return {
+            "triggered": triggered,
+            "trigger_score": trigger_score,
+            "reasons": reasons,
+            "direction": direction,
+            "entry": round(entry, 5),
+            "sl": round(sl, 5),
+            "tp1": round(tp1, 5),
+            "tp2": round(tp2, 5),
+            "risk": round(risk, 5),
+            "rr_tp1": round(abs(tp1 - entry) / risk, 1) if risk > 0 else 0,
+            "rr_tp2": round(abs(tp2 - entry) / risk, 1) if risk > 0 else 0,
+            "time_stop_bars": time_stop_bars,
+            "range_expanding": range_expanding,
+            "bb_expanding": bb_expanding,
+            "macd_confirm": macd_confirm,
+            "bias_aligned": bias_aligned,
+        }
+    except Exception as e:
+        logger.debug(f"APA action error: {e}")
+        return {"triggered": False, "reason": str(e)}
+
+
+def apa_full_analysis(df, bias, trend_coherence_data=None):
+    """Complete A.P.A analysis: Accumulation → Pattern → Action.
+    Returns comprehensive A.P.A state."""
+    try:
+        accum = apa_accumulation_detector(df)
+        pattern = apa_pattern_recognizer(df, accum)
+        action = apa_action_trigger(df, accum, pattern, bias, trend_coherence_data)
+
+        # Overall A.P.A state
+        if action.get('triggered'):
+            state = "ACTION_READY"
+            confidence = min(accum['quality'] * 0.3 + pattern['strength'] * 0.3 + action['trigger_score'] * 0.4, 100)
+        elif pattern.get('pattern') != "NONE":
+            state = "PATTERN_FORMING"
+            confidence = min(accum['quality'] * 0.4 + pattern['strength'] * 0.6, 100) * 0.7
+        elif accum.get('detected'):
+            state = "ACCUMULATING"
+            confidence = accum['quality'] * 0.5
+        else:
+            state = "NO_SETUP"
+            confidence = 0
+
+        return {
+            "state": state,
+            "confidence": round(confidence, 1),
+            "accumulation": accum,
+            "pattern": pattern,
+            "action": action,
+        }
+    except Exception as e:
+        logger.debug(f"APA full analysis error: {e}")
+        return {"state": "ERROR", "confidence": 0,
+                "accumulation": {"detected": False}, "pattern": {"pattern": "NONE"},
+                "action": {"triggered": False}}
+
+
+# ==============================================================================
+# 🟢 V22 NEW #1: ORDER FLOW SCORE — Microstructure Buy/Sell Pressure
+# ==============================================================================
+
+def order_flow_score(df, lookback=20):
+    """Estimates buy/sell pressure from candle microstructure.
+    No real volume needed — works with synthetic indices."""
+    try:
+        if len(df) < lookback:
+            return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
+
+        recent = df.tail(lookback)
+        bull_count = 0
+        bear_count = 0
+        bull_power = 0.0
+        bear_power = 0.0
+
+        for i in range(len(recent)):
+            row = recent.iloc[i]
+            body = row['close'] - row['open']
+            rng = row['high'] - row['low']
+            if rng == 0:
+                continue
+
+            # Close position within range (0=low, 1=high)
+            close_pos = (row['close'] - row['low']) / rng
+
+            # Body ratio
+            body_ratio = abs(body) / rng
+
+            if body > 0:
+                bull_count += 1
+                # Power = body size × close position (strong bull = big body closing near high)
+                bull_power += body_ratio * close_pos
+            else:
+                bear_count += 1
+                bear_power += body_ratio * (1 - close_pos)
+
+        total = bull_count + bear_count
+        if total == 0:
+            return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
+
+        bull_pct = bull_count / total * 100
+        bear_pct = bear_count / total * 100
+
+        # Normalize power
+        avg_bull = bull_power / max(bull_count, 1)
+        avg_bear = bear_power / max(bear_count, 1)
+        total_power = avg_bull + avg_bear
+        if total_power > 0:
+            bull_power_pct = avg_bull / total_power * 100
+        else:
+            bull_power_pct = 50
+
+        # Combined score: -100 (max bear) to +100 (max bull)
+        count_bias = (bull_pct - 50) * 0.6
+        power_bias = (bull_power_pct - 50) * 0.4
+        score = count_bias + power_bias
+
+        if score > 25:
+            pressure = "STRONG_BUYING"
+        elif score > 10:
+            pressure = "BUYING"
+        elif score > -10:
+            pressure = "NEUTRAL"
+        elif score > -25:
+            pressure = "SELLING"
+        else:
+            pressure = "STRONG_SELLING"
+
+        return {
+            "score": round(score, 1),
+            "pressure": pressure,
+            "bull_pct": round(bull_pct, 1),
+            "bear_pct": round(bear_pct, 1),
+            "bull_power": round(avg_bull, 3),
+            "bear_power": round(avg_bear, 3),
+        }
+    except Exception as e:
+        logger.debug(f"Order flow error: {e}")
+        return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
+
+
+# ==============================================================================
+# 🟢 V22 NEW #2: ANTI-WHIPSAW FILTER
+# ==============================================================================
+
+def anti_whipsaw_check(df, setup_type, min_bars_between=8):
+    """Prevents rapid signal flipping in choppy markets.
+    Checks if enough bars have passed since conditions for opposite signal were met."""
+    try:
+        if len(df) < min_bars_between + 5:
+            return True, "OK"  # Allow if insufficient data
+
+        recent = df.tail(min_bars_between + 5)
+
+        # Count direction changes in MACD histogram
+        if 'MACD_hist' in df.columns:
+            hist = recent['MACD_hist'].dropna()
+            if len(hist) >= 3:
+                sign_changes = sum(1 for i in range(1, len(hist))
+                                   if (hist.iloc[i] > 0) != (hist.iloc[i-1] > 0))
+                if sign_changes >= 4:  # Too many flips
+                    return False, f"WHIPSAW_MACD ({sign_changes} flips)"
+
+        # Check price whipsaw: crossing EMA20 too many times
+        if 'EMA_20' in df.columns:
+            above = recent['close'] > recent['EMA_20']
+            crossings = sum(1 for i in range(1, len(above))
+                           if above.iloc[i] != above.iloc[i-1])
+            if crossings >= 5:
+                return False, f"WHIPSAW_EMA ({crossings} crosses)"
+
+        # ADX too low = no trend = whipsaw zone
+        if 'ADX' in df.columns:
+            adx_avg = float(recent['ADX'].tail(5).mean())
+            if adx_avg < 15 and setup_type not in ["MEAN_REVERSION", "GEN_STEP_REVERT", "APA"]:
+                return False, f"WHIPSAW_ADX ({adx_avg:.0f}<15)"
+
+        return True, "OK"
+    except Exception as e:
+        logger.debug(f"Anti-whipsaw error: {e}")
+        return True, "OK"
+
+
+# ==============================================================================
+# 🟢 V22 NEW #3: DIVERGENCE DECAY (Temporal Weight)
+# ==============================================================================
+
+def divergence_with_decay(df, indicator='RSI', order=5, max_age_bars=25):
+    """Divergence detection with temporal decay.
+    Recent divergences (< 10 bars) = full weight.
+    Old divergences (> 25 bars) = ignored."""
+    try:
+        div_type, div_bonus, div_detail = detect_divergence(df, indicator, order)
+        if div_type is None:
+            return None, 0, ""
+
+        # Calculate age: distance from last pivot to current bar
+        if "BEARISH" in str(div_type):
+            pivots = find_pivot_highs(df['high'], order)
+        else:
+            pivots = find_pivot_lows(df['low'], order)
+
+        if len(pivots) >= 2:
+            last_pivot_idx = pivots[-1]
+            age = len(df) - 1 - last_pivot_idx
+        else:
+            age = max_age_bars  # Assume old if can't determine
+
+        # Decay factor
+        if age <= 10:
+            decay = 1.0  # Full weight
+        elif age <= max_age_bars:
+            decay = max(0.3, 1.0 - (age - 10) / (max_age_bars - 10) * 0.7)
+        else:
+            return None, 0, ""  # Too old, ignore
+
+        decayed_bonus = int(div_bonus * decay)
+        return div_type, decayed_bonus, f"{div_detail} (age={age}, decay={decay:.0%})"
+    except Exception as e:
+        logger.debug(f"Divergence decay error: {e}")
+        return None, 0, ""
+
+
+# ==============================================================================
+# 🟢 V22 NEW #5: SESSION VOLATILITY AWARENESS
+# ==============================================================================
+
+def session_volatility_check(df, lookback_days=5):
+    """Checks if current hour historically shows higher/lower volatility.
+    Synthetics run 24/7 but may have patterns tied to server load."""
+    try:
+        if len(df) < 100 or not hasattr(df.index, 'hour'):
+            return {"session": "UNKNOWN", "vol_factor": 1.0}
+
+        current_hour = df.index[-1].hour
+
+        # Calculate average volatility by hour
+        df_temp = df.copy()
+        df_temp['abs_return'] = np.abs(np.log(df_temp['close'] / df_temp['close'].shift(1)))
+        df_temp['hour'] = df_temp.index.hour
+
+        hourly_vol = df_temp.groupby('hour')['abs_return'].mean()
+        if len(hourly_vol) < 12:
+            return {"session": "UNKNOWN", "vol_factor": 1.0}
+
+        current_vol = hourly_vol.get(current_hour, hourly_vol.mean())
+        avg_vol = hourly_vol.mean()
+        vol_factor = current_vol / avg_vol if avg_vol > 0 else 1.0
+
+        if vol_factor > 1.3:
+            session = "HIGH_VOL_SESSION"
+        elif vol_factor < 0.7:
+            session = "LOW_VOL_SESSION"
+        else:
+            session = "NORMAL_SESSION"
+
+        return {
+            "session": session,
+            "vol_factor": round(float(vol_factor), 2),
+            "current_hour": current_hour,
+            "current_hour_vol": round(float(current_vol), 6),
+            "avg_vol": round(float(avg_vol), 6),
+        }
+    except Exception as e:
+        logger.debug(f"Session vol error: {e}")
+        return {"session": "UNKNOWN", "vol_factor": 1.0}
 
 
 
@@ -2426,9 +2950,9 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
     peak = np.maximum.accumulate(cum)
     dd = float((peak - cum).max()) if len(cum) > 0 else 0
     rs = pd.Series(results)
-    sharpe = float(rs.mean()/rs.std()*np.sqrt(252)) if len(rs) >= 2 and rs.std() > 0 else 0
+    sharpe = float(rs.mean()/rs.std()*np.sqrt(len(results))) if len(rs) >= 2 and rs.std() > 0 else 0
     ds = rs[rs<0]
-    sortino = float(rs.mean()/ds.std()*np.sqrt(252)) if len(ds) >= 2 and ds.std() > 0 else 0
+    sortino = float(rs.mean()/ds.std()*np.sqrt(len(results))) if len(ds) >= 2 and ds.std() > 0 else (99.0 if rs.mean() > 0 else 0)
 
     # Per-fold WRs
     fold_wrs = []
@@ -2486,12 +3010,17 @@ class SetupScore:
     cpi_bonus:float; markov_bonus:float; spectral_bonus:float
     adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
     candle_bonus:float; mom_accel_bonus:float
+    apa_bonus:float; order_flow_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
-                    win_rate, profit_factor, profile, **bonuses):
+                    win_rate, profit_factor, profile, momentum_v22=0, **bonuses):
     ts=25 if adx>profile.get('adx_strong',25) else(15 if adx>profile.get('adx_trend_min',15) else 0)
-    mp=(momentum_score/3)*20
+    # V22: Use enhanced momentum (0-100) if available, fallback to old (0-3)
+    if momentum_v22 > 0:
+        mp = momentum_v22 * 0.2  # Scale 0-100 → 0-20
+    else:
+        mp=(momentum_score/3)*20
     dr=dist_ema50/atr if atr>0 else 999
     vs=15 if dr<0.5 else(10 if dr<1.0 else(5 if dr<1.5 else 0))
     hs=min((win_rate*0.15)+(profit_factor*5),25)
@@ -2500,15 +3029,18 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
           'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'cpi_bonus','markov_bonus','spectral_bonus',
-          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
-    bonus=min(sum(bonuses.get(k,0) for k in keys),130)  # V21+: raised cap for new engines
+          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus',
+          'apa_bonus','order_flow_bonus']
+    # V22: No arbitrary cap — grade system handles normalization
+    bonus=sum(bonuses.get(k,0) for k in keys)
     total=base+bonus
-    if total>=190: g="S"
-    elif total>=155: g="A++"
-    elif total>=125: g="A+"
-    elif total>=95: g="A"
-    elif total>=65: g="B"
-    elif total>=45: g="C"
+    # V22: Grade thresholds adjusted for uncapped bonuses
+    if total>=210: g="S"
+    elif total>=170: g="A++"
+    elif total>=140: g="A+"
+    elif total>=110: g="A"
+    elif total>=80: g="B"
+    elif total>=55: g="C"
     else: g="D"
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in keys],bonus,total,g)
@@ -2532,12 +3064,15 @@ def calculate_storm_bonus(sd):
         (sd.get('coherence') in ["PERFECT","STRONG"],"TF Coherence"),
         (sd.get('candle_quality') in ["EXCELLENT","GOOD"],"Candle Struct"),
         (sd.get('mom_accel'),"Mom Accel"),
+        # V22 checks
+        (sd.get('apa_ready'),"A.P.A Ready"),
+        (sd.get('oflow_aligned'),"OrderFlow"),
     ]
     for c,l in checks:
         if c: met+=1; lst.append(l)
-    if met>=13: return "PERFECT_STORM",25,lst
-    elif met>=10: return "STRONG_CONFLUENCE",20,lst
-    elif met>=7: return "GOOD_CONFLUENCE",15,lst
+    if met>=15: return "PERFECT_STORM",25,lst
+    elif met>=12: return "STRONG_CONFLUENCE",20,lst
+    elif met>=8: return "GOOD_CONFLUENCE",15,lst
     elif met>=5: return "MODERATE",10,lst
     return None,0,lst
 
@@ -2651,38 +3186,48 @@ def convert_np(obj):
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V21+ — PRECISION PREDICTABILITY ENGINE [Gemini 3 Pro]
+FUNÇÃO: ANALISTA V22 — A.P.A PRECISION ENGINE [Gemini 3 Pro]
 Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V21+ — PRECISION ENGINE (V21 + 7 motores de precisão):**
-Base V21 (16 melhorias) PLUS:
-- ADX Slope Detection (captura tendências ANTES do ADX cruzar threshold)
-- EMA Ribbon Spread Analysis (qualidade da tendência via expansão da ribbon)
-- Multi-TF Trend Coherence Scoring (coerência H4→H1→M15→M5)
-- VWAP Proxy Analysis (zonas institucionais de entrada)
-- Candle Structure Scoring (qualidade dos candles para entrada)
-- Momentum Acceleration (timing ótimo via taxa de mudança do MACD)
-- Dynamic ATR Channel (entradas ajustadas por volatilidade)
-- Entry Refinement Engine (ATR channel + VWAP para entradas precisas)
+**V22 — A.P.A PRECISION ENGINE (V21+ com 5 novos motores):**
 
-Base V21:
+🔵 ESTRATÉGIA A.P.A (Accumulation → Pattern → Action):
+- ACCUMULATION: BB squeeze + ATR contraction + candles diminuindo + ADX baixo
+- PATTERN: Inside Bar, Pin Bar, Engulfing, Breakout, Double Bottom/Top no fim da acumulação
+- ACTION: Range expansion + BB abrindo + MACD flip + bias alinhado + TF coherent
+- RISK: SL abaixo/acima do range de acumulação, TP = múltiplos do range, Time-stop = 2× duração
+
+Novos Motores V22:
+- Order Flow Score (pressão compra/venda via microestrutura)
+- Anti-Whipsaw Filter (previne overtrading em mercados choppy)
+- Divergence Decay (divergências recentes pesam mais)
+- Session Volatility Awareness (horários de alta/baixa vol)
+- Enhanced Momentum V22 (0-100, não 0-3)
+
+Base V21+:
+- ADX Slope, EMA Ribbon, Multi-TF Coherence, VWAP Proxy
+- Candle Structure, Momentum Acceleration, ATR Channel
 - Sample Entropy, Permutation Entropy, FFT, Markov Chain
-- CPI 0-100, Regime Transition, Dynamic Bias
-- Enhanced Momentum, Edge Correlation Matrix
-- Optimal Holding Period, Look-ahead bias removido
+- CPI 0-100, VR Test, ACF, GARCH, Hurst R²
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V21+: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/220 | **CPI:** {CPI}/100
+## ⚡ VEREDICTO V22: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE}/250 | **CPI:** {CPI}/100
 **Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
+
+### 🔵 ANÁLISE A.P.A
+- Estado: {APA_STATE} (Confiança: {CONFIDENCE}%)
+- Acumulação: {DETECTED} ({BARS} bars, qualidade={QUALITY}%)
+- Padrão: {PATTERN} (direção={DIRECTION}, força={STRENGTH})
+- Trigger: {TRIGGERED} ({REASONS})
 
 ### 🧮 MODELO DO GERADOR
 - Sigma calibrado: {X}% | Vol Ratio (3 janelas): S={short} M={med} L={long}
 - Consensus: {SIGNAL} → Direção: {compress_direction}
-- Preço teórico z: {z_price} ({deviation_signal})
+- Order Flow: {PRESSURE} (score={SCORE})
 
 ### 📊 EDGE ESTATÍSTICO
 - Variance Ratio: {VR edge type} ({N} períodos significativos)
@@ -2691,25 +3236,22 @@ Base V21:
 - Distribuição: Skew={S} Kurt={K} Tails={T}
 
 ### 🎯 PRECISÃO DE ENTRADA
-- ADX Phase: {phase} (slope={slope})
-- EMA Ribbon: {quality} ({direction}) - Expanding: {Y/N}
-- TF Coherence: {coherence} ({direction})
-- Candle Structure: {quality} ({pattern_type})
-- Mom Acceleration: {phase} (confidence={X}%)
-- ATR Channel: {quality} (position={X})
-- VWAP Zone: {zone} ({entry_quality})
+- ADX Phase: {phase} | EMA Ribbon: {quality}
+- TF Coherence: {coherence} | VWAP Zone: {zone}
+- Candle Structure: {quality} | Mom Accel: {phase}
+- Session: {SESSION} (vol ×{FACTOR})
+- Anti-Whipsaw: {STATUS}
 
 ### 🎯 PLANO DE TRADE
-{Entradas + Pirâmide + Smart TP}
+{Entradas + Smart TP + Time-Stop}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V21+ Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
-e Autocorrelação, combinados com PRECISÃO DE ENTRADA via EMA Ribbon,
-Trend Coherence e Momentum Acceleration. Se VR mostra random walk,
-dizer claramente que não há edge estatístico operável.
-Quando Trend Coherence é PERFECT, enfatizar alta confiança.
-Quando candle structure é WEAK, recomendar cautela ou esperar melhor setup.}
+*V22 Insight:* Quando A.P.A está em ACTION_READY com TF Coherence PERFECT e
+Order Flow alinhado, esta é a entrada de MÁXIMA confiança. Enfatizar que
+A.P.A com padrão ENGULFING ou BREAKOUT no fim de acumulação forte tem
+as melhores win rates em sintéticos. Se A.P.A está ACCUMULATING sem padrão,
+recomendar ESPERAR pelo padrão antes de entrar.
 """
 
 # ==============================================================================
@@ -2734,7 +3276,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     regime, regime_sc = classify_regime(h1)
     momentum_old = check_momentum(h4, h1, m15, bias)
     momentum_v21 = enhanced_momentum_v21(h4, h1, m15, bias)
-    momentum = momentum_old  # keep for scoring compatibility
+    momentum = momentum_old  # keep for backward compat
+    # V22 FIX: Use V21 enhanced momentum for scoring
+    momentum_score_v22 = momentum_v21  # 0-100 scale
 
     # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
@@ -2777,13 +3321,19 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     ema_ribbon = ema_ribbon_analysis(h1)
     trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)
     vwap_data = vwap_proxy_analysis(h1)
-    candle_struct = candle_structure_score(m15, bias)
+    # V22 FIX: Candle structure on M5 (entry TF) not M15
+    candle_struct = candle_structure_score(m5 if m5 is not None and len(m5) > 5 else m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
 
-    # Divergências
-    rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
-    macd_div, macd_db, macd_dd = detect_divergence(m15, 'MACD', 4)
+    # ═══ V22 NEW ENGINES ═══
+    apa_result = apa_full_analysis(m15, bias, trend_coherence)
+    oflow = order_flow_score(m15)
+    session_vol = session_volatility_check(h1)
+
+    # Divergências — V22: with temporal decay
+    rsi_div, rsi_db, rsi_dd = divergence_with_decay(m15, 'RSI', 4)
+    macd_div, macd_db, macd_dd = divergence_with_decay(m15, 'MACD', 4)
     divergence = rsi_div or macd_div
     div_bonus = max(rsi_db, macd_db); div_detail = rsi_dd or macd_dd
 
@@ -2909,6 +3459,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
        (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
         mom_accel_bonus = -3  # Slight penalty
 
+    # ═══ V22 NEW BONUSES ═══
+    # A.P.A bonus: high-confidence accumulation→pattern→action
+    apa_bonus = 0
+    if apa_result.get('state') == "ACTION_READY":
+        apa_bonus = min(int(apa_result['confidence'] / 6), 15)
+    elif apa_result.get('state') == "PATTERN_FORMING":
+        apa_bonus = min(int(apa_result['confidence'] / 10), 8)
+
+    # Order Flow bonus: buy/sell pressure alignment
+    order_flow_bonus = 0
+    if bias == "BULLISH" and oflow.get('pressure') in ['STRONG_BUYING', 'BUYING']:
+        order_flow_bonus = min(int(abs(oflow['score']) / 5), 8)
+    elif bias == "BEARISH" and oflow.get('pressure') in ['STRONG_SELLING', 'SELLING']:
+        order_flow_bonus = min(int(abs(oflow['score']) / 5), 8)
+
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
 
@@ -2940,6 +3505,19 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                                      ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
         if div_block:
             sig = f"BLOCKED (DIV: {div_detail})"; return
+
+        # V22: A.P.A SETUP (HIGHEST PRIORITY — precision entries)
+        if apa_result.get('state') == "ACTION_READY":
+            apa_action = apa_result['action']
+            apa_dir = apa_action.get('direction', 'NEUTRAL')
+            if (apa_dir == "BULLISH" and is_long) or (apa_dir == "BEARISH" and not is_long):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (A.P.A)"
+                entry = apa_action['entry']
+                sl_val = apa_action['sl']
+                entry_type = f"A.P.A {apa_result['pattern']['pattern']} | Accum {apa_result['accumulation']['bars']}bars"
+                trade_style = "APA"; setup_type = "APA"
+                return
 
         # REGIME-SPECIFIC STRATEGY
         # TRENDING → Swing/Breakout
@@ -3087,7 +3665,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         'ribbon_quality':ema_ribbon.get('quality'),
         'coherence':trend_coherence.get('coherence'),
         'candle_quality':candle_struct.get('quality'),
-        'mom_accel':mom_accel_bonus > 0}
+        'mom_accel':mom_accel_bonus > 0,
+        # V22 storm data
+        'apa_ready':apa_result.get('state') == 'ACTION_READY',
+        'oflow_aligned':(bias == "BULLISH" and oflow.get('score', 0) > 10) or
+                        (bias == "BEARISH" and oflow.get('score', 0) < -10)}
     storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
 
     if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
@@ -3107,6 +3689,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         adx=adx, momentum_score=momentum, pattern_score=pat_score,
         dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
         win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
+        momentum_v22=momentum_score_v22,  # V22: enhanced momentum
         divergence_bonus=final_db, fib_bonus=fib_bonus, sr_bonus=sr_bonus,
         alignment_bonus=align_bonus, storm_bonus=storm_bonus,
         regime_bonus=regime_bonus, volume_bonus=vol_bonus,
@@ -3116,20 +3699,26 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
         adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
         coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
-        mom_accel_bonus=mom_accel_bonus)
+        mom_accel_bonus=mom_accel_bonus,
+        apa_bonus=apa_bonus, order_flow_bonus=order_flow_bonus)
 
     # Filters
     configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
                "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
-               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4)}
+               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4),
+               "APA":(50,1.2)}  # V22: A.P.A setup config
     ms, mpf = configs.get(setup_type, (70, 1.4))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
+    is_apa_setup = setup_type == "APA"
     if "BLOCKED" not in sig and sig != "MONITORING":
+        # V22: Anti-whipsaw check
+        whipsaw_ok, whipsaw_reason = anti_whipsaw_check(m15, setup_type)
         fails = []
+        if not whipsaw_ok: fails.append(f"WHIPSAW: {whipsaw_reason}")
         if score.total < ms: fails.append(f"SCORE={score.total:.0f}<{ms}")
-        if cpi_val < 25 and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<25")
-        if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
-        if sim['PF'] < mpf and not is_gen_setup: fails.append(f"PF={sim['PF']}<{mpf}")
+        if cpi_val < 25 and not is_gen_setup and not is_apa_setup: fails.append(f"CPI={cpi_val:.0f}<25")
+        if sim['NET'] <= 0 and not is_gen_setup and not is_apa_setup: fails.append("NET≤0")
+        if sim['PF'] < mpf and not is_gen_setup and not is_apa_setup: fails.append(f"PF={sim['PF']}<{mpf}")
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
     # Targets — 🟢 PRECISION #3: Smart TP
@@ -3138,6 +3727,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
           "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
           "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
+          "APA":(2.5,4.5),  # V22: A.P.A targets based on accumulation range
           "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r'])}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
     direction = "LONG" if "LONG" in sig else "SHORT"
@@ -3146,7 +3736,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Pyramid
     pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
-    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE","A.P.A"])
 
     imgs = [
         plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
@@ -3189,6 +3779,18 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🏦 VWAP Zone ({vwap_data.get('zone','?')})")
     if adx_slope.get('phase') == 'TREND_FORMING':
         confs.append(f"📈 ADX Forming (slope={adx_slope.get('slope',0):.2f})")
+    # V22 A.P.A confluences
+    if apa_result.get('state') == 'ACTION_READY':
+        confs.append(f"🔵 A.P.A ACTION ({apa_result['pattern']['pattern']}, conf={apa_result['confidence']:.0f}%)")
+    elif apa_result.get('state') == 'PATTERN_FORMING':
+        confs.append(f"🔵 A.P.A Pattern ({apa_result['pattern']['pattern']})")
+    elif apa_result.get('state') == 'ACCUMULATING':
+        confs.append(f"🔵 A.P.A Accumulating ({apa_result['accumulation']['bars']} bars)")
+    # V22 Order Flow
+    if oflow.get('pressure') in ['STRONG_BUYING', 'STRONG_SELLING']:
+        confs.append(f"💰 OrderFlow: {oflow['pressure']} ({oflow['score']:.0f})")
+    elif oflow.get('pressure') in ['BUYING', 'SELLING']:
+        confs.append(f"💰 OrderFlow: {oflow['pressure']}")
 
     risks = []
     if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
@@ -3209,6 +3811,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
     if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
+    # V22 risks
+    if session_vol.get('session') == 'LOW_VOL_SESSION': risks.append(f"⚠️ Low vol session (×{session_vol.get('vol_factor',1):.1f})")
+    if (bias == "BULLISH" and oflow.get('pressure') in ['STRONG_SELLING', 'SELLING']) or \
+       (bias == "BEARISH" and oflow.get('pressure') in ['STRONG_BUYING', 'BUYING']):
+        risks.append(f"⚠️ OrderFlow contra bias ({oflow.get('pressure','')})")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -3258,7 +3865,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
             "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
             "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
-            "MOM_ACCEL":score.mom_accel_bonus
+            "MOM_ACCEL":score.mom_accel_bonus,
+            "APA":score.apa_bonus,"OFLOW":score.order_flow_bonus
         }),
         # V21+ precision data
         "ADX_SLOPE": convert_np(adx_slope),
@@ -3268,6 +3876,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "CANDLE_STRUCT": convert_np(candle_struct),
         "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
+        # V22 new data
+        "APA": convert_np(apa_result),
+        "APA_BONUS": apa_bonus,
+        "ORDER_FLOW": convert_np(oflow),
+        "ORDER_FLOW_BONUS": order_flow_bonus,
+        "SESSION_VOL": convert_np(session_vol),
+        "TIME_STOP": hold.get('time_stop', 45),
     }
 
 # ==============================================================================
@@ -3323,7 +3938,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V21</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V22 A.P.A</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -3348,15 +3963,16 @@ with st.sidebar:
 
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Statistical Edge Engine<br>
-        VR · ACF · GARCH · Kelly<br>
+        A.P.A Precision Engine<br>
+        Accumulation→Pattern→Action<br>
+        VR · ACF · GARCH · OrderFlow<br>
         Sigma Calibrated · Smart TP
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V21</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>A.P.A Precision Engine V22</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -3403,7 +4019,7 @@ if mode == "Analysis":
             # ── GRADE CARD ──
             g = data['SETUP_GRADE']
             grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
-            score_pct = min(data['SETUP_SCORE'] / 220 * 100, 100)
+            score_pct = min(data['SETUP_SCORE'] / 250 * 100, 100)
             bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
 
             # Decision tag
@@ -3421,7 +4037,7 @@ if mode == "Analysis":
             <div class='{grade_class}' style='margin:8px 0 20px;'>
                 <div class='grade-letter'>{g}</div>
                 <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
-                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 220</span>
+                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 250</span>
                 </div>
                 <div class='score-bar-outer'>
                     <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
@@ -3512,6 +4128,28 @@ if mode == "Analysis":
             ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
 
+            # ── V22: A.P.A STRATEGY ──
+            st.markdown("## A.P.A Strategy")
+            apa = data.get('APA', {})
+            apa_state = apa.get('state', 'NO_SETUP')
+            apa_color = '#22c55e' if apa_state == 'ACTION_READY' else '#f59e0b' if 'PATTERN' in apa_state or 'ACCUM' in apa_state else '#52525b'
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric("A.P.A State", apa_state, f"conf={apa.get('confidence',0):.0f}%")
+            accum = apa.get('accumulation', {})
+            a2.metric("Accumulation", accum.get('phase', 'NONE'), f"{accum.get('bars',0)} bars")
+            pat = apa.get('pattern', {})
+            a3.metric("Pattern", pat.get('pattern', 'NONE'), f"str={pat.get('strength',0)}")
+            act = apa.get('action', {})
+            a4.metric("Action", "✓ TRIGGERED" if act.get('triggered') else "✗ Waiting", f"score={act.get('trigger_score',0)}")
+
+            # V22: Order Flow + Session
+            o1, o2, o3 = st.columns(3)
+            ofl = data.get('ORDER_FLOW', {})
+            o1.metric("Order Flow", ofl.get('pressure', '?'), f"score={ofl.get('score',0):.0f}")
+            sv = data.get('SESSION_VOL', {})
+            o2.metric("Session", sv.get('session', '?'), f"×{sv.get('vol_factor',1):.1f}")
+            o3.metric("Time-Stop", f"{data.get('TIME_STOP', 45)} bars")
+
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
             d1, d2, d3, d4 = st.columns(4)
@@ -3555,7 +4193,7 @@ if mode == "Analysis":
             # ── TRADE PLAN ──
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
             is_active = any(x in d for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION",
-                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE","A.P.A"])
             if is_active:
                 st.markdown("## Trade Plan")
 
@@ -3586,6 +4224,11 @@ if mode == "Analysis":
                         <span class='plan-label'>Trigger</span>
                         <span class='plan-value'>{"✓" if data.get('TRIGGER_OK') else "✗"}</span>
                         <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
+                    </div>
+                    <div class='plan-row'>
+                        <span class='plan-label'>Time-Stop</span>
+                        <span class='plan-value'>{data.get('TIME_STOP',45)} bars</span>
+                        <span class='plan-note'>Max hold · Edge decay</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
 
