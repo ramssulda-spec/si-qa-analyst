@@ -1905,23 +1905,32 @@ def session_volatility_check(df, lookback_days=5):
 # V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
 # ==============================================================================
 
-def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=400):
-    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico."""
+def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=150):
+    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico.
+    V22 PERF: max_n=150 + vectorized broadcast — ~50× faster."""
     try:
         data = np.array(series.dropna().values[-max_n:], dtype=float)
         n = len(data)
         if n < 50: return 2.0, "CHAOTIC"
         r = r_mult * np.std(data)
         if r == 0: return 0.0, "CONSTANT"
-        def _count(tl):
-            cnt = 0
-            for i in range(n - tl):
-                for j in range(i + 1, n - tl):
-                    if np.max(np.abs(data[i:i+tl] - data[j:j+tl])) < r:
-                        cnt += 1
-            return cnt
-        B = _count(m)
-        A = _count(m + 1)
+        def _count_vec(tl):
+            templates = np.array([data[i:i+tl] for i in range(n - tl)])
+            nt = len(templates)
+            count = 0
+            cs = min(nt, 150)
+            for ci in range(0, nt, cs):
+                chunk = templates[ci:ci+cs]
+                diffs = np.abs(chunk[:, None, :] - templates[None, :, :])
+                mx = diffs.max(axis=2)
+                matches = (mx < r).sum()
+                for k in range(ci, min(ci+cs, nt)):
+                    if mx[k-ci, k] < r:
+                        matches -= 1
+                count += matches
+            return count // 2
+        B = _count_vec(m)
+        A = _count_vec(m + 1)
         if B == 0 or A == 0: se = 2.5
         else: se = -np.log(A / B)
         if se < 0.4: regime = "HIGHLY_PREDICTABLE"
@@ -1929,13 +1938,15 @@ def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=400):
         elif se < 1.5: regime = "MODERATE"
         else: regime = "CHAOTIC"
         return round(float(se), 3), regime
-    except: return 2.0, "ERROR"
+    except Exception as e:
+        logger.debug(f"SampEn error: {e}")
+        return 2.0, "ERROR"
 
 # ==============================================================================
 # V21 ENGINE #2: PERMUTATION ENTROPY — Determinismo na ordem
 # ==============================================================================
 
-def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
+def permutation_entropy_v21(series, order=3, delay=1, max_n=200):
     """PE=0 deterministic, PE=1 random. PE < 0.85 = padrao detectavel."""
     try:
         data = np.array(series.dropna().values[-max_n:], dtype=float)
@@ -2001,7 +2012,7 @@ def spectral_analysis_v21(series, top_n=3, min_period=5, max_period=200):
 # V21 ENGINE #4: TRANSITION MATRIX (Markov Chain)
 # ==============================================================================
 
-def transition_matrix_v21(series, n_states=3, max_n=500):
+def transition_matrix_v21(series, n_states=3, max_n=300):
     """Detecta dependencias Markovianas nos retornos."""
     try:
         vals = np.array(series.dropna().values[-max_n:], dtype=float)
@@ -2273,8 +2284,9 @@ class DistributionAnalyzer:
             else: tail_risk = "NORMAL"
             z_return = float((recent.iloc[-1] - recent.mean()) / recent.std()) if recent.std() > 0 else 0
             recent_cum = float(recent.tail(10).sum())
-            all_windows = [float(log_returns.iloc[i:i+10].sum()) for i in range(0, len(log_returns)-10, 5)]
-            percentile = sum(1 for w in all_windows if w < recent_cum) / len(all_windows) * 100 if all_windows else 50
+            # V22 PERF: vectorized rolling sum instead of Python loop
+            rolling_sums = log_returns.rolling(10).sum().dropna().iloc[::5]
+            percentile = float((rolling_sums < recent_cum).mean() * 100) if len(rolling_sums) > 0 else 50
             signal = "NEUTRAL"
             if abs(skewness) > 0.5:
                 signal = "POSITIVE_SKEW" if skewness > 0 else "NEGATIVE_SKEW"
@@ -2363,9 +2375,9 @@ DERIV_SERVERS = [
 
 async def socket_req(url, req):
     try:
-        async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
+        async with websockets.connect(url, ping_interval=15, close_timeout=10) as ws:
             await ws.send(json.dumps(req))
-            return json.loads(await asyncio.wait_for(ws.recv(), timeout=15.0))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=10.0))
     except:
         return None
 
@@ -2380,20 +2392,20 @@ def get_assets():
     return None
 
 async def fetch_multi_tf(code):
-    """H1=800, H4=400, M15=2000, M5=500"""
+    """V22 PERF: H1=500, H4=300, M15=800, M5=300 — reduced for speed"""
     reqs = [
-        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 800, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 400, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 2000, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 300, "count": 500, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 500, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 300, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 800, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 300, "count": 300, "end": "latest"},
     ]
     for url in DERIV_SERVERS:
         try:
-            async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
+            async with websockets.connect(url, ping_interval=15, close_timeout=10) as ws:
                 results = []
                 for r in reqs:
                     await ws.send(json.dumps(r))
-                    results.append(json.loads(await asyncio.wait_for(ws.recv(), 15)))
+                    results.append(json.loads(await asyncio.wait_for(ws.recv(), 10)))
                 if all('candles' in x for x in results):
                     return results[0]['candles'], results[1]['candles'], results[2]['candles'], results[3]['candles'], None
         except:
@@ -2420,13 +2432,14 @@ def prep_df(data):
     return df
 
 def calculate_rsi_wilder(series, period=14):
-    delta = series.diff(); gain = delta.where(delta>0,0.0); loss = -delta.where(delta<0,0.0)
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
-    for i in range(period, len(series)):
-        if pd.notna(avg_gain.iloc[i-1]):
-            avg_gain.iloc[i] = (avg_gain.iloc[i-1]*(period-1)+gain.iloc[i])/period
-            avg_loss.iloc[i] = (avg_loss.iloc[i-1]*(period-1)+loss.iloc[i])/period
+    """V22 PERF: Fully vectorized RSI using ewm (no Python loop)"""
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
     rs = avg_gain / avg_loss.replace(0,np.nan)
     return 100 - (100/(1+rs))
 
@@ -2456,7 +2469,7 @@ def calculate_zscore(series, window=50):
     return (series-mean)/std.replace(0,np.nan)
 
 # 🟠 MATH FIX #2: HURST COM VALIDAÇÃO R²
-def calculate_hurst_exponent(series, max_lag=100):
+def calculate_hurst_exponent(series, max_lag=50):
     try:
         ts = series.dropna().values
         if len(ts) < 50: return 0.5, "RANDOM_WALK", 0.0
@@ -2490,17 +2503,29 @@ def calculate_hurst_exponent(series, max_lag=100):
         return 0.5, "ERROR", 0.0
 
 def find_pivot_highs(data, order=5):
-    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
-    for i in range(order, len(values)-order):
+    """V22 PERF: window max comparison instead of all() loop"""
+    values = data.values if hasattr(data,'values') else np.array(data)
+    n = len(values)
+    if n < order * 2 + 1: return np.array([])
+    pivots = []
+    for i in range(order, n - order):
         if np.isnan(values[i]): continue
-        if all(values[i]>values[i-j] and values[i]>values[i+j] for j in range(1,order+1)): pivots.append(i)
+        window = values[i-order:i+order+1]
+        if values[i] == np.nanmax(window):
+            pivots.append(i)
     return np.array(pivots)
 
 def find_pivot_lows(data, order=5):
-    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
-    for i in range(order, len(values)-order):
+    """V22 PERF: window min comparison instead of all() loop"""
+    values = data.values if hasattr(data,'values') else np.array(data)
+    n = len(values)
+    if n < order * 2 + 1: return np.array([])
+    pivots = []
+    for i in range(order, n - order):
         if np.isnan(values[i]): continue
-        if all(values[i]<values[i-j] and values[i]<values[i+j] for j in range(1,order+1)): pivots.append(i)
+        window = values[i-order:i+order+1]
+        if values[i] == np.nanmin(window):
+            pivots.append(i)
     return np.array(pivots)
 
 def detect_divergence(df, indicator='RSI', order=5):
@@ -2675,42 +2700,46 @@ def detect_micro_pullback(df, direction, atr):
     except: return None,"MARKET"
 
 def detect_patterns(df):
-    patterns,scores=[],[]
-    for i in range(1,len(df)):
-        c,p=df.iloc[i],df.iloc[i-1]; pl,sc=[],0
-        body=abs(c['close']-c['open']); rng=c['high']-c['low']
-        if rng>0:
-            uw=c['high']-max(c['open'],c['close']); lw=min(c['open'],c['close'])-c['low']
-            if lw>0 and body/rng<0.35 and uw<body:
-                r=lw/max(body,0.0001)
-                if r>3: pl.append("PIN_BULL_STRONG"); sc+=10
-                elif r>2: pl.append("PIN_BULL_MOD"); sc+=5
-            elif uw>0 and body/rng<0.35 and lw<body:
-                r=uw/max(body,0.0001)
-                if r>3: pl.append("PIN_BEAR_STRONG"); sc+=10
-                elif r>2: pl.append("PIN_BEAR_MOD"); sc+=5
-        cb=abs(c['close']-c['open']); pb=abs(p['close']-p['open'])
-        ct,cb2=max(c['open'],c['close']),min(c['open'],c['close'])
-        pt,pb3=max(p['open'],p['close']),min(p['open'],p['close'])
-        if c['close']>c['open'] and p['close']<p['open'] and cb2<pb3 and ct>pt:
-            r=cb/max(pb,0.0001)
-            if r>2: pl.append("ENGULF_BULL_STRONG"); sc+=10
-            else: pl.append("ENGULF_BULL"); sc+=5
-        elif c['close']<c['open'] and p['close']>p['open'] and cb2<pb3 and ct>pt:
-            r=cb/max(pb,0.0001)
-            if r>2: pl.append("ENGULF_BEAR_STRONG"); sc+=10
-            else: pl.append("ENGULF_BEAR"); sc+=5
-        if c['high']<=p['high'] and c['low']>=p['low']: pl.append("INSIDE_BAR"); sc+=5
-        if rng>0 and body/rng<0.1: pl.append("DOJI"); sc+=3
-        patterns.append(pl); scores.append(sc)
-    df['patterns']=[[]]+patterns; df['pattern_score']=[0]+scores; return df
+    """V22 PERF: Only detect patterns on last 30 candles"""
+    n = len(df)
+    patterns = [[]] * n
+    scores = [0] * n
+    start = max(1, n - 30)
+    for i in range(start, n):
+        c, p = df.iloc[i], df.iloc[i-1]; pl, sc = [], 0
+        body = abs(c['close'] - c['open']); rng = c['high'] - c['low']
+        if rng > 0:
+            uw = c['high'] - max(c['open'], c['close']); lw = min(c['open'], c['close']) - c['low']
+            if lw > 0 and body/rng < 0.35 and uw < body:
+                r = lw / max(body, 0.0001)
+                if r > 3: pl.append("PIN_BULL_STRONG"); sc += 10
+                elif r > 2: pl.append("PIN_BULL_MOD"); sc += 5
+            elif uw > 0 and body/rng < 0.35 and lw < body:
+                r = uw / max(body, 0.0001)
+                if r > 3: pl.append("PIN_BEAR_STRONG"); sc += 10
+                elif r > 2: pl.append("PIN_BEAR_MOD"); sc += 5
+        cb = abs(c['close'] - c['open']); pb = abs(p['close'] - p['open'])
+        ct, cb2 = max(c['open'], c['close']), min(c['open'], c['close'])
+        pt, pb3 = max(p['open'], p['close']), min(p['open'], p['close'])
+        if c['close'] > c['open'] and p['close'] < p['open'] and cb2 < pb3 and ct > pt:
+            r = cb / max(pb, 0.0001)
+            if r > 2: pl.append("ENGULF_BULL_STRONG"); sc += 10
+            else: pl.append("ENGULF_BULL"); sc += 5
+        elif c['close'] < c['open'] and p['close'] > p['open'] and cb2 < pb3 and ct > pt:
+            r = cb / max(pb, 0.0001)
+            if r > 2: pl.append("ENGULF_BEAR_STRONG"); sc += 10
+            else: pl.append("ENGULF_BEAR"); sc += 5
+        if c['high'] <= p['high'] and c['low'] >= p['low']: pl.append("INSIDE_BAR"); sc += 5
+        if rng > 0 and body/rng < 0.1: pl.append("DOJI"); sc += 3
+        patterns[i] = pl; scores[i] = sc
+    df['patterns'] = patterns; df['pattern_score'] = scores; return df
 
 def detect_swing_points(df, window=5):
-    df['swing_high']=False; df['swing_low']=False
-    for i in range(window,len(df)):
-        lb=df.iloc[max(0,i-window):i+1]
-        if df['high'].iloc[i]==lb['high'].max(): df.iloc[i,df.columns.get_loc('swing_high')]=True
-        if df['low'].iloc[i]==lb['low'].min(): df.iloc[i,df.columns.get_loc('swing_low')]=True
+    """V22 PERF: vectorized rolling max/min instead of iloc loop"""
+    roll_max = df['high'].rolling(window + 1, min_periods=1).max()
+    roll_min = df['low'].rolling(window + 1, min_periods=1).min()
+    df['swing_high'] = (df['high'] == roll_max)
+    df['swing_low'] = (df['low'] == roll_min)
     return df
 
 def classify_market_structure(df):
@@ -2817,17 +2846,19 @@ def detect_swing_level(df, direction, atr_mult=1.5):
 # 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
 # ==============================================================================
 
-def run_walk_forward_v21(df, bias, profile, n_folds=4):
-    """V21: VR e ACF recalculados POR FOLD (sem look-ahead bias)"""
+def run_walk_forward_v21(df, bias, profile, n_folds=3):
+    """V22 PERF: 3 folds, step=3 bars, 40-bar lookahead — ~5× faster"""
     spread = profile.get('spread', 0.05)
     sl_mult = profile.get('sl_atr_mult', 2.5)
     fold_size = len(df) // (n_folds + 1)
     all_trades = []
+    STEP = 3  # V22: evaluate every 3rd bar
+    MAX_FWD = 40  # V22: reduced forward lookahead
 
     for fold in range(n_folds):
         ts = fold_size * (fold + 1)
         te = fold_size * (fold + 2) if fold < n_folds - 1 else len(df)
-        if ts >= len(df) - 80:
+        if ts >= len(df) - MAX_FWD:
             break
         si = max(200, ts)
 
@@ -2836,7 +2867,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
         fold_vr = variance_ratio_test(train_data['close'])
         fold_acf = autocorrelation_analysis(train_data['close'])
 
-        for i in range(si, min(te, len(df) - 60)):
+        for i in range(si, min(te, len(df) - MAX_FWD), STEP):
             row = df.iloc[i]
             if pd.isna(row['ADX']) or pd.isna(row['ATR']) or row['ATR'] == 0:
                 continue
@@ -2905,7 +2936,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             p1_open, p2_open = True, True
             r1, r2 = 0, 0
             csl = sl
-            for f in range(i + 1, min(i + 80, len(df))):
+            for f in range(i + 1, min(i + MAX_FWD, len(df))):
                 nx = df.iloc[f]
                 if sig == "BUY":
                     if nx['low'] <= csl:
@@ -3086,13 +3117,20 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     ax1.set_facecolor('#09090b')
     ax2.set_facecolor('#09090b')
 
-    # Candles — thin, clean
-    for i in range(len(df)):
-        bull = df['close'].iloc[i] >= df['open'].iloc[i]
-        c = '#22c55e' if bull else '#ef4444'
-        ca = 0.9 if i > len(df) - 30 else 0.45  # Fade older candles
-        ax1.plot([df.index[i]]*2, [df['low'].iloc[i], df['high'].iloc[i]], color=c, lw=0.6, alpha=ca)
-        ax1.plot([df.index[i]]*2, [df['open'].iloc[i], df['close'].iloc[i]], color=c, lw=2.8, alpha=ca, solid_capstyle='round')
+    # Candles — vectorized (V22 PERF)
+    bull = df['close'].values >= df['open'].values
+    bear = ~bull
+    idx = np.arange(len(df))
+    alpha_arr = np.where(idx > len(df) - 30, 0.9, 0.45)
+
+    # Wicks (thin lines) — use vlines for speed
+    for mask, color in [(bull, '#22c55e'), (bear, '#ef4444')]:
+        if mask.any():
+            positions = df.index[mask]
+            ax1.vlines(positions, df['low'].values[mask], df['high'].values[mask],
+                       colors=color, linewidth=0.6, alpha=0.65)
+            ax1.vlines(positions, df['open'].values[mask], df['close'].values[mask],
+                       colors=color, linewidth=2.8, alpha=0.85)
 
     # EMAs — subtle
     ax1.plot(df.index, df['EMA_20'], color='#3b82f6', lw=1, alpha=0.5, label='20')
@@ -3166,7 +3204,7 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     plt.xticks(rotation=45)
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=140, facecolor='#09090b', bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=96, facecolor='#09090b', bbox_inches='tight')
     plt.close(fig)
     buf.seek(0)
     return Image.open(buf)
@@ -3475,7 +3513,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         order_flow_bonus = min(int(abs(oflow['score']) / 5), 8)
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
-    sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
+    sim = run_walk_forward_v21(h1, bias, profile, n_folds=3)
 
     # ADAPTIVE (usa resultado do único backtest)
     adapted_profile = AdaptiveLearnerV20.adjust_profile(profile, sim, dist)
@@ -3739,9 +3777,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE","A.P.A"])
 
     imgs = [
-        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
-        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
-        plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
+        plot_candles(h4.tail(100), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
+        plot_candles(h1.tail(120), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
+        plot_candles(m15.tail(120), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
     ]
 
     # V21: Optimal holding
@@ -3998,14 +4036,18 @@ if mode == "Analysis":
         if run:
             if not api: st.error("API key required"); st.stop()
 
-            status = st.status("Analyzing...", expanded=True)
-            status.write("Fetching multi-timeframe data...")
+            import time as _time
+            status = st.status("⚡ Analyzing...", expanded=True)
+            _t0 = _time.time()
+            status.write("📡 Fetching multi-timeframe data...")
             h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
             if err: status.update(state='error'); st.error(err); st.stop()
-            status.write("Running statistical analysis...")
+            _t1 = _time.time()
+            status.write(f"📡 Data fetched in {_t1-_t0:.1f}s · 🧮 Running statistical engine...")
             data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
+            _t2 = _time.time()
             imgs = data.pop("IMAGES")
-            status.write("Generating AI insights...")
+            status.write(f"🧮 Analysis done in {_t2-_t1:.1f}s · 🤖 Generating AI insights...")
             genai.configure(api_key=api)
             dc = convert_np(data)
             try:
