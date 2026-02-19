@@ -21,34 +21,42 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# SI-APATECO V21.0 — PREDICTABILITY ENGINE
+# SI-APATECO V23.0 — PRECISION SNIPER ENGINE
 #
-# ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
+# V23 UPGRADES (23 melhorias sobre V22):
 #
-# 🔴 BUG FIX #1: periods_per_year auto-detectado (não hardcoded)
-# 🔴 BUG FIX #2: VOL_COMPRESS direção CONTRA o movimento recente
-# 🔴 BUG FIX #3: Crash/Boom drift segue cálculo real (não bias)
-# 🔴 BUG FIX #4: Backtest por TIPO DE SETUP (não só Swing)
-# 🔴 BUG FIX #5: Backtest roda 1× (não 2×)
-# 🔴 BUG FIX #6: Monte Carlo bootstrap REAL (não distribuição inventada)
+# 🔴 ANTI-ILUSÃO:
+#   1. Backtest SL sem look-ahead (swing points apenas do passado)
+#   2. Score com bonus groups (caps por categoria)
+#   3. Random Walk penalty (Hurst 0.47-0.53 penalizado)
+#   4. PF mínimo global 1.1
+#   5. MC confidence flag (< 30 trades = LOW)
+#   6. Slippage no backtest (0.3× ATR)
 #
-# 🟠 MATH FIX #1: Sigma calibrado do histórico (não inventado)
-# 🟠 MATH FIX #2: Hurst com validação R²
-# 🟠 MATH FIX #3: Step Index escala correta (log-returns, não step_size)
-# 🟠 MATH FIX #4: Spike detection MAD-based (não std circular)
-# 🟠 MATH FIX #5: Crash/Boom drift por REGRESSÃO LINEAR (não média)
+# 🟠 DETECÇÃO DE TENDÊNCIA:
+#   7. Market Structure (HH/HL, BOS, CHoCH)
+#   8. Multi-speed Bias (M15+H1+H4 ponderado)
+#   9. Candle Momentum Engine
+#  10. Pullback Quality Score 0-100
+#  11. Liquidity Sweep Detector
 #
-# 🟡 EDGE #1: Variance Ratio Test (detecta se há edge real)
-# 🟡 EDGE #2: Autocorrelação de Retornos (lag 1-5)
-# 🟡 EDGE #3: Volatility Clustering (GARCH effect)
-# 🟡 EDGE #4: Multi-TF Vol Ratio
-# 🟡 EDGE #5: Spike Decay Model (Crash/Boom timing)
-# 🟡 EDGE #6: Preço Teórico vs Real (GBM z-score)
-# 🟡 EDGE #7: Regime-Specific Strategy Selection
-# 🟡 EDGE #8: Entry Trigger Candle Confirmation
+# 🟡 ENTRADAS SNIPER:
+#  12. Entry Sync Score (multi-TF alignment)
+#  13. Engulfing/PinBar trigger detection
+#  14. Multi-entry levels (agressivo/ideal/sniper)
+#  15. Breakout Retest detector
+#  16. Adaptive SL (volatility-adjusted)
 #
-# 🟢 PRECISION #1: Multi-Window Vol Analysis (3 janelas)
-# 🟢 PRECISION #2: Trailing Stop por regime/tipo
+# 🟢 AGRESSIVIDADE INTELIGENTE:
+#  17. CPI Gate adaptativo por asset class
+#  18. Score override com alta confluência
+#  19. Scalp Mode (novo setup type)
+#  20. Adaptive TP (S/R aware)
+#  21. Aggressive Pyramid por grade
+#  22. Continuation patterns (flag, pennant)
+#  23. Trailing stop levels na análise
+#
+# ==============================================================================# 🟢 PRECISION #2: Trailing Stop por regime/tipo
 # 🟢 PRECISION #3: Dynamic TP com S/R awareness
 # 🟢 PRECISION #4: Scanner para TODOS gen types
 # 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
@@ -56,7 +64,7 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V21",
+    page_title="APATECO V23",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1377,6 +1385,429 @@ def atr_channel_entry(df, direction, lookback=20):
         return {"channel_entry": None, "channel_position": 0.5, "quality": "UNKNOWN"}
 
 
+# ==============================================================================
+# V23 ENGINE #1: MARKET STRUCTURE — HH/HL, BOS, CHoCH
+# ==============================================================================
+
+def detect_market_structure(df, lookback=50):
+    """Detecta Higher Highs/Lower Lows, Break of Structure, Change of Character."""
+    try:
+        if len(df) < lookback:
+            return {"trend": "UNKNOWN", "strength": 0, "bos": False, "choch": False,
+                    "hh_count": 0, "ll_count": 0, "last_event": "NONE"}
+        d = df.tail(lookback)
+        swing_h = d[d['swing_high']]['high'].values if 'swing_high' in d.columns else np.array([])
+        swing_l = d[d['swing_low']]['low'].values if 'swing_low' in d.columns else np.array([])
+        if len(swing_h) < 3 or len(swing_l) < 3:
+            return {"trend": "UNCLEAR", "strength": 0, "bos": False, "choch": False,
+                    "hh_count": 0, "ll_count": 0, "last_event": "NONE"}
+        # Count HH/HL and LL/LH
+        hh, hl, ll, lh = 0, 0, 0, 0
+        for i in range(1, min(len(swing_h), 5)):
+            if swing_h[-(i)] > swing_h[-(i+1)]: hh += 1
+            else: lh += 1
+        for i in range(1, min(len(swing_l), 5)):
+            if swing_l[-(i)] > swing_l[-(i+1)]: hl += 1
+            else: ll += 1
+        # Determine structure
+        bullish_struct = hh >= 2 and hl >= 2
+        bearish_struct = ll >= 2 and lh >= 2
+        # BOS = Break of Structure (continuation)
+        bos = False
+        last_event = "NONE"
+        if len(swing_h) >= 2 and len(swing_l) >= 2:
+            price_now = float(d['close'].iloc[-1])
+            if bullish_struct and price_now > swing_h[-2]:
+                bos = True; last_event = "BOS_BULL"
+            elif bearish_struct and price_now < swing_l[-2]:
+                bos = True; last_event = "BOS_BEAR"
+        # CHoCH = Change of Character (reversal signal)
+        choch = False
+        if len(swing_h) >= 3 and len(swing_l) >= 3:
+            # Bullish CHoCH: was making LL but now broke above last LH
+            if ll >= 2 and swing_h[-1] > swing_h[-2]:
+                choch = True; last_event = "CHOCH_BULL"
+            # Bearish CHoCH: was making HH but now broke below last HL
+            elif hh >= 2 and swing_l[-1] < swing_l[-2]:
+                choch = True; last_event = "CHOCH_BEAR"
+        strength = min(100, (hh + hl) * 15) if bullish_struct else min(100, (ll + lh) * 15) if bearish_struct else 0
+        trend = "BULLISH" if bullish_struct else "BEARISH" if bearish_struct else "RANGING"
+        return {"trend": trend, "strength": strength, "bos": bos, "choch": choch,
+                "hh_count": hh, "hl_count": hl, "ll_count": ll, "lh_count": lh,
+                "last_event": last_event}
+    except:
+        return {"trend": "UNKNOWN", "strength": 0, "bos": False, "choch": False,
+                "hh_count": 0, "ll_count": 0, "last_event": "NONE"}
+
+# ==============================================================================
+# V23 ENGINE #2: MULTI-SPEED BIAS (Fast + Medium + Slow)
+# ==============================================================================
+
+def calculate_multi_speed_bias(h4, h1, m15, m5=None):
+    """Bias com 3 velocidades: Fast(M15) 30%, Medium(H1) 40%, Slow(H4) 30%.
+    Detecta reversões ANTES do H4 virar."""
+    try:
+        # FAST BIAS (M15 + M5) — reage em 15-30 min
+        fast_sc = 0.0
+        cm = m15.iloc[-1]
+        if cm['EMA_20'] > cm['EMA_50']: fast_sc += 15
+        elif cm['EMA_20'] < cm['EMA_50']: fast_sc -= 15
+        if cm['MACD_hist'] > 0: fast_sc += 10
+        elif cm['MACD_hist'] < 0: fast_sc -= 10
+        if len(m15) >= 3:
+            macd_acc = m15['MACD_hist'].iloc[-1] - m15['MACD_hist'].iloc[-2]
+            fast_sc += max(-10, min(10, macd_acc * 100))
+        if m5 is not None and len(m5) > 5:
+            c5 = m5.iloc[-1]
+            if c5['close'] > c5['EMA_20']: fast_sc += 5
+            elif c5['close'] < c5['EMA_20']: fast_sc -= 5
+
+        # MEDIUM BIAS (H1) — confirma em 1-2h
+        med_sc = 0.0
+        c1 = h1.iloc[-1]
+        if c1['ATR'] > 0:
+            dist_ema = (c1['close'] - c1['EMA_200']) / c1['ATR']
+            med_sc += max(-20, min(20, dist_ema * 5))
+        if c1['EMA_20'] > c1['EMA_50'] > c1['EMA_200']: med_sc += 20
+        elif c1['EMA_20'] < c1['EMA_50'] < c1['EMA_200']: med_sc -= 20
+        elif c1['EMA_20'] > c1['EMA_50']: med_sc += 8
+        elif c1['EMA_20'] < c1['EMA_50']: med_sc -= 8
+        rsi1 = c1.get('RSI', 50)
+        if pd.notna(rsi1):
+            if rsi1 > 60: med_sc += 5
+            elif rsi1 < 40: med_sc -= 5
+
+        # SLOW BIAS (H4) — fundo
+        slow_sc = 0.0
+        c4 = h4.iloc[-1]
+        if c4['EMA_20'] > c4['EMA_50'] > c4['EMA_200']: slow_sc += 25
+        elif c4['EMA_20'] < c4['EMA_50'] < c4['EMA_200']: slow_sc -= 25
+        elif c4['EMA_20'] > c4['EMA_50']: slow_sc += 10
+        elif c4['EMA_20'] < c4['EMA_50']: slow_sc -= 10
+        if len(h4) >= 3:
+            hn = h4['MACD_hist'].iloc[-1]; hp = h4['MACD_hist'].iloc[-2]
+            if hn > hp: slow_sc += 8
+            elif hn < hp: slow_sc -= 8
+
+        # WEIGHTED COMBINATION
+        total = fast_sc * 0.30 + med_sc * 0.40 + slow_sc * 0.30
+        if total > 12: bias = "BULLISH"
+        elif total < -12: bias = "BEARISH"
+        else: bias = "NEUTRAL"
+        conf = min(abs(total), 60) / 60 * 100
+
+        # EARLY REVERSAL detection
+        early_reversal = False
+        reversal_dir = None
+        fast_dir = "BULL" if fast_sc > 10 else "BEAR" if fast_sc < -10 else "NEUTRAL"
+        med_dir = "BULL" if med_sc > 10 else "BEAR" if med_sc < -10 else "NEUTRAL"
+        slow_dir = "BULL" if slow_sc > 10 else "BEAR" if slow_sc < -10 else "NEUTRAL"
+        if fast_dir == med_dir and fast_dir != slow_dir and fast_dir != "NEUTRAL":
+            early_reversal = True
+            reversal_dir = "BULLISH" if fast_dir == "BULL" else "BEARISH"
+
+        return bias, round(float(conf), 1), round(float(total), 1), early_reversal, reversal_dir
+    except:
+        return "NEUTRAL", 0.0, 0.0, False, None
+
+# ==============================================================================
+# V23 ENGINE #3: CANDLE MOMENTUM ENGINE
+# ==============================================================================
+
+def candle_momentum_engine(df, direction, lookback=10):
+    """Analisa qualidade dos candles para confirmação de momentum."""
+    try:
+        if len(df) < lookback + 5:
+            return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
+        d = df.tail(lookback)
+        bodies = abs(d['close'] - d['open'])
+        ranges = d['high'] - d['low']
+        ranges = ranges.replace(0, np.nan)
+        body_ratios = (bodies / ranges).dropna()
+        is_bull = direction == "BULLISH"
+        # 1. Body ratio (conviction candles)
+        avg_br = float(body_ratios.mean()) if len(body_ratios) > 0 else 0.3
+        br_score = min(30, avg_br * 40)
+        # 2. Directional candles (% of candles in our direction)
+        if is_bull:
+            dir_count = (d['close'] > d['open']).sum()
+        else:
+            dir_count = (d['close'] < d['open']).sum()
+        dir_pct = dir_count / len(d)
+        dir_score = min(30, dir_pct * 40)
+        # 3. Candle size trend (increasing = momentum building)
+        if len(bodies) >= 5:
+            recent = bodies.iloc[-3:].mean()
+            older = bodies.iloc[:3].mean()
+            size_ratio = recent / older if older > 0 else 1
+            size_score = min(20, max(0, (size_ratio - 0.8) * 40))
+        else:
+            size_score = 0
+        # 4. Rejection wicks (wicks against direction = confirmation)
+        wick_score = 0
+        for i in range(-3, 0):
+            row = d.iloc[i]
+            rng = row['high'] - row['low']
+            if rng == 0: continue
+            if is_bull:
+                lower_wick = min(row['open'], row['close']) - row['low']
+                if lower_wick / rng > 0.5: wick_score += 7
+            else:
+                upper_wick = row['high'] - max(row['open'], row['close'])
+                if upper_wick / rng > 0.5: wick_score += 7
+        wick_score = min(20, wick_score)
+        total = br_score + dir_score + size_score + wick_score
+        conviction = "STRONG" if total > 65 else "MODERATE" if total > 40 else "WEAK" if total > 20 else "NONE"
+        return {"score": round(total, 1), "conviction": conviction, "avg_body_ratio": round(avg_br, 3),
+                "directional_pct": round(dir_pct, 2), "size_trend": round(size_score, 1)}
+    except:
+        return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
+
+# ==============================================================================
+# V23 ENGINE #4: PULLBACK QUALITY SCORE
+# ==============================================================================
+
+def pullback_quality_score(df, direction, atr):
+    """Avalia qualidade do pullback: depth, tempo, volume, rejection."""
+    try:
+        if len(df) < 20 or atr == 0:
+            return {"score": 0, "quality": "NONE", "depth_pct": 0}
+        is_bull = direction == "BULLISH"
+        d = df.tail(30)
+        # Find last impulse (biggest move in direction)
+        if is_bull:
+            impulse_high = d['high'].max()
+            impulse_low = d['low'].iloc[:15].min()
+            impulse_size = impulse_high - impulse_low
+            current = float(d['close'].iloc[-1])
+            retracement = impulse_high - current
+        else:
+            impulse_low = d['low'].min()
+            impulse_high = d['high'].iloc[:15].max()
+            impulse_size = impulse_high - impulse_low
+            current = float(d['close'].iloc[-1])
+            retracement = current - impulse_low
+        if impulse_size == 0: return {"score": 0, "quality": "NONE", "depth_pct": 0}
+        depth_pct = retracement / impulse_size
+        # 1. Depth score (30-62% = excellent, fibonacci zone)
+        if 0.30 <= depth_pct <= 0.62:
+            depth_sc = 30
+        elif 0.20 <= depth_pct <= 0.75:
+            depth_sc = 15
+        elif depth_pct < 0.15:
+            depth_sc = 5   # Too shallow
+        else:
+            depth_sc = 0   # Too deep, trend may be broken
+        # 2. Time (3-8 candles = ideal)
+        # Count candles since the impulse extreme
+        if is_bull:
+            peak_idx = d['high'].idxmax()
+        else:
+            peak_idx = d['low'].idxmin()
+        if peak_idx in d.index:
+            pb_candles = len(d.loc[peak_idx:]) - 1
+        else:
+            pb_candles = 5
+        if 3 <= pb_candles <= 8:
+            time_sc = 25
+        elif 2 <= pb_candles <= 12:
+            time_sc = 15
+        else:
+            time_sc = 5
+        # 3. Candle size decreasing in pullback (volume proxy)
+        last_5 = d.tail(5)
+        ranges = (last_5['high'] - last_5['low']).values
+        if len(ranges) >= 3:
+            decreasing = all(ranges[i] >= ranges[i+1] * 0.8 for i in range(len(ranges)-2, len(ranges)-1))
+            vol_sc = 20 if decreasing else 8
+        else:
+            vol_sc = 10
+        # 4. Rejection candle at end (pin bar, engulfing)
+        last = d.iloc[-1]
+        prev = d.iloc[-2] if len(d) > 1 else last
+        rng = last['high'] - last['low']
+        reject_sc = 0
+        if rng > 0:
+            if is_bull:
+                lower_wick = min(last['open'], last['close']) - last['low']
+                if lower_wick / rng > 0.6 and last['close'] > last['open']:
+                    reject_sc = 25  # Pin bar rejection
+                elif last['close'] > last['open'] and abs(last['close'] - last['open']) > abs(prev['close'] - prev['open']) * 1.3:
+                    reject_sc = 20  # Bullish engulfing
+                elif last['close'] > last['open']:
+                    reject_sc = 10  # Normal bullish
+            else:
+                upper_wick = last['high'] - max(last['open'], last['close'])
+                if upper_wick / rng > 0.6 and last['close'] < last['open']:
+                    reject_sc = 25
+                elif last['close'] < last['open'] and abs(last['close'] - last['open']) > abs(prev['close'] - prev['open']) * 1.3:
+                    reject_sc = 20
+                elif last['close'] < last['open']:
+                    reject_sc = 10
+        total = depth_sc + time_sc + vol_sc + reject_sc
+        quality = "EXCELLENT" if total >= 70 else "GOOD" if total >= 50 else "MODERATE" if total >= 30 else "WEAK"
+        return {"score": round(total, 1), "quality": quality, "depth_pct": round(depth_pct, 3),
+                "pb_candles": pb_candles, "rejection": reject_sc > 15}
+    except:
+        return {"score": 0, "quality": "NONE", "depth_pct": 0}
+
+# ==============================================================================
+# V23 ENGINE #5: LIQUIDITY SWEEP DETECTOR
+# ==============================================================================
+
+def detect_liquidity_sweep(df, atr):
+    """Detecta sweeps de liquidez em swing points."""
+    try:
+        if len(df) < 30 or atr == 0:
+            return {"sweep": False, "type": "NONE", "level": 0}
+        d = df.tail(40)
+        sh = d[d['swing_high']]['high'] if 'swing_high' in d.columns else pd.Series(dtype=float)
+        sl = d[d['swing_low']]['low'] if 'swing_low' in d.columns else pd.Series(dtype=float)
+        last = d.iloc[-1]
+        threshold = atr * 0.4  # Sweep = ultrapassa por menos de 0.4× ATR
+        # Check bull sweep (price dipped below swing low then closed above)
+        if len(sl) >= 2:
+            recent_low = sl.iloc[-1]
+            if last['low'] < recent_low - 0.01 and last['close'] > recent_low and (recent_low - last['low']) < threshold:
+                return {"sweep": True, "type": "BULL_SWEEP", "level": round(float(recent_low), 5),
+                        "overshoot": round(float(recent_low - last['low']), 5)}
+        # Check bear sweep (price spiked above swing high then closed below)
+        if len(sh) >= 2:
+            recent_high = sh.iloc[-1]
+            if last['high'] > recent_high + 0.01 and last['close'] < recent_high and (last['high'] - recent_high) < threshold:
+                return {"sweep": True, "type": "BEAR_SWEEP", "level": round(float(recent_high), 5),
+                        "overshoot": round(float(last['high'] - recent_high), 5)}
+        return {"sweep": False, "type": "NONE", "level": 0}
+    except:
+        return {"sweep": False, "type": "NONE", "level": 0}
+
+# ==============================================================================
+# V23 ENGINE #6: ENTRY SYNC SCORE (Multi-TF alignment at entry moment)
+# ==============================================================================
+
+def entry_sync_score(h4, h1, m15, m5, direction):
+    """Verifica se TODOS os timeframes estão alinhados NO MOMENTO da entrada."""
+    try:
+        is_bull = direction == "BULLISH"
+        total = 0
+        # H4 bias aligned (30 points)
+        c4 = h4.iloc[-1]
+        if is_bull:
+            if c4['close'] > c4['EMA_200'] and c4['MACD_hist'] > 0: total += 30
+            elif c4['close'] > c4['EMA_200']: total += 15
+        else:
+            if c4['close'] < c4['EMA_200'] and c4['MACD_hist'] < 0: total += 30
+            elif c4['close'] < c4['EMA_200']: total += 15
+        # H1 momentum aligned (25 points)
+        c1 = h1.iloc[-1]
+        if is_bull:
+            if c1['MACD_hist'] > 0 and c1['close'] > c1['EMA_20']: total += 25
+            elif c1['MACD_hist'] > 0 or c1['close'] > c1['EMA_20']: total += 12
+        else:
+            if c1['MACD_hist'] < 0 and c1['close'] < c1['EMA_20']: total += 25
+            elif c1['MACD_hist'] < 0 or c1['close'] < c1['EMA_20']: total += 12
+        # M15 candle confirming (25 points)
+        cm = m15.iloc[-1]
+        if is_bull:
+            if cm['close'] > cm['open'] and cm['close'] > cm['EMA_20']: total += 25
+            elif cm['close'] > cm['open']: total += 12
+        else:
+            if cm['close'] < cm['open'] and cm['close'] < cm['EMA_20']: total += 25
+            elif cm['close'] < cm['open']: total += 12
+        # M5 trigger (20 points)
+        if m5 is not None and len(m5) > 3:
+            c5 = m5.iloc[-1]
+            if is_bull:
+                if c5['close'] > c5['open'] and c5['close'] > c5['EMA_20']: total += 20
+                elif c5['close'] > c5['open']: total += 10
+            else:
+                if c5['close'] < c5['open'] and c5['close'] < c5['EMA_20']: total += 20
+                elif c5['close'] < c5['open']: total += 10
+        ready = "READY" if total >= 60 else "ALMOST" if total >= 40 else "WAIT"
+        return {"score": total, "ready": ready}
+    except:
+        return {"score": 0, "ready": "WAIT"}
+
+# ==============================================================================
+# V23 ENGINE #7: BREAKOUT RETEST DETECTOR
+# ==============================================================================
+
+def detect_breakout_retest(df, sr_levels, direction, atr):
+    """Detecta quando preço retesta um nível S/R quebrado."""
+    try:
+        if not sr_levels or len(df) < 10 or atr == 0:
+            return {"retest": False, "level": None, "quality": "NONE"}
+        is_bull = direction == "BULLISH"
+        price = float(df['close'].iloc[-1])
+        for sr in sr_levels[:5]:
+            lvl = sr['price']
+            dist = abs(price - lvl) / atr
+            # Price is near the level (within 0.5 ATR)
+            if dist < 0.5:
+                # Check if it was broken recently (price was on other side 5-15 bars ago)
+                lookback_prices = df['close'].iloc[-15:-3]
+                if is_bull:
+                    # For bull retest: price should have been BELOW level, now ABOVE
+                    was_below = (lookback_prices < lvl).any()
+                    now_above = price > lvl
+                    if was_below and now_above:
+                        return {"retest": True, "level": lvl, "quality": "GOOD",
+                                "type": "SUPPORT_RETEST", "distance_atr": round(dist, 2)}
+                else:
+                    was_above = (lookback_prices > lvl).any()
+                    now_below = price < lvl
+                    if was_above and now_below:
+                        return {"retest": True, "level": lvl, "quality": "GOOD",
+                                "type": "RESISTANCE_RETEST", "distance_atr": round(dist, 2)}
+        return {"retest": False, "level": None, "quality": "NONE"}
+    except:
+        return {"retest": False, "level": None, "quality": "NONE"}
+
+# ==============================================================================
+# V23 ENGINE #8: CONTINUATION PATTERNS (Flag, Pennant)
+# ==============================================================================
+
+def detect_continuation_pattern(df, direction, atr):
+    """Detecta flags e pennants — padrões de continuação de alta probabilidade."""
+    try:
+        if len(df) < 20 or atr == 0:
+            return {"pattern": "NONE", "confidence": 0}
+        is_bull = direction == "BULLISH"
+        d = df.tail(25)
+        # Look for impulse followed by consolidation
+        # Impulse: large move in direction (>2 ATR in 3-5 candles)
+        for start in range(0, min(10, len(d)-10)):
+            segment = d.iloc[start:start+5]
+            move = float(segment['close'].iloc[-1] - segment['open'].iloc[0])
+            if is_bull and move > atr * 2:
+                # Found bullish impulse, check for flag after
+                flag = d.iloc[start+5:]
+                if len(flag) >= 3:
+                    flag_range = float(flag['high'].max() - flag['low'].min())
+                    flag_drift = float(flag['close'].iloc[-1] - flag['open'].iloc[0])
+                    # Flag: tight range, slight counter-trend drift
+                    if flag_range < atr * 2 and flag_drift < 0:
+                        return {"pattern": "BULL_FLAG", "confidence": min(80, 50 + int(move/atr * 10)),
+                                "impulse_size": round(move, 5), "flag_range": round(flag_range, 5)}
+                    # Pennant: decreasing range
+                    elif flag_range < atr * 1.5:
+                        return {"pattern": "BULL_PENNANT", "confidence": min(70, 40 + int(move/atr * 10)),
+                                "impulse_size": round(move, 5)}
+            elif not is_bull and move < -atr * 2:
+                flag = d.iloc[start+5:]
+                if len(flag) >= 3:
+                    flag_range = float(flag['high'].max() - flag['low'].min())
+                    flag_drift = float(flag['close'].iloc[-1] - flag['open'].iloc[0])
+                    if flag_range < atr * 2 and flag_drift > 0:
+                        return {"pattern": "BEAR_FLAG", "confidence": min(80, 50 + int(abs(move)/atr * 10)),
+                                "impulse_size": round(abs(move), 5), "flag_range": round(flag_range, 5)}
+                    elif flag_range < atr * 1.5:
+                        return {"pattern": "BEAR_PENNANT", "confidence": min(70, 40 + int(abs(move)/atr * 10)),
+                                "impulse_size": round(abs(move), 5)}
+        return {"pattern": "NONE", "confidence": 0}
+    except:
+        return {"pattern": "NONE", "confidence": 0}
+
 
 # ==============================================================================
 # V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
@@ -2295,7 +2726,7 @@ def detect_swing_level(df, direction, atr_mult=1.5):
 # ==============================================================================
 
 def run_walk_forward_v21(df, bias, profile, n_folds=4):
-    """V21: VR e ACF recalculados POR FOLD (sem look-ahead bias)"""
+    """V23: Slippage added, SL without look-ahead, honest results"""
     spread = profile.get('spread', 0.05)
     sl_mult = profile.get('sl_atr_mult', 2.5)
     fold_size = len(df) // (n_folds + 1)
@@ -2358,13 +2789,19 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             if not sig:
                 continue
 
-            # Executar trade
-            entry = row['close'] + (spread if sig == "BUY" else -spread)
-            sl_base = detect_swing_level(df.iloc[:i+1], sig, sl_mult)
+            # V23: Slippage realista (0.3× ATR)
+            slippage = atr * 0.3
+            entry = row['close'] + (spread + slippage if sig == "BUY" else -(spread + slippage))
+
+            # V23 FIX: SL sem look-ahead — usar apenas min/max dos últimos 20 candles
+            past_data = df.iloc[max(0,i-20):i+1]
             if sig == "BUY":
+                sl_base = past_data['low'].min() - atr * 0.5
                 sl = max(entry - sl_mult * atr, sl_base)
             else:
+                sl_base = past_data['high'].max() + atr * 0.5
                 sl = min(entry + sl_mult * atr, sl_base)
+
             risk = abs(entry - sl)
             if risk == 0: risk = atr
 
@@ -2497,12 +2934,29 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     vs=15 if dr<0.5 else(10 if dr<1.0 else(5 if dr<1.5 else 0))
     hs=min((win_rate*0.15)+(profit_factor*5),25)
     base=ts+mp+pattern_score+vs+hs
-    keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
-          'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
-          'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
-          'cpi_bonus','markov_bonus','spectral_bonus',
-          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
-    bonus=min(sum(bonuses.get(k,0) for k in keys),130)  # V21+: raised cap for new engines
+
+    # V23: BONUS GROUPS com caps por categoria (anti-inflação)
+    grp_trend = min(20, bonuses.get('ribbon_bonus',0) + bonuses.get('coherence_bonus',0) +
+                    bonuses.get('alignment_bonus',0) + bonuses.get('adx_slope_bonus',0))
+    grp_stat = min(20, bonuses.get('vr_bonus',0) + bonuses.get('acf_bonus',0) +
+                   bonuses.get('hurst_bonus',0) + bonuses.get('cpi_bonus',0))
+    grp_struct = min(18, bonuses.get('fib_bonus',0) + bonuses.get('sr_bonus',0) +
+                     bonuses.get('divergence_bonus',0))
+    grp_gen = min(12, bonuses.get('generator_bonus',0))
+    grp_mom = min(18, bonuses.get('mom_accel_bonus',0) + bonuses.get('candle_bonus',0) +
+                  bonuses.get('volume_bonus',0) + bonuses.get('zscore_bonus',0) +
+                  bonuses.get('consecutive_bonus',0))
+    grp_dist = min(10, bonuses.get('distribution_bonus',0))
+    grp_market = min(8, bonuses.get('regime_bonus',0) + bonuses.get('markov_bonus',0) +
+                     bonuses.get('spectral_bonus',0))
+    grp_storm = min(25, bonuses.get('storm_bonus',0))
+    # V23 new bonuses
+    grp_v23 = min(20, bonuses.get('market_structure_bonus',0) + bonuses.get('pullback_bonus',0) +
+                  bonuses.get('sweep_bonus',0) + bonuses.get('entry_sync_bonus',0) +
+                  bonuses.get('continuation_bonus',0) + bonuses.get('candle_mom_bonus',0) +
+                  bonuses.get('retest_bonus',0))
+
+    bonus = grp_trend + grp_stat + grp_struct + grp_gen + grp_mom + grp_dist + grp_market + grp_storm + grp_v23
     total=base+bonus
     if total>=190: g="S"
     elif total>=155: g="A++"
@@ -2511,8 +2965,14 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     elif total>=65: g="B"
     elif total>=45: g="C"
     else: g="D"
+
+    all_keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
+          'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
+          'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
+          'cpi_bonus','markov_bonus','spectral_bonus',
+          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
-        *[bonuses.get(k,0) for k in keys],bonus,total,g)
+        *[bonuses.get(k,0) for k in all_keys],bonus,total,g)
 
 # ==============================================================================
 # STORM DETECTOR V20
@@ -2533,13 +2993,18 @@ def calculate_storm_bonus(sd):
         (sd.get('coherence') in ["PERFECT","STRONG"],"TF Coherence"),
         (sd.get('candle_quality') in ["EXCELLENT","GOOD"],"Candle Struct"),
         (sd.get('mom_accel'),"Mom Accel"),
+        # V23 new checks
+        (sd.get('mkt_struct'),"Mkt Structure"),
+        (sd.get('candle_mom'),"Candle Mom"),
+        (sd.get('pullback'),"Pullback Q"),
+        (sd.get('entry_sync'),"Entry Sync"),
     ]
     for c,l in checks:
         if c: met+=1; lst.append(l)
-    if met>=13: return "PERFECT_STORM",25,lst
-    elif met>=10: return "STRONG_CONFLUENCE",20,lst
-    elif met>=7: return "GOOD_CONFLUENCE",15,lst
-    elif met>=5: return "MODERATE",10,lst
+    if met>=15: return "PERFECT_STORM",25,lst
+    elif met>=12: return "STRONG_CONFLUENCE",20,lst
+    elif met>=9: return "GOOD_CONFLUENCE",15,lst
+    elif met>=6: return "MODERATE",10,lst
     return None,0,lst
 
 # ==============================================================================
@@ -2814,65 +3279,60 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V21+ — PRECISION PREDICTABILITY ENGINE [Gemini 3 Pro]
-Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica
+FUNÇÃO: ANALISTA V23 — PRECISION SNIPER ENGINE [Gemini 3 Pro]
+Missão: Explorar edges estatísticos reais nos sintéticos Deriv com entradas SNIPER
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V21+ — PRECISION ENGINE (V21 + 7 motores de precisão):**
-Base V21 (16 melhorias) PLUS:
-- ADX Slope Detection (captura tendências ANTES do ADX cruzar threshold)
-- EMA Ribbon Spread Analysis (qualidade da tendência via expansão da ribbon)
-- Multi-TF Trend Coherence Scoring (coerência H4→H1→M15→M5)
-- VWAP Proxy Analysis (zonas institucionais de entrada)
-- Candle Structure Scoring (qualidade dos candles para entrada)
-- Momentum Acceleration (timing ótimo via taxa de mudança do MACD)
-- Dynamic ATR Channel (entradas ajustadas por volatilidade)
-- Entry Refinement Engine (ATR channel + VWAP para entradas precisas)
-
-Base V21:
-- Sample Entropy, Permutation Entropy, FFT, Markov Chain
-- CPI 0-100, Regime Transition, Dynamic Bias
-- Enhanced Momentum, Edge Correlation Matrix
-- Optimal Holding Period, Look-ahead bias removido
+**V23 — PRECISION SNIPER (23 upgrades):**
+Anti-Ilusão: Score com bonus groups (sem inflação), Random Walk penalty,
+  PF mínimo 1.1, Slippage no backtest, MC confidence flag
+Detecção de Tendência: Market Structure (HH/HL, BOS, CHoCH),
+  Multi-Speed Bias (M15+H1+H4), Candle Momentum Engine
+Entradas Sniper: Pullback Quality Score, Liquidity Sweep Detector,
+  Entry Sync Score, Breakout Retest, Multi-entry levels
+Agressividade: CPI Gate adaptativo, Score override, Scalp Mode,
+  Adaptive TP (S/R aware), Continuation Patterns
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V21+: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/220 | **CPI:** {CPI}/100
-**Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
+## ⚡ VEREDICTO V23: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE}/200 | **CPI:** {CPI}/100
+**Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE} | **Sync:** {ENTRY_SYNC}
+
+### 🏗️ ESTRUTURA DE MERCADO
+- Market Structure: {trend} (HH:{hh} HL:{hl} | BOS:{bos} CHoCH:{choch})
+- Bias Multi-Speed: Fast={fast} Med={med} Slow={slow}
+- Early Reversal: {Y/N}
 
 ### 🧮 MODELO DO GERADOR
-- Sigma calibrado: {X}% | Vol Ratio (3 janelas): S={short} M={med} L={long}
+- Sigma calibrado: {X}% | Vol Ratio: S={short} M={med} L={long}
 - Consensus: {SIGNAL} → Direção: {compress_direction}
-- Preço teórico z: {z_price} ({deviation_signal})
 
 ### 📊 EDGE ESTATÍSTICO
-- Variance Ratio: {VR edge type} ({N} períodos significativos)
-- Autocorrelação: lag-1={acf_1} ({type})
-- Vol Clustering: {regime}
-- Distribuição: Skew={S} Kurt={K} Tails={T}
+- Variance Ratio: {type} ({N} significativos)
+- Autocorrelação: lag-1={acf_1}
+- Random Walk Check: Hurst={H} (penalidade: {penalty})
 
-### 🎯 PRECISÃO DE ENTRADA
-- ADX Phase: {phase} (slope={slope})
-- EMA Ribbon: {quality} ({direction}) - Expanding: {Y/N}
-- TF Coherence: {coherence} ({direction})
-- Candle Structure: {quality} ({pattern_type})
-- Mom Acceleration: {phase} (confidence={X}%)
-- ATR Channel: {quality} (position={X})
-- VWAP Zone: {zone} ({entry_quality})
+### 🎯 ENTRADAS SNIPER
+- Entry Sync: {score}/100 ({ready})
+- Candle Momentum: {conviction} ({score})
+- Pullback Quality: {quality} (depth={depth}%)
+- Liquidity Sweep: {type}
+- Continuation: {pattern}
+- Entries: Agressivo={E1} | Ideal={E2} | Sniper={E3}
 
 ### 🎯 PLANO DE TRADE
-{Entradas + Pirâmide + Smart TP}
+{Entradas + Trailing + Smart TP adaptativo}
+BE em: {trail_be} | Trail 1R em: {trail_1r}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V21+ Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
-e Autocorrelação, combinados com PRECISÃO DE ENTRADA via EMA Ribbon,
-Trend Coherence e Momentum Acceleration. Se VR mostra random walk,
-dizer claramente que não há edge estatístico operável.
-Quando Trend Coherence é PERFECT, enfatizar alta confiança.
-Quando candle structure é WEAK, recomendar cautela ou esperar melhor setup.}
+*V23 Insight:* {Usar Market Structure para confirmar direção. Se BOS detectado,
+alta confiança. Se CHoCH, possível reversão. Pullback Quality EXCELLENT =
+entrada sniper ideal. Se Random Walk penalty ativo, dizer claramente
+que NÃO HÁ edge. Se Entry Sync < 60, recomendar ESPERAR.
+Quando Liquidity Sweep detectado, entrada de altíssima probabilidade.}
 """
 
 # ==============================================================================
@@ -2888,10 +3348,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     c1, c4, cm = h1.iloc[-1], h4.iloc[-1], m15.iloc[-1]
     c5 = m5.iloc[-1] if m5 is not None and len(m5) > 0 else None
 
-    # V21 FIX-B: Dynamic Bias
-    bias, bias_confidence, bias_score = calculate_dynamic_bias(h4, h1)
+    # V23: Multi-Speed Bias (substitui V21 dynamic bias)
+    bias, bias_confidence, bias_score, early_reversal, reversal_dir = calculate_multi_speed_bias(h4, h1, m15, m5)
     bias_old = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
     if bias == "NEUTRAL": bias = bias_old  # fallback
+    # V23: Early reversal override — se fast+medium concordam, seguir
+    if early_reversal and reversal_dir:
+        bias = reversal_dir
     adx = c4['ADX']
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
@@ -2943,6 +3406,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     candle_struct = candle_structure_score(m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
+
+    # ═══ V23 SNIPER ENGINES ═══
+    mkt_struct = detect_market_structure(h1)
+    candle_mom = candle_momentum_engine(m15, bias, lookback=10)
+    pb_quality = pullback_quality_score(m15, bias, c1['ATR'])
+    liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
+    entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
+    cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -3071,6 +3542,63 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if (bias == "BULLISH" and mom_accel.get('phase') == "BULL_DECELERATING") or \
        (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
         mom_accel_bonus = -3  # Slight penalty
+
+    # ═══ V23 SNIPER BONUSES ═══
+    # Market Structure bonus
+    market_structure_bonus = 0
+    if mkt_struct.get('bos') and mkt_struct.get('trend') == bias:
+        market_structure_bonus = 8  # Break of Structure in our direction
+    elif mkt_struct.get('choch'):
+        if ("BULL" in str(mkt_struct.get('last_event','')) and bias == "BULLISH") or \
+           ("BEAR" in str(mkt_struct.get('last_event','')) and bias == "BEARISH"):
+            market_structure_bonus = 10  # CHoCH confirming our direction
+    elif mkt_struct.get('trend') == bias:
+        market_structure_bonus = 4
+
+    # Candle Momentum bonus
+    candle_mom_bonus = 0
+    if candle_mom.get('conviction') == "STRONG": candle_mom_bonus = 8
+    elif candle_mom.get('conviction') == "MODERATE": candle_mom_bonus = 4
+
+    # Pullback Quality bonus
+    pullback_bonus = 0
+    if pb_quality.get('quality') == "EXCELLENT": pullback_bonus = 8
+    elif pb_quality.get('quality') == "GOOD": pullback_bonus = 5
+    elif pb_quality.get('quality') == "MODERATE": pullback_bonus = 2
+
+    # Liquidity Sweep bonus
+    sweep_bonus = 0
+    if liq_sweep.get('sweep'):
+        if (liq_sweep['type'] == "BULL_SWEEP" and bias == "BULLISH") or \
+           (liq_sweep['type'] == "BEAR_SWEEP" and bias == "BEARISH"):
+            sweep_bonus = 8
+
+    # Entry Sync bonus
+    entry_sync_bonus = 0
+    if entry_sync.get('ready') == "READY": entry_sync_bonus = 6
+    elif entry_sync.get('ready') == "ALMOST": entry_sync_bonus = 3
+
+    # Continuation Pattern bonus
+    continuation_bonus = 0
+    if cont_pattern.get('pattern') != "NONE":
+        continuation_bonus = min(8, cont_pattern.get('confidence', 0) // 10)
+
+    # Breakout Retest bonus (calculated after SR levels)
+    retest_bonus = 0
+
+    # V23: RANDOM WALK PENALTY
+    random_walk_penalty = 0
+    if 0.47 <= hurst_val <= 0.53 and hurst_r2 >= 0.7:
+        random_walk_penalty = -20  # Honest: no edge in random walk
+
+    # V23: CPI GATE ADAPTATIVO por asset class
+    vol_class = profile.get('vol_class', 'MEDIUM')
+    cpi_min_map = {
+        'ULTRA_LOW': 20, 'LOW': 18, 'MEDIUM': 16,
+        'HIGH': 14, 'EXTREME': 12,
+        'BOOM': 10, 'CRASH': 10, 'STEP': 8
+    }
+    cpi_gate_min = cpi_min_map.get(vol_class, 18)
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
@@ -3202,6 +3730,38 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "BREAKOUT"; setup_type = "BREAKOUT"
                 return
 
+        # 5. V23: BREAKOUT RETEST (pullback to broken S/R)
+        br_retest = detect_breakout_retest(h1, sr_levels, direction, c1['ATR'])
+        if br_retest.get('retest') and pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
+            d = "LONG" if is_long else "SHORT"
+            sig = f"{d} (RETEST)"
+            if is_long:
+                sl_val = br_retest['level'] - c1['ATR'] * 1.2
+            else:
+                sl_val = br_retest['level'] + c1['ATR'] * 1.2
+            entry_type = f"S/R Retest ({br_retest.get('type','')}) PB:{pb_quality['quality']}"
+            trade_style = "RETEST"; setup_type = "BREAKOUT_RETEST"
+            return
+
+        # 6. V23: SCALP (M15 momentum + M5 trigger — rápido, tight)
+        if entry_sync.get('ready') == "READY" and candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
+            if c1['ADX'] > 18:  # Minimal trend requirement
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (SCALP)"
+                sl_val = entry - c1['ATR'] * 1.2 if is_long else entry + c1['ATR'] * 1.2
+                entry_type = f"Scalp — Sync:{entry_sync['score']} Mom:{candle_mom['conviction']}"
+                trade_style = "SCALP"; setup_type = "SCALP"
+                return
+
+        # 7. V23: CONTINUATION PATTERN (Flag/Pennant)
+        if cont_pattern.get('pattern') != "NONE" and cont_pattern.get('confidence', 0) > 50:
+            d = "LONG" if is_long else "SHORT"
+            sig = f"{d} (CONTINUATION)"
+            sl_val = entry - c1['ATR'] * adapted_profile['sl_atr_mult'] if is_long else entry + c1['ATR'] * adapted_profile['sl_atr_mult']
+            entry_type = f"{cont_pattern['pattern']} (conf:{cont_pattern['confidence']}%)"
+            trade_style = "DAY"; setup_type = "CONTINUATION"
+            return
+
     # For Crash/Boom: try BOTH directions (drift can be opposite to bias)
     if gen_type in ["BOOM","CRASH"]:
         drift_dir = gen.get('drift_direction','')
@@ -3214,6 +3774,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ V21+ ENTRY REFINEMENT ═══
     # Use ATR channel and VWAP for more precise entry when setup detected
     if "LONG" in sig or "SHORT" in sig:
+        # V23: Breakout Retest bonus
+        br_rt = detect_breakout_retest(h1, sr_levels, bias, c1['ATR'])
+        if br_rt.get('retest'): retest_bonus = 6
+
         ch_quality = atr_channel.get('quality', 'UNKNOWN')
         ch_entry = atr_channel.get('channel_entry')
         if ch_quality in ['OPTIMAL', 'GOOD'] and ch_entry is not None:
@@ -3239,18 +3803,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * c1['ATR']:
         sl_val = entry + adapted_profile['sl_atr_mult'] * c1['ATR']
 
-    # Storm
+    # Storm — V23: Added new checks
     storm_data = {'adx':adx,'momentum_score':momentum,'pattern_score':pat_score,
         'divergence':divergence,'fib':fib_level is not None,'sr_touch':sr_touch,
         'alignment':align_type=="PERFECT",'bb_squeeze':bb_compression,
         'trending':"TRENDING" in regime,'volume':vol_confirmed,'hurst_trending':hurst_trending,
         'zscore':zscore_favorable,'gen_signal':gen_bonus>0,'dist':dist_favorable,
         'vr_edge':vr.get('has_edge',False),'acf_edge':acf.get('has_pattern',False),
-        # V21+ new storm checks
+        # V21+ storm checks
         'ribbon_quality':ema_ribbon.get('quality'),
         'coherence':trend_coherence.get('coherence'),
         'candle_quality':candle_struct.get('quality'),
-        'mom_accel':mom_accel_bonus > 0}
+        'mom_accel':mom_accel_bonus > 0,
+        # V23 storm checks
+        'mkt_struct': mkt_struct.get('bos') or mkt_struct.get('choch'),
+        'candle_mom': candle_mom.get('conviction') in ['STRONG', 'MODERATE'],
+        'pullback': pb_quality.get('quality') in ['EXCELLENT', 'GOOD'],
+        'entry_sync': entry_sync.get('ready') == 'READY',
+        }
     storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
 
     if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
@@ -3279,37 +3849,99 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
         adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
         coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
-        mom_accel_bonus=mom_accel_bonus)
+        mom_accel_bonus=mom_accel_bonus,
+        # V23 bonuses
+        market_structure_bonus=market_structure_bonus,
+        candle_mom_bonus=candle_mom_bonus, pullback_bonus=pullback_bonus,
+        sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
+        continuation_bonus=continuation_bonus, retest_bonus=retest_bonus)
 
-    # Filters
-    configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
+    # Filters — V23: Adaptive, honest, but more aggressive where appropriate
+    configs = {"PERFECT_STORM":(90,1.3),"BREAKOUT":(55,1.3),"MEAN_REVERSION":(40,1.1),
                "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
-               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4)}
-    ms, mpf = configs.get(setup_type, (70, 1.4))
+               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(60,1.3),
+               "SCALP":(35,1.1),"BREAKOUT_RETEST":(45,1.2),"CONTINUATION":(40,1.1)}
+    ms, mpf = configs.get(setup_type, (60, 1.3))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
+
+    # V23: Score override — reduce minimums with ultra-high confluence
+    if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
+        ms = int(ms * 0.80)  # 20% reduction
+    if sim['WR'] > 65 and sim['PF'] > 1.8:
+        ms = int(ms * 0.85)  # 15% reduction
+    if storm_level in ["PERFECT_STORM", "STRONG_CONFLUENCE"]:
+        ms = int(ms * 0.75)  # 25% reduction — trust the confluence
+
     if "BLOCKED" not in sig and sig != "MONITORING":
         fails = []
-        if score.total < ms: fails.append(f"SCORE={score.total:.0f}<{ms}")
-        if cpi_val < 25 and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<25")
+        # V23: Random Walk penalty applied to score
+        effective_score = score.total + random_walk_penalty
+        if effective_score < ms: fails.append(f"SCORE={effective_score:.0f}<{ms}")
+        # V23: CPI gate ADAPTATIVO por asset class
+        if cpi_val < cpi_gate_min and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<{cpi_gate_min}")
         if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
-        if sim['PF'] < mpf and not is_gen_setup: fails.append(f"PF={sim['PF']}<{mpf}")
+        # V23: PF mínimo global 1.1 (honesto)
+        pf_min = max(mpf, 1.1) if not is_gen_setup else mpf
+        if sim['PF'] < pf_min and not is_gen_setup: fails.append(f"PF={sim['PF']:.1f}<{pf_min:.1f}")
+        # V23: Entry Sync check — don't enter if TFs misaligned
+        if entry_sync.get('ready') == "WAIT" and setup_type not in ["MEAN_REVERSION", "GEN_VOL_COMPRESS", "GEN_PRICE_DEV"]:
+            fails.append(f"SYNC={entry_sync.get('score',0)}<60")
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
-    # Targets — 🟢 PRECISION #3: Smart TP
+    # Targets — V23: Adaptive TP (S/R aware + regime aware)
     risk = abs(entry - sl_val)
     if risk == 0: risk = float(c1['ATR'])
     tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
           "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
           "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
-          "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r'])}
+          "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r']),
+          "SCALP":(1.5,2.5),"BREAKOUT_RETEST":(2.5,4),"CONTINUATION":(2,3.5)}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
+
+    # V23: Regime-adaptive TP
+    if "TRENDING" in regime and adx > 30:
+        r1 *= 1.3; r2 *= 1.3  # Extend TP in strong trends
+    elif "RANGING" in regime:
+        r1 = min(r1, 2.0); r2 = min(r2, 3.0)  # Cap TP in ranges
+
     direction = "LONG" if "LONG" in sig else "SHORT"
     tp1, tp2 = smart_tp(entry, direction, risk, r1, r2, sr_levels)
+
+    # V23: Cap TP at nearest opposing S/R
+    if sr_levels and ("LONG" in sig or "SHORT" in sig):
+        for sr in sr_levels[:5]:
+            if "LONG" in sig and sr['type'] == 'RESISTANCE' and sr['price'] > entry:
+                sr_tp_cap = sr['price'] - c1['ATR'] * 0.2
+                if tp2 > sr_tp_cap and sr_tp_cap > entry:
+                    tp2 = sr_tp_cap
+                    if tp1 > tp2: tp1 = entry + (tp2 - entry) * 0.6
+                break
+            elif "SHORT" in sig and sr['type'] == 'SUPPORT' and sr['price'] < entry:
+                sr_tp_cap = sr['price'] + c1['ATR'] * 0.2
+                if tp2 < sr_tp_cap and sr_tp_cap < entry:
+                    tp2 = sr_tp_cap
+                    if tp1 < tp2: tp1 = entry - (entry - tp2) * 0.6
+                break
+
+    # V23: Multi-entry levels
+    entry_ideal = entry  # Current close
+    entry_aggressive = entry  # Market
+    entry_sniper = entry  # Pullback level
+    if "LONG" in sig:
+        entry_sniper = min(entry, float(c1['EMA_20'])) if abs(float(c1['close']) - float(c1['EMA_20'])) < c1['ATR'] * 1.5 else entry
+        entry_aggressive = entry + c1['ATR'] * 0.1
+    elif "SHORT" in sig:
+        entry_sniper = max(entry, float(c1['EMA_20'])) if abs(float(c1['close']) - float(c1['EMA_20'])) < c1['ATR'] * 1.5 else entry
+        entry_aggressive = entry - c1['ATR'] * 0.1
+
+    # V23: Trailing stop levels
+    trail_be = entry + risk * 0.5 if "LONG" in sig else entry - risk * 0.5  # Move to BE at 0.5R
+    trail_1 = entry + risk * 1.0 if "LONG" in sig else entry - risk * 1.0  # Trail at 1R
 
     # Pyramid
     pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
-    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE","SCALP","RETEST","CONTINUATION"])
 
     imgs = [
         plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
@@ -3352,6 +3984,25 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🏦 VWAP Zone ({vwap_data.get('zone','?')})")
     if adx_slope.get('phase') == 'TREND_FORMING':
         confs.append(f"📈 ADX Forming (slope={adx_slope.get('slope',0):.2f})")
+    # V23 confluences
+    if mkt_struct.get('bos'):
+        confs.append(f"🔥 BOS ({mkt_struct.get('last_event','?')})")
+    if mkt_struct.get('choch'):
+        confs.append(f"⚡ CHoCH ({mkt_struct.get('last_event','?')})")
+    if candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
+        confs.append(f"💪 CandleMom {candle_mom['conviction']} ({candle_mom.get('score',0):.0f})")
+    if pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
+        confs.append(f"🎯 Pullback {pb_quality['quality']} ({pb_quality.get('depth_pct',0):.0%})")
+    if liq_sweep.get('sweep'):
+        confs.append(f"💧 {liq_sweep['type']}")
+    if entry_sync.get('ready') == 'READY':
+        confs.append(f"✅ Entry Sync {entry_sync['score']}/100")
+    if cont_pattern.get('pattern') != 'NONE':
+        confs.append(f"🚩 {cont_pattern['pattern']} ({cont_pattern.get('confidence',0)}%)")
+    if early_reversal:
+        confs.append(f"⚡ EARLY REVERSAL → {reversal_dir}")
+    if retest_bonus > 0:
+        confs.append("🔄 Breakout Retest")
 
     risks = []
     if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
@@ -3372,6 +4023,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
     if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
+    # V23 risks
+    if random_walk_penalty < 0: risks.append(f"🚫 RANDOM WALK (H:{hurst_val:.2f} R²:{hurst_r2:.2f}) — No statistical edge")
+    if entry_sync.get('ready') == 'WAIT': risks.append(f"⏳ TF Sync LOW ({entry_sync.get('score',0)}/100)")
+    if candle_mom.get('conviction') == 'NONE': risks.append("⚠️ Candle momentum NONE")
+    if mkt_struct.get('choch') and mkt_struct.get('trend') != bias:
+        risks.append(f"⚡ CHoCH AGAINST bias ({mkt_struct.get('last_event','?')})")
+    if sim.get('TOTAL_TRADES', 0) < 20: risks.append(f"⚠️ Low trades ({sim.get('TOTAL_TRADES',0)})")
+    if early_reversal: risks.append(f"⚡ EARLY REVERSAL active — H4 not confirmed")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -3431,6 +4090,26 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "CANDLE_STRUCT": convert_np(candle_struct),
         "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
+        # V23 precision data
+        "MKT_STRUCTURE": convert_np(mkt_struct),
+        "CANDLE_MOMENTUM": convert_np(candle_mom),
+        "PULLBACK_QUALITY": convert_np(pb_quality),
+        "LIQ_SWEEP": convert_np(liq_sweep),
+        "ENTRY_SYNC": convert_np(entry_sync),
+        "CONT_PATTERN": convert_np(cont_pattern),
+        "EARLY_REVERSAL": early_reversal,
+        "REVERSAL_DIR": reversal_dir,
+        "RW_PENALTY": random_walk_penalty,
+        "CPI_GATE_MIN": cpi_gate_min,
+        # V23: Multi-entry levels
+        "ENTRY_AGGRESSIVE": float(round(entry_aggressive, 5)),
+        "ENTRY_IDEAL": float(round(entry_ideal, 5)),
+        "ENTRY_SNIPER": float(round(entry_sniper, 5)),
+        # V23: Trailing stop levels
+        "TRAIL_BE": float(round(trail_be, 5)),
+        "TRAIL_1R": float(round(trail_1, 5)),
+        # V23: MC confidence
+        "MC_CONFIDENCE": "HIGH" if sim.get('TOTAL_TRADES', 0) >= 30 else "LOW",
     }
 
 # ==============================================================================
@@ -3486,7 +4165,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V21</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V23</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -3511,15 +4190,15 @@ with st.sidebar:
 
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Statistical Edge Engine<br>
-        VR · ACF · GARCH · Kelly<br>
-        Sigma Calibrated · Smart TP
+        Statistical Edge Engine V23<br>
+        Market Structure · Sniper Entries<br>
+        Anti-Illusion · Adaptive CPI
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V21</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Precision Sniper Engine V23</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -3684,7 +4363,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
 
             # ── V21+ ENTRY PRECISION ──
-            st.markdown("## Entry Precision V21+")
+            st.markdown("## Entry Precision")
             adx_sl = data.get('ADX_SLOPE', {})
             ribbon = data.get('EMA_RIBBON', {})
             coherence = data.get('TREND_COHERENCE', {})
@@ -3703,6 +4382,46 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             ep5.metric("Candle Struct", candle.get('quality', '?'), candle.get('pattern_type', '?'))
             ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
+
+            # ── V23 SNIPER ENGINE ──
+            st.markdown("## Sniper Engine V23")
+            ms_data = data.get('MKT_STRUCTURE', {})
+            cm_data = data.get('CANDLE_MOMENTUM', {})
+            pb_data = data.get('PULLBACK_QUALITY', {})
+            sw_data = data.get('LIQ_SWEEP', {})
+            es_data = data.get('ENTRY_SYNC', {})
+            cp_data = data.get('CONT_PATTERN', {})
+
+            s1, s2, s3, s4 = st.columns(4)
+            ms_trend = ms_data.get('trend', '?')
+            ms_event = ms_data.get('last_event', 'NONE')
+            ms_color = "🟢" if ms_event.startswith("BOS_BULL") or ms_event.startswith("CHOCH_BULL") else "🔴" if ms_event.startswith("BOS_BEAR") or ms_event.startswith("CHOCH_BEAR") else "⚪"
+            s1.metric(f"Mkt Structure {ms_color}", ms_trend, ms_event)
+            s2.metric("Candle Mom", cm_data.get('conviction', '?'), f"score={cm_data.get('score',0):.0f}")
+            s3.metric("Pullback Q", pb_data.get('quality', '?'), f"depth={pb_data.get('depth_pct',0):.0%}")
+            s4.metric("Entry Sync", f"{es_data.get('score', 0)}/100", es_data.get('ready', '?'))
+
+            s5, s6, s7 = st.columns(3)
+            sweep_txt = sw_data.get('type', 'NONE')
+            s5.metric("Liq Sweep", "🎯 YES" if sw_data.get('sweep') else "—", sweep_txt if sweep_txt != 'NONE' else '')
+            s6.metric("Continuation", cp_data.get('pattern', 'NONE'), f"{cp_data.get('confidence',0)}%")
+            er_txt = f"→ {data.get('REVERSAL_DIR','?')}" if data.get('EARLY_REVERSAL') else "No"
+            rw_txt = f"{data.get('RW_PENALTY',0)}" if data.get('RW_PENALTY',0) != 0 else "OK"
+            s7.metric("Early Reversal", "⚡ YES" if data.get('EARLY_REVERSAL') else "—", er_txt if data.get('EARLY_REVERSAL') else '')
+
+            # V23: Multi-entry levels (if signal active)
+            if data.get('ENTRY_SNIPER') and any(x in data.get('FINAL_DECISION','') for x in ["LONG","SHORT"]):
+                st.markdown("### 🎯 Entry Levels")
+                el1, el2, el3 = st.columns(3)
+                el1.metric("Agressivo", f"{data.get('ENTRY_AGGRESSIVE',0):.5f}")
+                el2.metric("Ideal", f"{data.get('ENTRY_IDEAL',0):.5f}")
+                el3.metric("Sniper", f"{data.get('ENTRY_SNIPER',0):.5f}")
+                tl1, tl2, tl3 = st.columns(3)
+                tl1.metric("Trail → BE", f"{data.get('TRAIL_BE',0):.5f}")
+                tl2.metric("Trail → 1R", f"{data.get('TRAIL_1R',0):.5f}")
+                mc_conf = data.get('MC_CONFIDENCE', 'LOW')
+                mc_color = "🟢" if mc_conf == "HIGH" else "🟡"
+                tl3.metric(f"MC Confidence {mc_color}", mc_conf, f"{data.get('TOTAL_TRADES',0)} trades")
 
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
@@ -3729,10 +4448,12 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                             unsafe_allow_html=True)
 
             # Monte Carlo
-            mc1, mc2, mc3 = st.columns(3)
+            mc1, mc2, mc3, mc4 = st.columns(4)
             mc1.metric("MC Median", f"{data['MC_MEDIAN']}R")
             mc2.metric("MC P5", f"{data['MC_P5']}R")
             mc3.metric("MC Positive", f"{data['MC_POSITIVE']}%")
+            mc_conf = data.get('MC_CONFIDENCE', 'LOW')
+            mc4.metric("MC Confidence", mc_conf, f"{data.get('TOTAL_TRADES',0)} trades")
 
             # ── CONFLUENCES & RISKS ──
             if data['CONFLUENCES'] or data['RISKS']:
