@@ -2,6 +2,7 @@ import streamlit as st
 import asyncio
 import websockets
 import json
+import time
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
@@ -16,42 +17,46 @@ from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist
 from itertools import permutations as _perms
 from math import factorial, log as math_log
 import time
-import logging
 import warnings
 warnings.filterwarnings('ignore')
 
-# ── LOGGING SYSTEM V22 ──
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger("APATECO")
-
 # ==============================================================================
-# SI-APATECO V22.0 — A.P.A PRECISION ENGINE
+# SI-APATECO V21.0 — PREDICTABILITY ENGINE
 #
-# V22 UPGRADES FROM V21:
+# ANÁLISE CIRÚRGICA V19 → 20 CORREÇÕES IMPLEMENTADAS:
 #
-# 🔵 A.P.A #1: Accumulation Phase Detector (BB squeeze + ATR contraction + ADX slope)
-# 🔵 A.P.A #2: Pattern Recognizer (Inside Bar, Pin, Engulfing at end of accumulation)
-# 🔵 A.P.A #3: Action Trigger (range expansion + MACD flip + multi-TF confirm)
-# 🔵 A.P.A #4: Risk Management (SL=accum range, TP=range multiples, time-stop)
+# 🔴 BUG FIX #1: periods_per_year auto-detectado (não hardcoded)
+# 🔴 BUG FIX #2: VOL_COMPRESS direção CONTRA o movimento recente
+# 🔴 BUG FIX #3: Crash/Boom drift segue cálculo real (não bias)
+# 🔴 BUG FIX #4: Backtest por TIPO DE SETUP (não só Swing)
+# 🔴 BUG FIX #5: Backtest roda 1× (não 2×)
+# 🔴 BUG FIX #6: Monte Carlo bootstrap REAL (não distribuição inventada)
 #
-# 🔴 BUG FIX V22 #1: Sharpe/Sortino uses ppy (not 252)
-# 🔴 BUG FIX V22 #2: momentum_v21 (0-100) used for scoring (not old 0-3)
-# 🔴 BUG FIX V22 #3: Candle structure on M5 entry TF (not M15)
-# 🔴 BUG FIX V22 #4: Bonus cap removed (grade system normalizes)
-# 🔴 BUG FIX V22 #5: Sortino handles zero-loss case
-# 🔴 BUG FIX V22 #6: All bare except: replaced with logging
+# 🟠 MATH FIX #1: Sigma calibrado do histórico (não inventado)
+# 🟠 MATH FIX #2: Hurst com validação R²
+# 🟠 MATH FIX #3: Step Index escala correta (log-returns, não step_size)
+# 🟠 MATH FIX #4: Spike detection MAD-based (não std circular)
+# 🟠 MATH FIX #5: Crash/Boom drift por REGRESSÃO LINEAR (não média)
 #
-# 🟢 NEW #1: Order Flow Score (micro-structure buy/sell pressure)
-# 🟢 NEW #2: Anti-Whipsaw Filter (cooldown between signals)
-# 🟢 NEW #3: Divergence Decay (temporal weight)
-# 🟢 NEW #4: Time-Stop integrated in trade plan
-# 🟢 NEW #5: Session Volatility Awareness
+# 🟡 EDGE #1: Variance Ratio Test (detecta se há edge real)
+# 🟡 EDGE #2: Autocorrelação de Retornos (lag 1-5)
+# 🟡 EDGE #3: Volatility Clustering (GARCH effect)
+# 🟡 EDGE #4: Multi-TF Vol Ratio
+# 🟡 EDGE #5: Spike Decay Model (Crash/Boom timing)
+# 🟡 EDGE #6: Preço Teórico vs Real (GBM z-score)
+# 🟡 EDGE #7: Regime-Specific Strategy Selection
+# 🟡 EDGE #8: Entry Trigger Candle Confirmation
 #
-# BASE V21: All 16 improvements + 7 precision engines preserved
+# 🟢 PRECISION #1: Multi-Window Vol Analysis (3 janelas)
+# 🟢 PRECISION #2: Trailing Stop por regime/tipo
+# 🟢 PRECISION #3: Dynamic TP com S/R awareness
+# 🟢 PRECISION #4: Scanner para TODOS gen types
+# 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
+# 🟢 PRECISION #6: M5 entry timing
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V22 A.P.A",
+    page_title="APATECO V21",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1368,536 +1373,8 @@ def atr_channel_entry(df, direction, lookback=20):
             "lower": round(float(lower_channel.iloc[-1]), 5),
             "ema": round(float(ema_now), 5),
         }
-    except Exception as e:
-        logger.debug(f"ATR channel error: {e}")
+    except:
         return {"channel_entry": None, "channel_position": 0.5, "quality": "UNKNOWN"}
-
-
-# ==============================================================================
-# 🔵 V22 A.P.A ENGINE — ACCUMULATION → PATTERN → ACTION
-# ==============================================================================
-
-def apa_accumulation_detector(df, min_bars=5, max_bars=40):
-    """Phase 1: Detect accumulation zone (price compression before expansion).
-    Accumulation = BB squeeze + ATR contraction + decreasing candle size."""
-    try:
-        if len(df) < max_bars + 10:
-            return {"detected": False, "phase": "NONE", "bars": 0, "quality": 0}
-
-        recent = df.tail(max_bars)
-        atr = recent['ATR']
-        bb_w = recent['BB_width']
-        bodies = abs(recent['close'] - recent['open'])
-        ranges = (recent['high'] - recent['low']).replace(0, np.nan)
-
-        # 1. ATR contraction: recent ATR declining
-        atr_short = float(atr.tail(5).mean())
-        atr_long = float(atr.tail(20).mean())
-        atr_contracting = atr_short < atr_long * 0.85
-
-        # 2. BB squeeze: width below threshold
-        bb_avg = float(bb_w.mean())
-        bb_now = float(bb_w.iloc[-1])
-        bb_squeezing = bb_now < bb_avg * 0.7
-
-        # 3. Candle bodies shrinking
-        body_short = float(bodies.tail(5).mean())
-        body_long = float(bodies.tail(20).mean())
-        bodies_shrinking = body_short < body_long * 0.75
-
-        # 4. Range narrowing
-        range_short = float(ranges.tail(5).mean())
-        range_long = float(ranges.tail(20).mean())
-        range_narrowing = range_short < range_long * 0.8 if pd.notna(range_long) and range_long > 0 else False
-
-        # 5. ADX low but possibly rising (energy building)
-        adx_now = float(df['ADX'].iloc[-1]) if 'ADX' in df.columns else 25
-        adx_low = adx_now < 25
-
-        # Count accumulation bars (consecutive compression)
-        accum_bars = 0
-        for i in range(len(recent) - 1, -1, -1):
-            bar_body = abs(recent['close'].iloc[i] - recent['open'].iloc[i])
-            bar_range = recent['high'].iloc[i] - recent['low'].iloc[i]
-            if bar_range > 0 and bar_body / bar_range < 0.6 and recent['ATR'].iloc[i] < atr_long * 1.1:
-                accum_bars += 1
-            else:
-                break
-
-        # Accumulation range
-        if accum_bars >= min_bars:
-            accum_section = recent.tail(accum_bars)
-            range_high = float(accum_section['high'].max())
-            range_low = float(accum_section['low'].min())
-            range_width = range_high - range_low
-        else:
-            range_high = float(recent['high'].tail(min_bars).max())
-            range_low = float(recent['low'].tail(min_bars).min())
-            range_width = range_high - range_low
-
-        # Quality score (0-100)
-        quality = 0
-        if atr_contracting: quality += 25
-        if bb_squeezing: quality += 25
-        if bodies_shrinking: quality += 20
-        if range_narrowing: quality += 15
-        if adx_low: quality += 15
-
-        detected = quality >= 50 and accum_bars >= min_bars
-
-        phase = "NONE"
-        if detected:
-            if quality >= 80:
-                phase = "STRONG_ACCUMULATION"
-            elif quality >= 60:
-                phase = "ACCUMULATION"
-            else:
-                phase = "WEAK_ACCUMULATION"
-
-        return {
-            "detected": detected,
-            "phase": phase,
-            "quality": round(quality, 1),
-            "bars": accum_bars,
-            "range_high": round(range_high, 5),
-            "range_low": round(range_low, 5),
-            "range_width": round(range_width, 5),
-            "atr_contracting": atr_contracting,
-            "bb_squeezing": bb_squeezing,
-            "bodies_shrinking": bodies_shrinking,
-            "range_narrowing": range_narrowing,
-            "adx_low": adx_low,
-        }
-    except Exception as e:
-        logger.debug(f"APA accumulation error: {e}")
-        return {"detected": False, "phase": "NONE", "bars": 0, "quality": 0}
-
-
-def apa_pattern_recognizer(df, accumulation):
-    """Phase 2: Recognize actionable pattern at the end of accumulation.
-    Patterns: Inside Bar, Pin Bar, Engulfing, Breakout Bar, Micro Double Bottom/Top."""
-    try:
-        if not accumulation.get('detected') or len(df) < 5:
-            return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
-
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
-        prev2 = df.iloc[-3] if len(df) >= 3 else prev
-
-        body_last = abs(last['close'] - last['open'])
-        range_last = last['high'] - last['low']
-        body_prev = abs(prev['close'] - prev['open'])
-        range_prev = prev['high'] - prev['low']
-
-        range_high = accumulation['range_high']
-        range_low = accumulation['range_low']
-        range_width = accumulation.get('range_width', range_high - range_low)
-        atr = float(df['ATR'].iloc[-1]) if df['ATR'].iloc[-1] > 0 else 1
-
-        patterns = []
-
-        # 1. INSIDE BAR (compression peak → explosion imminent)
-        if last['high'] <= prev['high'] and last['low'] >= prev['low']:
-            direction = "BULLISH" if last['close'] > last['open'] else "BEARISH"
-            patterns.append(("INSIDE_BAR", direction, 70))
-
-        # 2. PIN BAR at accumulation boundary
-        if range_last > 0:
-            lower_wick = min(last['open'], last['close']) - last['low']
-            upper_wick = last['high'] - max(last['open'], last['close'])
-
-            # Bullish pin: long lower wick near accumulation low
-            if lower_wick > body_last * 2 and last['low'] <= range_low + atr * 0.3:
-                patterns.append(("PIN_BAR_BULL", "BULLISH", 85))
-
-            # Bearish pin: long upper wick near accumulation high
-            if upper_wick > body_last * 2 and last['high'] >= range_high - atr * 0.3:
-                patterns.append(("PIN_BAR_BEAR", "BEARISH", 85))
-
-        # 3. ENGULFING at accumulation boundary
-        if last['close'] > last['open'] and prev['close'] < prev['open']:
-            if body_last > body_prev and last['low'] <= range_low + atr * 0.5:
-                patterns.append(("ENGULFING_BULL", "BULLISH", 90))
-        elif last['close'] < last['open'] and prev['close'] > prev['open']:
-            if body_last > body_prev and last['high'] >= range_high - atr * 0.5:
-                patterns.append(("ENGULFING_BEAR", "BEARISH", 90))
-
-        # 4. BREAKOUT BAR (close outside accumulation range)
-        if last['close'] > range_high and body_last > range_width * 0.3:
-            patterns.append(("BREAKOUT_UP", "BULLISH", 95))
-        elif last['close'] < range_low and body_last > range_width * 0.3:
-            patterns.append(("BREAKOUT_DOWN", "BEARISH", 95))
-
-        # 5. MICRO DOUBLE BOTTOM/TOP
-        lows_3 = df['low'].tail(8)
-        highs_3 = df['high'].tail(8)
-        if len(lows_3) >= 5:
-            min1 = lows_3.iloc[:4].min()
-            min2 = lows_3.iloc[-4:].min()
-            if abs(min1 - min2) < atr * 0.3 and min2 <= range_low + atr * 0.3:
-                if last['close'] > last['open']:
-                    patterns.append(("MICRO_DOUBLE_BOTTOM", "BULLISH", 80))
-            max1 = highs_3.iloc[:4].max()
-            max2 = highs_3.iloc[-4:].max()
-            if abs(max1 - max2) < atr * 0.3 and max2 >= range_high - atr * 0.3:
-                if last['close'] < last['open']:
-                    patterns.append(("MICRO_DOUBLE_TOP", "BEARISH", 80))
-
-        if not patterns:
-            return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
-
-        # Select strongest pattern
-        best = max(patterns, key=lambda x: x[2])
-        return {
-            "pattern": best[0],
-            "direction": best[1],
-            "strength": best[2],
-            "all_patterns": [{"name": p[0], "dir": p[1], "str": p[2]} for p in patterns],
-        }
-    except Exception as e:
-        logger.debug(f"APA pattern error: {e}")
-        return {"pattern": "NONE", "direction": "NEUTRAL", "strength": 0}
-
-
-def apa_action_trigger(df, accumulation, pattern, bias, trend_coherence_data=None):
-    """Phase 3: Confirm action trigger — range expansion + momentum flip + TF alignment.
-    Returns entry parameters if trigger confirmed."""
-    try:
-        if pattern.get('pattern') == "NONE" or not accumulation.get('detected'):
-            return {"triggered": False, "reason": "NO_PATTERN"}
-
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
-        atr = float(last['ATR']) if last['ATR'] > 0 else 1
-        direction = pattern['direction']
-
-        # 1. RANGE EXPANSION: current bar range > recent average
-        recent_avg_range = float((df['high'] - df['low']).tail(10).mean())
-        current_range = last['high'] - last['low']
-        range_expanding = current_range > recent_avg_range * 1.3
-
-        # 2. BB WIDTH EXPANDING: BB starting to open
-        bb_expanding = False
-        if len(df) >= 3 and 'BB_width' in df.columns:
-            bb_expanding = float(df['BB_width'].iloc[-1]) > float(df['BB_width'].iloc[-2])
-
-        # 3. MACD HISTOGRAM FLIP/ACCELERATION
-        macd_confirm = False
-        if 'MACD_hist' in df.columns and len(df) >= 3:
-            hist_now = float(df['MACD_hist'].iloc[-1])
-            hist_prev = float(df['MACD_hist'].iloc[-2])
-            if direction == "BULLISH":
-                macd_confirm = hist_now > hist_prev and (hist_now > 0 or hist_now > hist_prev * 0.5)
-            else:
-                macd_confirm = hist_now < hist_prev and (hist_now < 0 or hist_now < hist_prev * 0.5)
-
-        # 4. DIRECTION ALIGNMENT with bias
-        bias_aligned = (direction == bias) or bias == "NEUTRAL"
-
-        # 5. TF COHERENCE alignment (if available)
-        tf_aligned = True
-        if trend_coherence_data:
-            coh_dir = trend_coherence_data.get('coherent_direction', 'MIXED')
-            if coh_dir != 'MIXED':
-                tf_aligned = coh_dir == direction
-
-        # TRIGGER SCORE
-        trigger_score = 0
-        reasons = []
-        if range_expanding: trigger_score += 30; reasons.append("Range Expansion")
-        if bb_expanding: trigger_score += 20; reasons.append("BB Expanding")
-        if macd_confirm: trigger_score += 25; reasons.append("MACD Confirm")
-        if bias_aligned: trigger_score += 15; reasons.append("Bias Aligned")
-        if tf_aligned: trigger_score += 10; reasons.append("TF Aligned")
-
-        triggered = trigger_score >= 55
-
-        # A.P.A RISK PARAMETERS
-        range_width = accumulation.get('range_width', atr * 2)
-        range_high = accumulation.get('range_high', last['close'])
-        range_low = accumulation.get('range_low', last['close'])
-
-        if direction == "BULLISH":
-            entry = float(last['close'])
-            sl = range_low - atr * 0.3  # Below accumulation range
-            tp1 = entry + range_width * 1.5  # 1.5x the accumulation range
-            tp2 = entry + range_width * 3.0  # 3x the accumulation range
-        else:
-            entry = float(last['close'])
-            sl = range_high + atr * 0.3  # Above accumulation range
-            tp1 = entry - range_width * 1.5
-            tp2 = entry - range_width * 3.0
-
-        risk = abs(entry - sl)
-        time_stop_bars = accumulation.get('bars', 10) * 2  # 2x accumulation duration
-
-        return {
-            "triggered": triggered,
-            "trigger_score": trigger_score,
-            "reasons": reasons,
-            "direction": direction,
-            "entry": round(entry, 5),
-            "sl": round(sl, 5),
-            "tp1": round(tp1, 5),
-            "tp2": round(tp2, 5),
-            "risk": round(risk, 5),
-            "rr_tp1": round(abs(tp1 - entry) / risk, 1) if risk > 0 else 0,
-            "rr_tp2": round(abs(tp2 - entry) / risk, 1) if risk > 0 else 0,
-            "time_stop_bars": time_stop_bars,
-            "range_expanding": range_expanding,
-            "bb_expanding": bb_expanding,
-            "macd_confirm": macd_confirm,
-            "bias_aligned": bias_aligned,
-        }
-    except Exception as e:
-        logger.debug(f"APA action error: {e}")
-        return {"triggered": False, "reason": str(e)}
-
-
-def apa_full_analysis(df, bias, trend_coherence_data=None):
-    """Complete A.P.A analysis: Accumulation → Pattern → Action.
-    Returns comprehensive A.P.A state."""
-    try:
-        accum = apa_accumulation_detector(df)
-        pattern = apa_pattern_recognizer(df, accum)
-        action = apa_action_trigger(df, accum, pattern, bias, trend_coherence_data)
-
-        # Overall A.P.A state
-        if action.get('triggered'):
-            state = "ACTION_READY"
-            confidence = min(accum['quality'] * 0.3 + pattern['strength'] * 0.3 + action['trigger_score'] * 0.4, 100)
-        elif pattern.get('pattern') != "NONE":
-            state = "PATTERN_FORMING"
-            confidence = min(accum['quality'] * 0.4 + pattern['strength'] * 0.6, 100) * 0.7
-        elif accum.get('detected'):
-            state = "ACCUMULATING"
-            confidence = accum['quality'] * 0.5
-        else:
-            state = "NO_SETUP"
-            confidence = 0
-
-        return {
-            "state": state,
-            "confidence": round(confidence, 1),
-            "accumulation": accum,
-            "pattern": pattern,
-            "action": action,
-        }
-    except Exception as e:
-        logger.debug(f"APA full analysis error: {e}")
-        return {"state": "ERROR", "confidence": 0,
-                "accumulation": {"detected": False}, "pattern": {"pattern": "NONE"},
-                "action": {"triggered": False}}
-
-
-# ==============================================================================
-# 🟢 V22 NEW #1: ORDER FLOW SCORE — Microstructure Buy/Sell Pressure
-# ==============================================================================
-
-def order_flow_score(df, lookback=20):
-    """Estimates buy/sell pressure from candle microstructure.
-    No real volume needed — works with synthetic indices."""
-    try:
-        if len(df) < lookback:
-            return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
-
-        recent = df.tail(lookback)
-        bull_count = 0
-        bear_count = 0
-        bull_power = 0.0
-        bear_power = 0.0
-
-        for i in range(len(recent)):
-            row = recent.iloc[i]
-            body = row['close'] - row['open']
-            rng = row['high'] - row['low']
-            if rng == 0:
-                continue
-
-            # Close position within range (0=low, 1=high)
-            close_pos = (row['close'] - row['low']) / rng
-
-            # Body ratio
-            body_ratio = abs(body) / rng
-
-            if body > 0:
-                bull_count += 1
-                # Power = body size × close position (strong bull = big body closing near high)
-                bull_power += body_ratio * close_pos
-            else:
-                bear_count += 1
-                bear_power += body_ratio * (1 - close_pos)
-
-        total = bull_count + bear_count
-        if total == 0:
-            return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
-
-        bull_pct = bull_count / total * 100
-        bear_pct = bear_count / total * 100
-
-        # Normalize power
-        avg_bull = bull_power / max(bull_count, 1)
-        avg_bear = bear_power / max(bear_count, 1)
-        total_power = avg_bull + avg_bear
-        if total_power > 0:
-            bull_power_pct = avg_bull / total_power * 100
-        else:
-            bull_power_pct = 50
-
-        # Combined score: -100 (max bear) to +100 (max bull)
-        count_bias = (bull_pct - 50) * 0.6
-        power_bias = (bull_power_pct - 50) * 0.4
-        score = count_bias + power_bias
-
-        if score > 25:
-            pressure = "STRONG_BUYING"
-        elif score > 10:
-            pressure = "BUYING"
-        elif score > -10:
-            pressure = "NEUTRAL"
-        elif score > -25:
-            pressure = "SELLING"
-        else:
-            pressure = "STRONG_SELLING"
-
-        return {
-            "score": round(score, 1),
-            "pressure": pressure,
-            "bull_pct": round(bull_pct, 1),
-            "bear_pct": round(bear_pct, 1),
-            "bull_power": round(avg_bull, 3),
-            "bear_power": round(avg_bear, 3),
-        }
-    except Exception as e:
-        logger.debug(f"Order flow error: {e}")
-        return {"score": 0, "pressure": "NEUTRAL", "bull_pct": 50, "bear_pct": 50}
-
-
-# ==============================================================================
-# 🟢 V22 NEW #2: ANTI-WHIPSAW FILTER
-# ==============================================================================
-
-def anti_whipsaw_check(df, setup_type, min_bars_between=8):
-    """Prevents rapid signal flipping in choppy markets.
-    Checks if enough bars have passed since conditions for opposite signal were met."""
-    try:
-        if len(df) < min_bars_between + 5:
-            return True, "OK"  # Allow if insufficient data
-
-        recent = df.tail(min_bars_between + 5)
-
-        # Count direction changes in MACD histogram
-        if 'MACD_hist' in df.columns:
-            hist = recent['MACD_hist'].dropna()
-            if len(hist) >= 3:
-                sign_changes = sum(1 for i in range(1, len(hist))
-                                   if (hist.iloc[i] > 0) != (hist.iloc[i-1] > 0))
-                if sign_changes >= 4:  # Too many flips
-                    return False, f"WHIPSAW_MACD ({sign_changes} flips)"
-
-        # Check price whipsaw: crossing EMA20 too many times
-        if 'EMA_20' in df.columns:
-            above = recent['close'] > recent['EMA_20']
-            crossings = sum(1 for i in range(1, len(above))
-                           if above.iloc[i] != above.iloc[i-1])
-            if crossings >= 5:
-                return False, f"WHIPSAW_EMA ({crossings} crosses)"
-
-        # ADX too low = no trend = whipsaw zone
-        if 'ADX' in df.columns:
-            adx_avg = float(recent['ADX'].tail(5).mean())
-            if adx_avg < 15 and setup_type not in ["MEAN_REVERSION", "GEN_STEP_REVERT", "APA"]:
-                return False, f"WHIPSAW_ADX ({adx_avg:.0f}<15)"
-
-        return True, "OK"
-    except Exception as e:
-        logger.debug(f"Anti-whipsaw error: {e}")
-        return True, "OK"
-
-
-# ==============================================================================
-# 🟢 V22 NEW #3: DIVERGENCE DECAY (Temporal Weight)
-# ==============================================================================
-
-def divergence_with_decay(df, indicator='RSI', order=5, max_age_bars=25):
-    """Divergence detection with temporal decay.
-    Recent divergences (< 10 bars) = full weight.
-    Old divergences (> 25 bars) = ignored."""
-    try:
-        div_type, div_bonus, div_detail = detect_divergence(df, indicator, order)
-        if div_type is None:
-            return None, 0, ""
-
-        # Calculate age: distance from last pivot to current bar
-        if "BEARISH" in str(div_type):
-            pivots = find_pivot_highs(df['high'], order)
-        else:
-            pivots = find_pivot_lows(df['low'], order)
-
-        if len(pivots) >= 2:
-            last_pivot_idx = pivots[-1]
-            age = len(df) - 1 - last_pivot_idx
-        else:
-            age = max_age_bars  # Assume old if can't determine
-
-        # Decay factor
-        if age <= 10:
-            decay = 1.0  # Full weight
-        elif age <= max_age_bars:
-            decay = max(0.3, 1.0 - (age - 10) / (max_age_bars - 10) * 0.7)
-        else:
-            return None, 0, ""  # Too old, ignore
-
-        decayed_bonus = int(div_bonus * decay)
-        return div_type, decayed_bonus, f"{div_detail} (age={age}, decay={decay:.0%})"
-    except Exception as e:
-        logger.debug(f"Divergence decay error: {e}")
-        return None, 0, ""
-
-
-# ==============================================================================
-# 🟢 V22 NEW #5: SESSION VOLATILITY AWARENESS
-# ==============================================================================
-
-def session_volatility_check(df, lookback_days=5):
-    """Checks if current hour historically shows higher/lower volatility.
-    Synthetics run 24/7 but may have patterns tied to server load."""
-    try:
-        if len(df) < 100 or not hasattr(df.index, 'hour'):
-            return {"session": "UNKNOWN", "vol_factor": 1.0}
-
-        current_hour = df.index[-1].hour
-
-        # Calculate average volatility by hour
-        df_temp = df.copy()
-        df_temp['abs_return'] = np.abs(np.log(df_temp['close'] / df_temp['close'].shift(1)))
-        df_temp['hour'] = df_temp.index.hour
-
-        hourly_vol = df_temp.groupby('hour')['abs_return'].mean()
-        if len(hourly_vol) < 12:
-            return {"session": "UNKNOWN", "vol_factor": 1.0}
-
-        current_vol = hourly_vol.get(current_hour, hourly_vol.mean())
-        avg_vol = hourly_vol.mean()
-        vol_factor = current_vol / avg_vol if avg_vol > 0 else 1.0
-
-        if vol_factor > 1.3:
-            session = "HIGH_VOL_SESSION"
-        elif vol_factor < 0.7:
-            session = "LOW_VOL_SESSION"
-        else:
-            session = "NORMAL_SESSION"
-
-        return {
-            "session": session,
-            "vol_factor": round(float(vol_factor), 2),
-            "current_hour": current_hour,
-            "current_hour_vol": round(float(current_vol), 6),
-            "avg_vol": round(float(avg_vol), 6),
-        }
-    except Exception as e:
-        logger.debug(f"Session vol error: {e}")
-        return {"session": "UNKNOWN", "vol_factor": 1.0}
 
 
 
@@ -1905,32 +1382,23 @@ def session_volatility_check(df, lookback_days=5):
 # V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
 # ==============================================================================
 
-def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=150):
-    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico.
-    V22 PERF: max_n=150 + vectorized broadcast — ~50× faster."""
+def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=400):
+    """SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico."""
     try:
         data = np.array(series.dropna().values[-max_n:], dtype=float)
         n = len(data)
         if n < 50: return 2.0, "CHAOTIC"
         r = r_mult * np.std(data)
         if r == 0: return 0.0, "CONSTANT"
-        def _count_vec(tl):
-            templates = np.array([data[i:i+tl] for i in range(n - tl)])
-            nt = len(templates)
-            count = 0
-            cs = min(nt, 150)
-            for ci in range(0, nt, cs):
-                chunk = templates[ci:ci+cs]
-                diffs = np.abs(chunk[:, None, :] - templates[None, :, :])
-                mx = diffs.max(axis=2)
-                matches = (mx < r).sum()
-                for k in range(ci, min(ci+cs, nt)):
-                    if mx[k-ci, k] < r:
-                        matches -= 1
-                count += matches
-            return count // 2
-        B = _count_vec(m)
-        A = _count_vec(m + 1)
+        def _count(tl):
+            cnt = 0
+            for i in range(n - tl):
+                for j in range(i + 1, n - tl):
+                    if np.max(np.abs(data[i:i+tl] - data[j:j+tl])) < r:
+                        cnt += 1
+            return cnt
+        B = _count(m)
+        A = _count(m + 1)
         if B == 0 or A == 0: se = 2.5
         else: se = -np.log(A / B)
         if se < 0.4: regime = "HIGHLY_PREDICTABLE"
@@ -1938,15 +1406,13 @@ def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=150):
         elif se < 1.5: regime = "MODERATE"
         else: regime = "CHAOTIC"
         return round(float(se), 3), regime
-    except Exception as e:
-        logger.debug(f"SampEn error: {e}")
-        return 2.0, "ERROR"
+    except: return 2.0, "ERROR"
 
 # ==============================================================================
 # V21 ENGINE #2: PERMUTATION ENTROPY — Determinismo na ordem
 # ==============================================================================
 
-def permutation_entropy_v21(series, order=3, delay=1, max_n=200):
+def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
     """PE=0 deterministic, PE=1 random. PE < 0.85 = padrao detectavel."""
     try:
         data = np.array(series.dropna().values[-max_n:], dtype=float)
@@ -2012,7 +1478,7 @@ def spectral_analysis_v21(series, top_n=3, min_period=5, max_period=200):
 # V21 ENGINE #4: TRANSITION MATRIX (Markov Chain)
 # ==============================================================================
 
-def transition_matrix_v21(series, n_states=3, max_n=300):
+def transition_matrix_v21(series, n_states=3, max_n=500):
     """Detecta dependencias Markovianas nos retornos."""
     try:
         vals = np.array(series.dropna().values[-max_n:], dtype=float)
@@ -2284,9 +1750,8 @@ class DistributionAnalyzer:
             else: tail_risk = "NORMAL"
             z_return = float((recent.iloc[-1] - recent.mean()) / recent.std()) if recent.std() > 0 else 0
             recent_cum = float(recent.tail(10).sum())
-            # V22 PERF: vectorized rolling sum instead of Python loop
-            rolling_sums = log_returns.rolling(10).sum().dropna().iloc[::5]
-            percentile = float((rolling_sums < recent_cum).mean() * 100) if len(rolling_sums) > 0 else 50
+            all_windows = [float(log_returns.iloc[i:i+10].sum()) for i in range(0, len(log_returns)-10, 5)]
+            percentile = sum(1 for w in all_windows if w < recent_cum) / len(all_windows) * 100 if all_windows else 50
             signal = "NEUTRAL"
             if abs(skewness) > 0.5:
                 signal = "POSITIVE_SKEW" if skewness > 0 else "NEGATIVE_SKEW"
@@ -2375,9 +1840,9 @@ DERIV_SERVERS = [
 
 async def socket_req(url, req):
     try:
-        async with websockets.connect(url, ping_interval=15, close_timeout=10) as ws:
+        async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
             await ws.send(json.dumps(req))
-            return json.loads(await asyncio.wait_for(ws.recv(), timeout=10.0))
+            return json.loads(await asyncio.wait_for(ws.recv(), timeout=15.0))
     except:
         return None
 
@@ -2392,20 +1857,20 @@ def get_assets():
     return None
 
 async def fetch_multi_tf(code):
-    """V22 PERF: H1=500, H4=300, M15=800, M5=300 — reduced for speed"""
+    """H1=800, H4=400, M15=2000, M5=500"""
     reqs = [
-        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 500, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 300, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 800, "end": "latest"},
-        {"ticks_history": code, "style": "candles", "granularity": 300, "count": 300, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 3600, "count": 800, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 14400, "count": 400, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 900, "count": 2000, "end": "latest"},
+        {"ticks_history": code, "style": "candles", "granularity": 300, "count": 500, "end": "latest"},
     ]
     for url in DERIV_SERVERS:
         try:
-            async with websockets.connect(url, ping_interval=15, close_timeout=10) as ws:
+            async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
                 results = []
                 for r in reqs:
                     await ws.send(json.dumps(r))
-                    results.append(json.loads(await asyncio.wait_for(ws.recv(), 10)))
+                    results.append(json.loads(await asyncio.wait_for(ws.recv(), 15)))
                 if all('candles' in x for x in results):
                     return results[0]['candles'], results[1]['candles'], results[2]['candles'], results[3]['candles'], None
         except:
@@ -2432,14 +1897,13 @@ def prep_df(data):
     return df
 
 def calculate_rsi_wilder(series, period=14):
-    """V22 PERF: Fully vectorized RSI using ewm (no Python loop)"""
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
-    avg_gain = gain.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+    delta = series.diff(); gain = delta.where(delta>0,0.0); loss = -delta.where(delta<0,0.0)
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    for i in range(period, len(series)):
+        if pd.notna(avg_gain.iloc[i-1]):
+            avg_gain.iloc[i] = (avg_gain.iloc[i-1]*(period-1)+gain.iloc[i])/period
+            avg_loss.iloc[i] = (avg_loss.iloc[i-1]*(period-1)+loss.iloc[i])/period
     rs = avg_gain / avg_loss.replace(0,np.nan)
     return 100 - (100/(1+rs))
 
@@ -2469,7 +1933,7 @@ def calculate_zscore(series, window=50):
     return (series-mean)/std.replace(0,np.nan)
 
 # 🟠 MATH FIX #2: HURST COM VALIDAÇÃO R²
-def calculate_hurst_exponent(series, max_lag=50):
+def calculate_hurst_exponent(series, max_lag=100):
     try:
         ts = series.dropna().values
         if len(ts) < 50: return 0.5, "RANDOM_WALK", 0.0
@@ -2503,29 +1967,17 @@ def calculate_hurst_exponent(series, max_lag=50):
         return 0.5, "ERROR", 0.0
 
 def find_pivot_highs(data, order=5):
-    """V22 PERF: window max comparison instead of all() loop"""
-    values = data.values if hasattr(data,'values') else np.array(data)
-    n = len(values)
-    if n < order * 2 + 1: return np.array([])
-    pivots = []
-    for i in range(order, n - order):
+    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
+    for i in range(order, len(values)-order):
         if np.isnan(values[i]): continue
-        window = values[i-order:i+order+1]
-        if values[i] == np.nanmax(window):
-            pivots.append(i)
+        if all(values[i]>values[i-j] and values[i]>values[i+j] for j in range(1,order+1)): pivots.append(i)
     return np.array(pivots)
 
 def find_pivot_lows(data, order=5):
-    """V22 PERF: window min comparison instead of all() loop"""
-    values = data.values if hasattr(data,'values') else np.array(data)
-    n = len(values)
-    if n < order * 2 + 1: return np.array([])
-    pivots = []
-    for i in range(order, n - order):
+    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
+    for i in range(order, len(values)-order):
         if np.isnan(values[i]): continue
-        window = values[i-order:i+order+1]
-        if values[i] == np.nanmin(window):
-            pivots.append(i)
+        if all(values[i]<values[i-j] and values[i]<values[i+j] for j in range(1,order+1)): pivots.append(i)
     return np.array(pivots)
 
 def detect_divergence(df, indicator='RSI', order=5):
@@ -2700,46 +2152,42 @@ def detect_micro_pullback(df, direction, atr):
     except: return None,"MARKET"
 
 def detect_patterns(df):
-    """V22 PERF: Only detect patterns on last 30 candles"""
-    n = len(df)
-    patterns = [[]] * n
-    scores = [0] * n
-    start = max(1, n - 30)
-    for i in range(start, n):
-        c, p = df.iloc[i], df.iloc[i-1]; pl, sc = [], 0
-        body = abs(c['close'] - c['open']); rng = c['high'] - c['low']
-        if rng > 0:
-            uw = c['high'] - max(c['open'], c['close']); lw = min(c['open'], c['close']) - c['low']
-            if lw > 0 and body/rng < 0.35 and uw < body:
-                r = lw / max(body, 0.0001)
-                if r > 3: pl.append("PIN_BULL_STRONG"); sc += 10
-                elif r > 2: pl.append("PIN_BULL_MOD"); sc += 5
-            elif uw > 0 and body/rng < 0.35 and lw < body:
-                r = uw / max(body, 0.0001)
-                if r > 3: pl.append("PIN_BEAR_STRONG"); sc += 10
-                elif r > 2: pl.append("PIN_BEAR_MOD"); sc += 5
-        cb = abs(c['close'] - c['open']); pb = abs(p['close'] - p['open'])
-        ct, cb2 = max(c['open'], c['close']), min(c['open'], c['close'])
-        pt, pb3 = max(p['open'], p['close']), min(p['open'], p['close'])
-        if c['close'] > c['open'] and p['close'] < p['open'] and cb2 < pb3 and ct > pt:
-            r = cb / max(pb, 0.0001)
-            if r > 2: pl.append("ENGULF_BULL_STRONG"); sc += 10
-            else: pl.append("ENGULF_BULL"); sc += 5
-        elif c['close'] < c['open'] and p['close'] > p['open'] and cb2 < pb3 and ct > pt:
-            r = cb / max(pb, 0.0001)
-            if r > 2: pl.append("ENGULF_BEAR_STRONG"); sc += 10
-            else: pl.append("ENGULF_BEAR"); sc += 5
-        if c['high'] <= p['high'] and c['low'] >= p['low']: pl.append("INSIDE_BAR"); sc += 5
-        if rng > 0 and body/rng < 0.1: pl.append("DOJI"); sc += 3
-        patterns[i] = pl; scores[i] = sc
-    df['patterns'] = patterns; df['pattern_score'] = scores; return df
+    patterns,scores=[],[]
+    for i in range(1,len(df)):
+        c,p=df.iloc[i],df.iloc[i-1]; pl,sc=[],0
+        body=abs(c['close']-c['open']); rng=c['high']-c['low']
+        if rng>0:
+            uw=c['high']-max(c['open'],c['close']); lw=min(c['open'],c['close'])-c['low']
+            if lw>0 and body/rng<0.35 and uw<body:
+                r=lw/max(body,0.0001)
+                if r>3: pl.append("PIN_BULL_STRONG"); sc+=10
+                elif r>2: pl.append("PIN_BULL_MOD"); sc+=5
+            elif uw>0 and body/rng<0.35 and lw<body:
+                r=uw/max(body,0.0001)
+                if r>3: pl.append("PIN_BEAR_STRONG"); sc+=10
+                elif r>2: pl.append("PIN_BEAR_MOD"); sc+=5
+        cb=abs(c['close']-c['open']); pb=abs(p['close']-p['open'])
+        ct,cb2=max(c['open'],c['close']),min(c['open'],c['close'])
+        pt,pb3=max(p['open'],p['close']),min(p['open'],p['close'])
+        if c['close']>c['open'] and p['close']<p['open'] and cb2<pb3 and ct>pt:
+            r=cb/max(pb,0.0001)
+            if r>2: pl.append("ENGULF_BULL_STRONG"); sc+=10
+            else: pl.append("ENGULF_BULL"); sc+=5
+        elif c['close']<c['open'] and p['close']>p['open'] and cb2<pb3 and ct>pt:
+            r=cb/max(pb,0.0001)
+            if r>2: pl.append("ENGULF_BEAR_STRONG"); sc+=10
+            else: pl.append("ENGULF_BEAR"); sc+=5
+        if c['high']<=p['high'] and c['low']>=p['low']: pl.append("INSIDE_BAR"); sc+=5
+        if rng>0 and body/rng<0.1: pl.append("DOJI"); sc+=3
+        patterns.append(pl); scores.append(sc)
+    df['patterns']=[[]]+patterns; df['pattern_score']=[0]+scores; return df
 
 def detect_swing_points(df, window=5):
-    """V22 PERF: vectorized rolling max/min instead of iloc loop"""
-    roll_max = df['high'].rolling(window + 1, min_periods=1).max()
-    roll_min = df['low'].rolling(window + 1, min_periods=1).min()
-    df['swing_high'] = (df['high'] == roll_max)
-    df['swing_low'] = (df['low'] == roll_min)
+    df['swing_high']=False; df['swing_low']=False
+    for i in range(window,len(df)):
+        lb=df.iloc[max(0,i-window):i+1]
+        if df['high'].iloc[i]==lb['high'].max(): df.iloc[i,df.columns.get_loc('swing_high')]=True
+        if df['low'].iloc[i]==lb['low'].min(): df.iloc[i,df.columns.get_loc('swing_low')]=True
     return df
 
 def classify_market_structure(df):
@@ -2846,19 +2294,17 @@ def detect_swing_level(df, direction, atr_mult=1.5):
 # 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
 # ==============================================================================
 
-def run_walk_forward_v21(df, bias, profile, n_folds=3):
-    """V22 PERF: 3 folds, step=3 bars, 40-bar lookahead — ~5× faster"""
+def run_walk_forward_v21(df, bias, profile, n_folds=4):
+    """V21: VR e ACF recalculados POR FOLD (sem look-ahead bias)"""
     spread = profile.get('spread', 0.05)
     sl_mult = profile.get('sl_atr_mult', 2.5)
     fold_size = len(df) // (n_folds + 1)
     all_trades = []
-    STEP = 3  # V22: evaluate every 3rd bar
-    MAX_FWD = 40  # V22: reduced forward lookahead
 
     for fold in range(n_folds):
         ts = fold_size * (fold + 1)
         te = fold_size * (fold + 2) if fold < n_folds - 1 else len(df)
-        if ts >= len(df) - MAX_FWD:
+        if ts >= len(df) - 80:
             break
         si = max(200, ts)
 
@@ -2867,7 +2313,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=3):
         fold_vr = variance_ratio_test(train_data['close'])
         fold_acf = autocorrelation_analysis(train_data['close'])
 
-        for i in range(si, min(te, len(df) - MAX_FWD), STEP):
+        for i in range(si, min(te, len(df) - 60)):
             row = df.iloc[i]
             if pd.isna(row['ADX']) or pd.isna(row['ATR']) or row['ATR'] == 0:
                 continue
@@ -2936,7 +2382,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=3):
             p1_open, p2_open = True, True
             r1, r2 = 0, 0
             csl = sl
-            for f in range(i + 1, min(i + MAX_FWD, len(df))):
+            for f in range(i + 1, min(i + 80, len(df))):
                 nx = df.iloc[f]
                 if sig == "BUY":
                     if nx['low'] <= csl:
@@ -2981,9 +2427,9 @@ def run_walk_forward_v21(df, bias, profile, n_folds=3):
     peak = np.maximum.accumulate(cum)
     dd = float((peak - cum).max()) if len(cum) > 0 else 0
     rs = pd.Series(results)
-    sharpe = float(rs.mean()/rs.std()*np.sqrt(len(results))) if len(rs) >= 2 and rs.std() > 0 else 0
+    sharpe = float(rs.mean()/rs.std()*np.sqrt(252)) if len(rs) >= 2 and rs.std() > 0 else 0
     ds = rs[rs<0]
-    sortino = float(rs.mean()/ds.std()*np.sqrt(len(results))) if len(ds) >= 2 and ds.std() > 0 else (99.0 if rs.mean() > 0 else 0)
+    sortino = float(rs.mean()/ds.std()*np.sqrt(252)) if len(ds) >= 2 and ds.std() > 0 else 0
 
     # Per-fold WRs
     fold_wrs = []
@@ -3041,17 +2487,12 @@ class SetupScore:
     cpi_bonus:float; markov_bonus:float; spectral_bonus:float
     adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
     candle_bonus:float; mom_accel_bonus:float
-    apa_bonus:float; order_flow_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
-                    win_rate, profit_factor, profile, momentum_v22=0, **bonuses):
+                    win_rate, profit_factor, profile, **bonuses):
     ts=25 if adx>profile.get('adx_strong',25) else(15 if adx>profile.get('adx_trend_min',15) else 0)
-    # V22: Use enhanced momentum (0-100) if available, fallback to old (0-3)
-    if momentum_v22 > 0:
-        mp = momentum_v22 * 0.2  # Scale 0-100 → 0-20
-    else:
-        mp=(momentum_score/3)*20
+    mp=(momentum_score/3)*20
     dr=dist_ema50/atr if atr>0 else 999
     vs=15 if dr<0.5 else(10 if dr<1.0 else(5 if dr<1.5 else 0))
     hs=min((win_rate*0.15)+(profit_factor*5),25)
@@ -3060,18 +2501,15 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
           'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'cpi_bonus','markov_bonus','spectral_bonus',
-          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus',
-          'apa_bonus','order_flow_bonus']
-    # V22: No arbitrary cap — grade system handles normalization
-    bonus=sum(bonuses.get(k,0) for k in keys)
+          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
+    bonus=min(sum(bonuses.get(k,0) for k in keys),130)  # V21+: raised cap for new engines
     total=base+bonus
-    # V22: Grade thresholds adjusted for uncapped bonuses
-    if total>=210: g="S"
-    elif total>=170: g="A++"
-    elif total>=140: g="A+"
-    elif total>=110: g="A"
-    elif total>=80: g="B"
-    elif total>=55: g="C"
+    if total>=190: g="S"
+    elif total>=155: g="A++"
+    elif total>=125: g="A+"
+    elif total>=95: g="A"
+    elif total>=65: g="B"
+    elif total>=45: g="C"
     else: g="D"
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in keys],bonus,total,g)
@@ -3095,15 +2533,12 @@ def calculate_storm_bonus(sd):
         (sd.get('coherence') in ["PERFECT","STRONG"],"TF Coherence"),
         (sd.get('candle_quality') in ["EXCELLENT","GOOD"],"Candle Struct"),
         (sd.get('mom_accel'),"Mom Accel"),
-        # V22 checks
-        (sd.get('apa_ready'),"A.P.A Ready"),
-        (sd.get('oflow_aligned'),"OrderFlow"),
     ]
     for c,l in checks:
         if c: met+=1; lst.append(l)
-    if met>=15: return "PERFECT_STORM",25,lst
-    elif met>=12: return "STRONG_CONFLUENCE",20,lst
-    elif met>=8: return "GOOD_CONFLUENCE",15,lst
+    if met>=13: return "PERFECT_STORM",25,lst
+    elif met>=10: return "STRONG_CONFLUENCE",20,lst
+    elif met>=7: return "GOOD_CONFLUENCE",15,lst
     elif met>=5: return "MODERATE",10,lst
     return None,0,lst
 
@@ -3117,20 +2552,13 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     ax1.set_facecolor('#09090b')
     ax2.set_facecolor('#09090b')
 
-    # Candles — vectorized (V22 PERF)
-    bull = df['close'].values >= df['open'].values
-    bear = ~bull
-    idx = np.arange(len(df))
-    alpha_arr = np.where(idx > len(df) - 30, 0.9, 0.45)
-
-    # Wicks (thin lines) — use vlines for speed
-    for mask, color in [(bull, '#22c55e'), (bear, '#ef4444')]:
-        if mask.any():
-            positions = df.index[mask]
-            ax1.vlines(positions, df['low'].values[mask], df['high'].values[mask],
-                       colors=color, linewidth=0.6, alpha=0.65)
-            ax1.vlines(positions, df['open'].values[mask], df['close'].values[mask],
-                       colors=color, linewidth=2.8, alpha=0.85)
+    # Candles — thin, clean
+    for i in range(len(df)):
+        bull = df['close'].iloc[i] >= df['open'].iloc[i]
+        c = '#22c55e' if bull else '#ef4444'
+        ca = 0.9 if i > len(df) - 30 else 0.45  # Fade older candles
+        ax1.plot([df.index[i]]*2, [df['low'].iloc[i], df['high'].iloc[i]], color=c, lw=0.6, alpha=ca)
+        ax1.plot([df.index[i]]*2, [df['open'].iloc[i], df['close'].iloc[i]], color=c, lw=2.8, alpha=ca, solid_capstyle='round')
 
     # EMAs — subtle
     ax1.plot(df.index, df['EMA_20'], color='#3b82f6', lw=1, alpha=0.5, label='20')
@@ -3204,7 +2632,7 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     plt.xticks(rotation=45)
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=96, facecolor='#09090b', bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=140, facecolor='#09090b', bbox_inches='tight')
     plt.close(fig)
     buf.seek(0)
     return Image.open(buf)
@@ -3220,52 +2648,203 @@ def convert_np(obj):
     return obj
 
 # ==============================================================================
+# 🔧 GEMINI AI — RETRY + FALLBACK + COMPRESSION ENGINE
+# ==============================================================================
+
+# Modelos em ordem de preferência (fallback automático)
+GEMINI_MODELS = [
+    "models/gemini-2.5-flash-preview-05-20",
+    "models/gemini-2.5-pro-preview-05-06",
+    "models/gemini-2.0-flash",
+]
+
+def compress_image_for_ai(img, max_size=800):
+    """Reduz tamanho da imagem para diminuir payload ao Gemini.
+    Imagem 14×8 @ 140 DPI = ~1960×1120 px → reduz para max 800px lado maior."""
+    try:
+        w, h = img.size
+        if max(w, h) <= max_size:
+            return img
+        ratio = max_size / max(w, h)
+        new_w, new_h = int(w * ratio), int(h * ratio)
+        resample = getattr(Image, 'LANCZOS', getattr(Image, 'ANTIALIAS', None))
+        resized = img.resize((new_w, new_h), resample)
+        return resized
+    except:
+        return img
+
+def trim_data_for_ai(data):
+    """Remove campos pesados/redundantes que a IA não precisa para análise.
+    Mantém apenas os campos essenciais para o prompt."""
+    essential_keys = [
+        "FINAL_DECISION", "TRADE_STYLE", "SETUP_TYPE", "SETUP_SCORE", "SETUP_GRADE",
+        "INDEX_PROFILE", "GEN_TYPE", "GEN_SIGNAL", "GEN_BONUS", "SIGMA_CALIBRATED",
+        "VR_TEST", "ACF_TEST", "VOL_CLUSTER", "DIST_ANALYSIS",
+        "HURST", "HURST_REGIME", "HURST_R2", "ZSCORE",
+        "BB_CYCLE", "CONSECUTIVE", "CONSECUTIVE_DIR", "ROC_STATUS",
+        "MARKET_STRUCTURE", "MARKET_REGIME", "MOMENTUM", "MOMENTUM_V21",
+        "TRIGGER_OK", "TRIGGER_TYPE", "CONFLUENCES", "RISKS",
+        "ENTRY_TYPE", "SL_REASON",
+        "WIN_RATE", "NET_PROFIT", "MAX_DRAWDOWN", "PROFIT_FACTOR",
+        "SHARPE", "SORTINO", "WF_STABLE", "TOTAL_TRADES",
+        "MC_MEDIAN", "MC_P5", "MC_P95", "MC_POSITIVE",
+        "ENTRY", "SL", "TP1", "TP2", "ATR",
+        "CPI_VAL", "REGIME_TRANSITION", "BIAS_CONFIDENCE", "BIAS_SCORE",
+        "HOLDING_PERIOD", "SCORE_BREAKDOWN",
+        "ADX_SLOPE", "EMA_RIBBON", "TREND_COHERENCE", "CANDLE_STRUCTURE",
+        "MOM_ACCELERATION", "ATR_CHANNEL", "VWAP_ZONE",
+    ]
+    trimmed = {}
+    for k in essential_keys:
+        if k in data:
+            v = data[k]
+            # Truncar dicts muito grandes (ex: VR_TEST com arrays)
+            if isinstance(v, dict):
+                clean = {}
+                for dk, dv in v.items():
+                    if isinstance(dv, list) and len(dv) > 10:
+                        clean[dk] = dv[:5]  # Só primeiros 5 elementos
+                    else:
+                        clean[dk] = dv
+                trimmed[k] = clean
+            else:
+                trimmed[k] = v
+    return trimmed
+
+def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=None,
+                            max_retries=2, base_timeout=120):
+    """Chama Gemini com retry, fallback de modelos, e compressão de payload.
+    
+    Fluxo:
+    1. Comprime imagens (1960px → 800px)
+    2. Trima dados (remove campos pesados)
+    3. Tenta modelo primário com retry
+    4. Se falhar, tenta modelos fallback
+    5. Se tudo falhar, retorna análise sem IA
+    """
+    genai.configure(api_key=api_key)
+    
+    # Comprimir imagens para reduzir payload (~60% menor)
+    compressed_imgs = [compress_image_for_ai(img, max_size=800) for img in images]
+    
+    # Trimar dados para reduzir JSON (~40% menor)
+    trimmed_data = trim_data_for_ai(data)
+    json_payload = json.dumps(trimmed_data, ensure_ascii=False)
+    
+    # Limitar tamanho do JSON (Gemini tem limite de contexto)
+    if len(json_payload) > 15000:
+        json_payload = json_payload[:15000] + "...(truncated)"
+    
+    content = [system_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
+    
+    last_error = None
+    
+    for model_name in GEMINI_MODELS:
+        for attempt in range(max_retries + 1):
+            try:
+                if status_widget:
+                    model_short = model_name.split("/")[-1].split("-preview")[0]
+                    if attempt > 0:
+                        status_widget.write(f"🔄 Retry {attempt}/{max_retries} ({model_short})...")
+                    else:
+                        status_widget.write(f"🤖 Gerando análise IA ({model_short})...")
+                
+                model = genai.GenerativeModel(
+                    model_name,
+                    safety_settings=SAFETY_SETTINGS,
+                )
+                
+                # Tentar com timeout configurável (compatível com versões recentes)
+                try:
+                    response = model.generate_content(
+                        content,
+                        request_options={"timeout": base_timeout}
+                    )
+                except TypeError:
+                    # Versão antiga da lib não suporta request_options
+                    response = model.generate_content(content)
+                
+                if response and response.text:
+                    if status_widget:
+                        status_widget.write(f"✅ Análise gerada com {model_short}")
+                    return response.text, None
+                    
+            except Exception as e:
+                last_error = str(e)
+                error_lower = last_error.lower()
+                
+                # 503 = high demand → tentar próximo modelo imediatamente
+                if "503" in last_error or "high demand" in error_lower or "overloaded" in error_lower:
+                    if status_widget:
+                        status_widget.write(f"⚠️ {model_name.split('/')[-1]} sobrecarregado, tentando próximo...")
+                    break  # Pula para próximo modelo (não faz retry no mesmo)
+                
+                # Timeout → retry com backoff
+                if "timeout" in error_lower or "deadline" in error_lower:
+                    if attempt < max_retries:
+                        wait = (attempt + 1) * 5  # 5s, 10s
+                        if status_widget:
+                            status_widget.write(f"⏱️ Timeout, aguardando {wait}s...")
+                        time.sleep(wait)
+                        continue
+                    else:
+                        break  # Esgotou retries, tenta próximo modelo
+                
+                # Rate limit → esperar e retry
+                if "429" in last_error or "rate" in error_lower:
+                    wait = (attempt + 1) * 10
+                    if status_widget:
+                        status_widget.write(f"⏳ Rate limit, aguardando {wait}s...")
+                    time.sleep(wait)
+                    continue
+                
+                # Outro erro → retry simples
+                if attempt < max_retries:
+                    time.sleep(3)
+                    continue
+                else:
+                    break
+    
+    # Todos os modelos falharam — retornar análise básica sem IA
+    return None, last_error
+
+# ==============================================================================
 # SYSTEM PROMPT V21+
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V22 — A.P.A PRECISION ENGINE [Gemini 3 Pro]
+FUNÇÃO: ANALISTA V21+ — PRECISION PREDICTABILITY ENGINE [Gemini 3 Pro]
 Missão: Explorar edges estatísticos reais nos sintéticos Deriv com precisão cirúrgica
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V22 — A.P.A PRECISION ENGINE (V21+ com 5 novos motores):**
+**V21+ — PRECISION ENGINE (V21 + 7 motores de precisão):**
+Base V21 (16 melhorias) PLUS:
+- ADX Slope Detection (captura tendências ANTES do ADX cruzar threshold)
+- EMA Ribbon Spread Analysis (qualidade da tendência via expansão da ribbon)
+- Multi-TF Trend Coherence Scoring (coerência H4→H1→M15→M5)
+- VWAP Proxy Analysis (zonas institucionais de entrada)
+- Candle Structure Scoring (qualidade dos candles para entrada)
+- Momentum Acceleration (timing ótimo via taxa de mudança do MACD)
+- Dynamic ATR Channel (entradas ajustadas por volatilidade)
+- Entry Refinement Engine (ATR channel + VWAP para entradas precisas)
 
-🔵 ESTRATÉGIA A.P.A (Accumulation → Pattern → Action):
-- ACCUMULATION: BB squeeze + ATR contraction + candles diminuindo + ADX baixo
-- PATTERN: Inside Bar, Pin Bar, Engulfing, Breakout, Double Bottom/Top no fim da acumulação
-- ACTION: Range expansion + BB abrindo + MACD flip + bias alinhado + TF coherent
-- RISK: SL abaixo/acima do range de acumulação, TP = múltiplos do range, Time-stop = 2× duração
-
-Novos Motores V22:
-- Order Flow Score (pressão compra/venda via microestrutura)
-- Anti-Whipsaw Filter (previne overtrading em mercados choppy)
-- Divergence Decay (divergências recentes pesam mais)
-- Session Volatility Awareness (horários de alta/baixa vol)
-- Enhanced Momentum V22 (0-100, não 0-3)
-
-Base V21+:
-- ADX Slope, EMA Ribbon, Multi-TF Coherence, VWAP Proxy
-- Candle Structure, Momentum Acceleration, ATR Channel
+Base V21:
 - Sample Entropy, Permutation Entropy, FFT, Markov Chain
-- CPI 0-100, VR Test, ACF, GARCH, Hurst R²
+- CPI 0-100, Regime Transition, Dynamic Bias
+- Enhanced Momentum, Edge Correlation Matrix
+- Optimal Holding Period, Look-ahead bias removido
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V22: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/250 | **CPI:** {CPI}/100
+## ⚡ VEREDICTO V21+: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE}/220 | **CPI:** {CPI}/100
 **Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE}
-
-### 🔵 ANÁLISE A.P.A
-- Estado: {APA_STATE} (Confiança: {CONFIDENCE}%)
-- Acumulação: {DETECTED} ({BARS} bars, qualidade={QUALITY}%)
-- Padrão: {PATTERN} (direção={DIRECTION}, força={STRENGTH})
-- Trigger: {TRIGGERED} ({REASONS})
 
 ### 🧮 MODELO DO GERADOR
 - Sigma calibrado: {X}% | Vol Ratio (3 janelas): S={short} M={med} L={long}
 - Consensus: {SIGNAL} → Direção: {compress_direction}
-- Order Flow: {PRESSURE} (score={SCORE})
+- Preço teórico z: {z_price} ({deviation_signal})
 
 ### 📊 EDGE ESTATÍSTICO
 - Variance Ratio: {VR edge type} ({N} períodos significativos)
@@ -3274,22 +2853,25 @@ Base V21+:
 - Distribuição: Skew={S} Kurt={K} Tails={T}
 
 ### 🎯 PRECISÃO DE ENTRADA
-- ADX Phase: {phase} | EMA Ribbon: {quality}
-- TF Coherence: {coherence} | VWAP Zone: {zone}
-- Candle Structure: {quality} | Mom Accel: {phase}
-- Session: {SESSION} (vol ×{FACTOR})
-- Anti-Whipsaw: {STATUS}
+- ADX Phase: {phase} (slope={slope})
+- EMA Ribbon: {quality} ({direction}) - Expanding: {Y/N}
+- TF Coherence: {coherence} ({direction})
+- Candle Structure: {quality} ({pattern_type})
+- Mom Acceleration: {phase} (confidence={X}%)
+- ATR Channel: {quality} (position={X})
+- VWAP Zone: {zone} ({entry_quality})
 
 ### 🎯 PLANO DE TRADE
-{Entradas + Smart TP + Time-Stop}
+{Entradas + Pirâmide + Smart TP}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V22 Insight:* Quando A.P.A está em ACTION_READY com TF Coherence PERFECT e
-Order Flow alinhado, esta é a entrada de MÁXIMA confiança. Enfatizar que
-A.P.A com padrão ENGULFING ou BREAKOUT no fim de acumulação forte tem
-as melhores win rates em sintéticos. Se A.P.A está ACCUMULATING sem padrão,
-recomendar ESPERAR pelo padrão antes de entrar.
+*V21+ Insight:* {Baseado nos EDGES REAIS detectados pelo Variance Ratio
+e Autocorrelação, combinados com PRECISÃO DE ENTRADA via EMA Ribbon,
+Trend Coherence e Momentum Acceleration. Se VR mostra random walk,
+dizer claramente que não há edge estatístico operável.
+Quando Trend Coherence é PERFECT, enfatizar alta confiança.
+Quando candle structure é WEAK, recomendar cautela ou esperar melhor setup.}
 """
 
 # ==============================================================================
@@ -3314,9 +2896,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     regime, regime_sc = classify_regime(h1)
     momentum_old = check_momentum(h4, h1, m15, bias)
     momentum_v21 = enhanced_momentum_v21(h4, h1, m15, bias)
-    momentum = momentum_old  # keep for backward compat
-    # V22 FIX: Use V21 enhanced momentum for scoring
-    momentum_score_v22 = momentum_v21  # 0-100 scale
+    momentum = momentum_old  # keep for scoring compatibility
 
     # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
@@ -3359,19 +2939,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     ema_ribbon = ema_ribbon_analysis(h1)
     trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)
     vwap_data = vwap_proxy_analysis(h1)
-    # V22 FIX: Candle structure on M5 (entry TF) not M15
-    candle_struct = candle_structure_score(m5 if m5 is not None and len(m5) > 5 else m15, bias)
+    candle_struct = candle_structure_score(m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
 
-    # ═══ V22 NEW ENGINES ═══
-    apa_result = apa_full_analysis(m15, bias, trend_coherence)
-    oflow = order_flow_score(m15)
-    session_vol = session_volatility_check(h1)
-
-    # Divergências — V22: with temporal decay
-    rsi_div, rsi_db, rsi_dd = divergence_with_decay(m15, 'RSI', 4)
-    macd_div, macd_db, macd_dd = divergence_with_decay(m15, 'MACD', 4)
+    # Divergências
+    rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
+    macd_div, macd_db, macd_dd = detect_divergence(m15, 'MACD', 4)
     divergence = rsi_div or macd_div
     div_bonus = max(rsi_db, macd_db); div_detail = rsi_dd or macd_dd
 
@@ -3497,23 +3071,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
        (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
         mom_accel_bonus = -3  # Slight penalty
 
-    # ═══ V22 NEW BONUSES ═══
-    # A.P.A bonus: high-confidence accumulation→pattern→action
-    apa_bonus = 0
-    if apa_result.get('state') == "ACTION_READY":
-        apa_bonus = min(int(apa_result['confidence'] / 6), 15)
-    elif apa_result.get('state') == "PATTERN_FORMING":
-        apa_bonus = min(int(apa_result['confidence'] / 10), 8)
-
-    # Order Flow bonus: buy/sell pressure alignment
-    order_flow_bonus = 0
-    if bias == "BULLISH" and oflow.get('pressure') in ['STRONG_BUYING', 'BUYING']:
-        order_flow_bonus = min(int(abs(oflow['score']) / 5), 8)
-    elif bias == "BEARISH" and oflow.get('pressure') in ['STRONG_SELLING', 'SELLING']:
-        order_flow_bonus = min(int(abs(oflow['score']) / 5), 8)
-
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
-    sim = run_walk_forward_v21(h1, bias, profile, n_folds=3)
+    sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
 
     # ADAPTIVE (usa resultado do único backtest)
     adapted_profile = AdaptiveLearnerV20.adjust_profile(profile, sim, dist)
@@ -3543,19 +3102,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                                      ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
         if div_block:
             sig = f"BLOCKED (DIV: {div_detail})"; return
-
-        # V22: A.P.A SETUP (HIGHEST PRIORITY — precision entries)
-        if apa_result.get('state') == "ACTION_READY":
-            apa_action = apa_result['action']
-            apa_dir = apa_action.get('direction', 'NEUTRAL')
-            if (apa_dir == "BULLISH" and is_long) or (apa_dir == "BEARISH" and not is_long):
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (A.P.A)"
-                entry = apa_action['entry']
-                sl_val = apa_action['sl']
-                entry_type = f"A.P.A {apa_result['pattern']['pattern']} | Accum {apa_result['accumulation']['bars']}bars"
-                trade_style = "APA"; setup_type = "APA"
-                return
 
         # REGIME-SPECIFIC STRATEGY
         # TRENDING → Swing/Breakout
@@ -3703,11 +3249,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         'ribbon_quality':ema_ribbon.get('quality'),
         'coherence':trend_coherence.get('coherence'),
         'candle_quality':candle_struct.get('quality'),
-        'mom_accel':mom_accel_bonus > 0,
-        # V22 storm data
-        'apa_ready':apa_result.get('state') == 'ACTION_READY',
-        'oflow_aligned':(bias == "BULLISH" and oflow.get('score', 0) > 10) or
-                        (bias == "BEARISH" and oflow.get('score', 0) < -10)}
+        'mom_accel':mom_accel_bonus > 0}
     storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
 
     if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
@@ -3727,7 +3269,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         adx=adx, momentum_score=momentum, pattern_score=pat_score,
         dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
         win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
-        momentum_v22=momentum_score_v22,  # V22: enhanced momentum
         divergence_bonus=final_db, fib_bonus=fib_bonus, sr_bonus=sr_bonus,
         alignment_bonus=align_bonus, storm_bonus=storm_bonus,
         regime_bonus=regime_bonus, volume_bonus=vol_bonus,
@@ -3737,26 +3278,20 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
         adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
         coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
-        mom_accel_bonus=mom_accel_bonus,
-        apa_bonus=apa_bonus, order_flow_bonus=order_flow_bonus)
+        mom_accel_bonus=mom_accel_bonus)
 
     # Filters
     configs = {"PERFECT_STORM":(100,1.5),"BREAKOUT":(60,1.4),"MEAN_REVERSION":(45,1.1),
                "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
-               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4),
-               "APA":(50,1.2)}  # V22: A.P.A setup config
+               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(70,1.4)}
     ms, mpf = configs.get(setup_type, (70, 1.4))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
-    is_apa_setup = setup_type == "APA"
     if "BLOCKED" not in sig and sig != "MONITORING":
-        # V22: Anti-whipsaw check
-        whipsaw_ok, whipsaw_reason = anti_whipsaw_check(m15, setup_type)
         fails = []
-        if not whipsaw_ok: fails.append(f"WHIPSAW: {whipsaw_reason}")
         if score.total < ms: fails.append(f"SCORE={score.total:.0f}<{ms}")
-        if cpi_val < 25 and not is_gen_setup and not is_apa_setup: fails.append(f"CPI={cpi_val:.0f}<25")
-        if sim['NET'] <= 0 and not is_gen_setup and not is_apa_setup: fails.append("NET≤0")
-        if sim['PF'] < mpf and not is_gen_setup and not is_apa_setup: fails.append(f"PF={sim['PF']}<{mpf}")
+        if cpi_val < 25 and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<25")
+        if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
+        if sim['PF'] < mpf and not is_gen_setup: fails.append(f"PF={sim['PF']}<{mpf}")
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
     # Targets — 🟢 PRECISION #3: Smart TP
@@ -3765,7 +3300,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
           "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
           "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
-          "APA":(2.5,4.5),  # V22: A.P.A targets based on accumulation range
           "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r'])}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
     direction = "LONG" if "LONG" in sig else "SHORT"
@@ -3774,12 +3308,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Pyramid
     pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
-    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE","A.P.A"])
+    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
 
     imgs = [
-        plot_candles(h4.tail(100), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
-        plot_candles(h1.tail(120), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
-        plot_candles(m15.tail(120), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
+        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
+        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
+        plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
     ]
 
     # V21: Optimal holding
@@ -3817,18 +3351,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🏦 VWAP Zone ({vwap_data.get('zone','?')})")
     if adx_slope.get('phase') == 'TREND_FORMING':
         confs.append(f"📈 ADX Forming (slope={adx_slope.get('slope',0):.2f})")
-    # V22 A.P.A confluences
-    if apa_result.get('state') == 'ACTION_READY':
-        confs.append(f"🔵 A.P.A ACTION ({apa_result['pattern']['pattern']}, conf={apa_result['confidence']:.0f}%)")
-    elif apa_result.get('state') == 'PATTERN_FORMING':
-        confs.append(f"🔵 A.P.A Pattern ({apa_result['pattern']['pattern']})")
-    elif apa_result.get('state') == 'ACCUMULATING':
-        confs.append(f"🔵 A.P.A Accumulating ({apa_result['accumulation']['bars']} bars)")
-    # V22 Order Flow
-    if oflow.get('pressure') in ['STRONG_BUYING', 'STRONG_SELLING']:
-        confs.append(f"💰 OrderFlow: {oflow['pressure']} ({oflow['score']:.0f})")
-    elif oflow.get('pressure') in ['BUYING', 'SELLING']:
-        confs.append(f"💰 OrderFlow: {oflow['pressure']}")
 
     risks = []
     if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
@@ -3849,11 +3371,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
     if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
-    # V22 risks
-    if session_vol.get('session') == 'LOW_VOL_SESSION': risks.append(f"⚠️ Low vol session (×{session_vol.get('vol_factor',1):.1f})")
-    if (bias == "BULLISH" and oflow.get('pressure') in ['STRONG_SELLING', 'SELLING']) or \
-       (bias == "BEARISH" and oflow.get('pressure') in ['STRONG_BUYING', 'BUYING']):
-        risks.append(f"⚠️ OrderFlow contra bias ({oflow.get('pressure','')})")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -3903,8 +3420,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
             "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
             "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
-            "MOM_ACCEL":score.mom_accel_bonus,
-            "APA":score.apa_bonus,"OFLOW":score.order_flow_bonus
+            "MOM_ACCEL":score.mom_accel_bonus
         }),
         # V21+ precision data
         "ADX_SLOPE": convert_np(adx_slope),
@@ -3914,13 +3430,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "CANDLE_STRUCT": convert_np(candle_struct),
         "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
-        # V22 new data
-        "APA": convert_np(apa_result),
-        "APA_BONUS": apa_bonus,
-        "ORDER_FLOW": convert_np(oflow),
-        "ORDER_FLOW_BONUS": order_flow_bonus,
-        "SESSION_VOL": convert_np(session_vol),
-        "TIME_STOP": hold.get('time_stop', 45),
     }
 
 # ==============================================================================
@@ -3976,7 +3485,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V22 A.P.A</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V21</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -4001,16 +3510,15 @@ with st.sidebar:
 
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        A.P.A Precision Engine<br>
-        Accumulation→Pattern→Action<br>
-        VR · ACF · GARCH · OrderFlow<br>
+        Statistical Edge Engine<br>
+        VR · ACF · GARCH · Kelly<br>
         Sigma Calibrated · Smart TP
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>A.P.A Precision Engine V22</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Predictability Engine V21</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -4036,32 +3544,57 @@ if mode == "Analysis":
         if run:
             if not api: st.error("API key required"); st.stop()
 
-            import time as _time
-            status = st.status("⚡ Analyzing...", expanded=True)
-            _t0 = _time.time()
+            status = st.status("Analyzing...", expanded=True)
             status.write("📡 Fetching multi-timeframe data...")
             h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
             if err: status.update(state='error'); st.error(err); st.stop()
-            _t1 = _time.time()
-            status.write(f"📡 Data fetched in {_t1-_t0:.1f}s · 🧮 Running statistical engine...")
+            status.write("🧮 Running statistical analysis...")
             data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
-            _t2 = _time.time()
             imgs = data.pop("IMAGES")
-            status.write(f"🧮 Analysis done in {_t2-_t1:.1f}s · 🤖 Generating AI insights...")
-            genai.configure(api_key=api)
+            
+            # ── GEMINI AI COM RETRY + FALLBACK ──
             dc = convert_np(data)
-            try:
-                model = genai.GenerativeModel("models/gemini-3-pro-preview", safety_settings=SAFETY_SETTINGS)
-                ai = model.generate_content([SYSTEM_PROMPT, f"V20 DATA: {json.dumps(dc)}"] + imgs).text
-                status.update(label="Complete", state="complete")
-            except Exception as e:
-                ai = f"AI unavailable: {str(e)[:120]}"
-                status.update(label="Done", state="complete")
+            ai_text, ai_error = call_gemini_with_retry(
+                api_key=api,
+                system_prompt=SYSTEM_PROMPT,
+                data=dc,
+                images=imgs,
+                status_widget=status,
+                max_retries=2,
+                base_timeout=120
+            )
+            
+            if ai_text:
+                ai = ai_text
+                status.update(label="✅ Complete", state="complete")
+            else:
+                # Fallback: análise automática SEM IA (dados já calculados)
+                g = data.get('SETUP_GRADE', '?')
+                s = data.get('SETUP_SCORE', 0)
+                dec = data.get('FINAL_DECISION', '?')
+                wr = data.get('WIN_RATE', 0)
+                pf = data.get('PROFIT_FACTOR', 0)
+                confs = data.get('CONFLUENCES', [])
+                risks = data.get('RISKS', [])
+                ai = f"""## ⚡ VEREDICTO: {dec}
+**Grade:** {g} | **Score:** {s}/220 | **WR:** {wr:.0f}% | **PF:** {pf:.1f}
+
+### 📊 CONFLUÊNCIAS
+{chr(10).join(f'- {c}' for c in confs) if confs else '- Nenhuma confluência forte'}
+
+### ⚠️ RISCOS
+{chr(10).join(f'- {r}' for r in risks) if risks else '- Sem riscos identificados'}
+
+---
+*⚠️ Análise IA indisponível ({ai_error[:80] if ai_error else 'todos os modelos falharam'}). 
+Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA não foi gerado.*
+*💡 Dica: Se o erro persistir, verifique sua API key e tente novamente em alguns minutos.*"""
+                status.update(label="⚠️ Done (sem IA)", state="complete")
 
             # ── GRADE CARD ──
             g = data['SETUP_GRADE']
             grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
-            score_pct = min(data['SETUP_SCORE'] / 250 * 100, 100)
+            score_pct = min(data['SETUP_SCORE'] / 220 * 100, 100)
             bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
 
             # Decision tag
@@ -4079,7 +3612,7 @@ if mode == "Analysis":
             <div class='{grade_class}' style='margin:8px 0 20px;'>
                 <div class='grade-letter'>{g}</div>
                 <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
-                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 250</span>
+                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 220</span>
                 </div>
                 <div class='score-bar-outer'>
                     <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
@@ -4170,28 +3703,6 @@ if mode == "Analysis":
             ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
 
-            # ── V22: A.P.A STRATEGY ──
-            st.markdown("## A.P.A Strategy")
-            apa = data.get('APA', {})
-            apa_state = apa.get('state', 'NO_SETUP')
-            apa_color = '#22c55e' if apa_state == 'ACTION_READY' else '#f59e0b' if 'PATTERN' in apa_state or 'ACCUM' in apa_state else '#52525b'
-            a1, a2, a3, a4 = st.columns(4)
-            a1.metric("A.P.A State", apa_state, f"conf={apa.get('confidence',0):.0f}%")
-            accum = apa.get('accumulation', {})
-            a2.metric("Accumulation", accum.get('phase', 'NONE'), f"{accum.get('bars',0)} bars")
-            pat = apa.get('pattern', {})
-            a3.metric("Pattern", pat.get('pattern', 'NONE'), f"str={pat.get('strength',0)}")
-            act = apa.get('action', {})
-            a4.metric("Action", "✓ TRIGGERED" if act.get('triggered') else "✗ Waiting", f"score={act.get('trigger_score',0)}")
-
-            # V22: Order Flow + Session
-            o1, o2, o3 = st.columns(3)
-            ofl = data.get('ORDER_FLOW', {})
-            o1.metric("Order Flow", ofl.get('pressure', '?'), f"score={ofl.get('score',0):.0f}")
-            sv = data.get('SESSION_VOL', {})
-            o2.metric("Session", sv.get('session', '?'), f"×{sv.get('vol_factor',1):.1f}")
-            o3.metric("Time-Stop", f"{data.get('TIME_STOP', 45)} bars")
-
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
             d1, d2, d3, d4 = st.columns(4)
@@ -4235,7 +3746,7 @@ if mode == "Analysis":
             # ── TRADE PLAN ──
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
             is_active = any(x in d for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION",
-                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE","A.P.A"])
+                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
             if is_active:
                 st.markdown("## Trade Plan")
 
@@ -4266,11 +3777,6 @@ if mode == "Analysis":
                         <span class='plan-label'>Trigger</span>
                         <span class='plan-value'>{"✓" if data.get('TRIGGER_OK') else "✗"}</span>
                         <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
-                    </div>
-                    <div class='plan-row'>
-                        <span class='plan-label'>Time-Stop</span>
-                        <span class='plan-value'>{data.get('TIME_STOP',45)} bars</span>
-                        <span class='plan-note'>Max hold · Edge decay</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
 
