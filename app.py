@@ -3518,9 +3518,9 @@ def convert_np(obj):
 
 # Modelos em ordem de preferência (fallback automático)
 GEMINI_MODELS = [
-    "models/gemini-3.1-pro-preview",
-    "models/gemini-2.5-flash-preview-05-20",
-    "models/gemini-2.5-pro-preview-05-06",
+    "models/gemini-3.1-pro",
+    "models/gemini-3.0-pro",
+    "models/gemini-3.0-flash",
     "models/gemini-2.0-flash",
 ]
 
@@ -3559,6 +3559,15 @@ def trim_data_for_ai(data):
         "HOLDING_PERIOD", "SCORE_BREAKDOWN",
         "ADX_SLOPE", "EMA_RIBBON", "TREND_COHERENCE", "CANDLE_STRUCTURE",
         "MOM_ACCELERATION", "ATR_CHANNEL", "VWAP_ZONE",
+        # V23 sniper data
+        "MKT_STRUCTURE", "CANDLE_MOMENTUM", "PULLBACK_QUALITY",
+        "LIQ_SWEEP", "ENTRY_SYNC", "CONT_PATTERN",
+        "EARLY_REVERSAL", "REVERSAL_DIR", "RW_PENALTY",
+        "ENTRY_AGGRESSIVE", "ENTRY_IDEAL", "ENTRY_SNIPER",
+        "TRAIL_BE", "TRAIL_1R", "MC_CONFIDENCE",
+        # V23-BC: Boom/Crash engine data (critical for AI analysis)
+        "BC_SPIKE", "BC_DRIFT", "BC_FADE", "BC_SD_ZONES",
+        "BC_FREQ", "BC_ABSORB", "BC_MULTI", "BC_STOCH",
     ]
     trimmed = {}
     for k in essential_keys:
@@ -3675,11 +3684,11 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
     return None, last_error
 
 # ==============================================================================
-# SYSTEM PROMPT V21+
+# SYSTEM PROMPT V23-BC
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V23-BC — BOOM/CRASH PRECISION SNIPER [Gemini 3 Pro]
+FUNÇÃO: ANALISTA V23-BC — BOOM/CRASH PRECISION SNIPER [Gemini 3.1 Pro + Fallback]
 Missão: Sinais de alta precisão EXCLUSIVOS para Boom e Crash indices da Deriv
 APENAS Day Trade + Scalp — SEM Swing Trade
 
