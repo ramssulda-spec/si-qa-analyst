@@ -21,40 +21,32 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# SI-APATECO V23.0 — PRECISION SNIPER ENGINE
+# SI-APATECO V23.0-BC — BOOM/CRASH PRECISION SNIPER ENGINE
 #
-# V23 UPGRADES (23 melhorias sobre V22):
+# ⚡ SISTEMA EXCLUSIVO BOOM & CRASH — Day Trade + Scalp
+# ⚡ BUY e SELL em ambos os ativos
+# ⚡ Alta precisão + Agressividade controlada
 #
-# 🔴 ANTI-ILUSÃO:
-#   1. Backtest SL sem look-ahead (swing points apenas do passado)
-#   2. Score com bonus groups (caps por categoria)
-#   3. Random Walk penalty (Hurst 0.47-0.53 penalizado)
-#   4. PF mínimo global 1.1
-#   5. MC confidence flag (< 30 trades = LOW)
-#   6. Slippage no backtest (0.3× ATR)
+# ATIVOS: Boom 300/500/600/900/1000 | Crash 300/500/600/900/1000
+# ESTILOS: Day Trade + Scalp APENAS (sem Swing)
 #
-# 🟠 DETECÇÃO DE TENDÊNCIA:
-#   7. Market Structure (HH/HL, BOS, CHoCH)
-#   8. Multi-speed Bias (M15+H1+H4 ponderado)
-#   9. Candle Momentum Engine
-#  10. Pullback Quality Score 0-100
-#  11. Liquidity Sweep Detector
+# ENGINES ESPECIALIZADOS BOOM/CRASH:
+#   1. Spike Detection Engine (detecta spikes iminentes)
+#   2. Drift Trading Engine (lucra com o drift natural)
+#   3. Post-Spike Fade (trade após spike/crash)
+#   4. Supply/Demand Zone Detection
+#   5. RSI Extreme Spike Timer
+#   6. Spike Frequency Analyzer (ticks entre spikes)
+#   7. Candle Absorption Detector (pressão institucional)
+#   8. Multi-Spike Pattern (spikes consecutivos)
 #
-# 🟡 ENTRADAS SNIPER:
-#  12. Entry Sync Score (multi-TF alignment)
-#  13. Engulfing/PinBar trigger detection
-#  14. Multi-entry levels (agressivo/ideal/sniper)
-#  15. Breakout Retest detector
-#  16. Adaptive SL (volatility-adjusted)
-#
-# 🟢 AGRESSIVIDADE INTELIGENTE:
-#  17. CPI Gate adaptativo por asset class
-#  18. Score override com alta confluência
-#  19. Scalp Mode (novo setup type)
-#  20. Adaptive TP (S/R aware)
-#  21. Aggressive Pyramid por grade
-#  22. Continuation patterns (flag, pennant)
-#  23. Trailing stop levels na análise
+# SETUPS (6 tipos):
+#   DRIFT_RIDE — Segue o drift natural (mais seguro)
+#   SPIKE_CATCH — Captura spike/crash (maior R:R)
+#   POST_SPIKE — Fade após spike (alta probabilidade)
+#   SCALP — Entradas rápidas M1/M5
+#   DAY_TRADE — Posições de 1-4h
+#   REVERSAL — Reversão de tendência confirmada
 #
 # ==============================================================================# 🟢 PRECISION #2: Trailing Stop por regime/tipo
 # 🟢 PRECISION #3: Dynamic TP com S/R awareness
@@ -64,7 +56,7 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V23",
+    page_title="APATECO V23-BC",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -390,157 +382,203 @@ SAFETY_SETTINGS = [
 # ==============================================================================
 
 SYNTHETIC_PROFILES = {
-    "VOLATILITY 10 INDEX": {
-        "gen_type": "GBM", "vol_class": "ULTRA_LOW", "sigma_seed": 0.10,
-        "spread": 0.02, "adx_trend_min": 12, "adx_strong": 20,
-        "sl_atr_mult": 2.0, "tp1_r": 2.5, "tp2_r": 4.0,
-        "bb_squeeze_threshold": 0.5, "zscore_extreme": 2.5,
-        "hurst_trend_min": 0.55, "consecutive_reversal": 8,
-        "roc_extreme_pct": 0.3, "mean_reversion_bias": 0.7, "risk_mult": 1.3,
-    },
-    "VOLATILITY 10 (1S) INDEX": {
-        "gen_type": "GBM", "vol_class": "ULTRA_LOW", "sigma_seed": 0.10,
-        "spread": 0.02, "adx_trend_min": 12, "adx_strong": 20,
-        "sl_atr_mult": 2.0, "tp1_r": 2.5, "tp2_r": 4.0,
-        "bb_squeeze_threshold": 0.5, "zscore_extreme": 2.5,
-        "hurst_trend_min": 0.55, "consecutive_reversal": 8,
-        "roc_extreme_pct": 0.3, "mean_reversion_bias": 0.7, "risk_mult": 1.3,
-    },
-    "VOLATILITY 25 INDEX": {
-        "gen_type": "GBM", "vol_class": "LOW", "sigma_seed": 0.25,
-        "spread": 0.03, "adx_trend_min": 14, "adx_strong": 22,
-        "sl_atr_mult": 2.2, "tp1_r": 2.5, "tp2_r": 4.5,
-        "bb_squeeze_threshold": 0.55, "zscore_extreme": 2.3,
-        "hurst_trend_min": 0.54, "consecutive_reversal": 7,
-        "roc_extreme_pct": 0.5, "mean_reversion_bias": 0.6, "risk_mult": 1.2,
-    },
-    "VOLATILITY 25 (1S) INDEX": {
-        "gen_type": "GBM", "vol_class": "LOW", "sigma_seed": 0.25,
-        "spread": 0.03, "adx_trend_min": 14, "adx_strong": 22,
-        "sl_atr_mult": 2.2, "tp1_r": 2.5, "tp2_r": 4.5,
-        "bb_squeeze_threshold": 0.55, "zscore_extreme": 2.3,
-        "hurst_trend_min": 0.54, "consecutive_reversal": 7,
-        "roc_extreme_pct": 0.5, "mean_reversion_bias": 0.6, "risk_mult": 1.2,
-    },
-    "VOLATILITY 50 INDEX": {
-        "gen_type": "GBM", "vol_class": "MEDIUM", "sigma_seed": 0.50,
-        "spread": 0.05, "adx_trend_min": 16, "adx_strong": 25,
-        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.53, "consecutive_reversal": 6,
-        "roc_extreme_pct": 0.8, "mean_reversion_bias": 0.5, "risk_mult": 1.0,
-    },
-    "VOLATILITY 50 (1S) INDEX": {
-        "gen_type": "GBM", "vol_class": "MEDIUM", "sigma_seed": 0.50,
-        "spread": 0.05, "adx_trend_min": 16, "adx_strong": 25,
-        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.53, "consecutive_reversal": 6,
-        "roc_extreme_pct": 0.8, "mean_reversion_bias": 0.5, "risk_mult": 1.0,
-    },
-    "VOLATILITY 75 INDEX": {
-        "gen_type": "GBM", "vol_class": "HIGH", "sigma_seed": 0.75,
-        "spread": 0.10, "adx_trend_min": 18, "adx_strong": 28,
-        "sl_atr_mult": 3.0, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.65, "zscore_extreme": 1.8,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 1.2, "mean_reversion_bias": 0.4, "risk_mult": 0.7,
-    },
-    "VOLATILITY 75 (1S) INDEX": {
-        "gen_type": "GBM", "vol_class": "HIGH", "sigma_seed": 0.75,
-        "spread": 0.10, "adx_trend_min": 18, "adx_strong": 28,
-        "sl_atr_mult": 3.0, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.65, "zscore_extreme": 1.8,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 1.2, "mean_reversion_bias": 0.4, "risk_mult": 0.7,
-    },
-    "VOLATILITY 100 INDEX": {
-        "gen_type": "GBM", "vol_class": "EXTREME", "sigma_seed": 1.00,
-        "spread": 0.15, "adx_trend_min": 20, "adx_strong": 30,
-        "sl_atr_mult": 3.5, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.7, "zscore_extreme": 1.5,
-        "hurst_trend_min": 0.51, "consecutive_reversal": 4,
-        "roc_extreme_pct": 1.5, "mean_reversion_bias": 0.35, "risk_mult": 0.5,
-    },
-    "VOLATILITY 100 (1S) INDEX": {
-        "gen_type": "GBM", "vol_class": "EXTREME", "sigma_seed": 1.00,
-        "spread": 0.15, "adx_trend_min": 20, "adx_strong": 30,
-        "sl_atr_mult": 3.5, "tp1_r": 3.0, "tp2_r": 5.0,
-        "bb_squeeze_threshold": 0.7, "zscore_extreme": 1.5,
-        "hurst_trend_min": 0.51, "consecutive_reversal": 4,
-        "roc_extreme_pct": 1.5, "mean_reversion_bias": 0.35, "risk_mult": 0.5,
-    },
+    # ═══════════════════════════════════════════════════════════════════
+    # BOOM INDICES — Drift DOWN, Spike UP
+    # ═══════════════════════════════════════════════════════════════════
     "BOOM 300 INDEX": {
         "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
         "spike_lambda": 1/300, "spike_direction": "UP", "drift_direction": "DOWN",
-        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
-        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+        "spike_avg_ticks": 300, "spike_freq": "HIGH",
+        "spread": 0.10, "adx_trend_min": 12, "adx_strong": 20,
+        # Agressivo — Day Trade + Scalp
+        "sl_atr_mult": 1.5, "tp1_r": 2.0, "tp2_r": 3.5,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 2.5,
+        "bb_squeeze_threshold": 0.5, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 4,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.2,
+        # BC-specific
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.0,  # Spike mínimo = 2× ATR
+        "post_spike_fade_pct": 0.4, # Fade 40% do spike
+        "max_hold_scalp": 15,  # max candles M15
+        "max_hold_day": 60,    # max candles M15 (~15h)
     },
     "BOOM 500 INDEX": {
         "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
         "spike_lambda": 1/500, "spike_direction": "UP", "drift_direction": "DOWN",
-        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "spike_avg_ticks": 500, "spike_freq": "MEDIUM",
+        "spread": 0.10, "adx_trend_min": 12, "adx_strong": 22,
+        "sl_atr_mult": 1.8, "tp1_r": 2.5, "tp2_r": 4.0,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 2.5,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.1,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.0,
+        "post_spike_fade_pct": 0.38,
+        "max_hold_scalp": 15, "max_hold_day": 60,
+    },
+    "BOOM 600 INDEX": {
+        "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+        "spike_lambda": 1/600, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spike_avg_ticks": 600, "spike_freq": "MEDIUM",
+        "spread": 0.10, "adx_trend_min": 14, "adx_strong": 22,
+        "sl_atr_mult": 1.8, "tp1_r": 2.5, "tp2_r": 4.5,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 3.0,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.2,
+        "post_spike_fade_pct": 0.35,
+        "max_hold_scalp": 15, "max_hold_day": 60,
+    },
+    "BOOM 900 INDEX": {
+        "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+        "spike_lambda": 1/900, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spike_avg_ticks": 900, "spike_freq": "LOW",
+        "spread": 0.10, "adx_trend_min": 14, "adx_strong": 24,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 5.0,
+        "sl_scalp_mult": 1.2, "tp1_scalp": 2.0, "tp2_scalp": 3.0,
         "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 8, "drift_ema_slow": 21,
+        "spike_size_min_atr": 2.5,
+        "post_spike_fade_pct": 0.35,
+        "max_hold_scalp": 20, "max_hold_day": 80,
     },
     "BOOM 1000 INDEX": {
         "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
         "spike_lambda": 1/1000, "spike_direction": "UP", "drift_direction": "DOWN",
+        "spike_avg_ticks": 1000, "spike_freq": "LOW",
         "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 5.5,
+        "sl_scalp_mult": 1.2, "tp1_scalp": 2.0, "tp2_scalp": 3.5,
         "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 6,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.9,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 6,
+        "roc_extreme_pct": 2.5, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 8, "drift_ema_slow": 21,
+        "spike_size_min_atr": 2.5,
+        "post_spike_fade_pct": 0.30,
+        "max_hold_scalp": 20, "max_hold_day": 80,
     },
+    # ═══════════════════════════════════════════════════════════════════
+    # CRASH INDICES — Drift UP, Spike DOWN
+    # ═══════════════════════════════════════════════════════════════════
     "CRASH 300 INDEX": {
         "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
         "spike_lambda": 1/300, "spike_direction": "DOWN", "drift_direction": "UP",
-        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
-        "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+        "spike_avg_ticks": 300, "spike_freq": "HIGH",
+        "spread": 0.10, "adx_trend_min": 12, "adx_strong": 20,
+        "sl_atr_mult": 1.5, "tp1_r": 2.0, "tp2_r": 3.5,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 2.5,
+        "bb_squeeze_threshold": 0.5, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 4,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.2,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.0,
+        "post_spike_fade_pct": 0.4,
+        "max_hold_scalp": 15, "max_hold_day": 60,
     },
     "CRASH 500 INDEX": {
         "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
         "spike_lambda": 1/500, "spike_direction": "DOWN", "drift_direction": "UP",
-        "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 6.0,
+        "spike_avg_ticks": 500, "spike_freq": "MEDIUM",
+        "spread": 0.10, "adx_trend_min": 12, "adx_strong": 22,
+        "sl_atr_mult": 1.8, "tp1_r": 2.5, "tp2_r": 4.0,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 2.5,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.1,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.0,
+        "post_spike_fade_pct": 0.38,
+        "max_hold_scalp": 15, "max_hold_day": 60,
+    },
+    "CRASH 600 INDEX": {
+        "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
+        "spike_lambda": 1/600, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spike_avg_ticks": 600, "spike_freq": "MEDIUM",
+        "spread": 0.10, "adx_trend_min": 14, "adx_strong": 22,
+        "sl_atr_mult": 1.8, "tp1_r": 2.5, "tp2_r": 4.5,
+        "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 3.0,
+        "bb_squeeze_threshold": 0.55, "zscore_extreme": 1.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 5, "drift_ema_slow": 15,
+        "spike_size_min_atr": 2.2,
+        "post_spike_fade_pct": 0.35,
+        "max_hold_scalp": 15, "max_hold_day": 60,
+    },
+    "CRASH 900 INDEX": {
+        "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
+        "spike_lambda": 1/900, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spike_avg_ticks": 900, "spike_freq": "LOW",
+        "spread": 0.10, "adx_trend_min": 14, "adx_strong": 24,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 5.0,
+        "sl_scalp_mult": 1.2, "tp1_scalp": 2.0, "tp2_scalp": 3.0,
         "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 5,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.8,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 8, "drift_ema_slow": 21,
+        "spike_size_min_atr": 2.5,
+        "post_spike_fade_pct": 0.35,
+        "max_hold_scalp": 20, "max_hold_day": 80,
     },
     "CRASH 1000 INDEX": {
         "gen_type": "CRASH", "vol_class": "CRASH", "sigma_seed": 0.50,
         "spike_lambda": 1/1000, "spike_direction": "DOWN", "drift_direction": "UP",
+        "spike_avg_ticks": 1000, "spike_freq": "LOW",
         "spread": 0.10, "adx_trend_min": 15, "adx_strong": 25,
-        "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 7.0,
+        "sl_atr_mult": 2.0, "tp1_r": 3.0, "tp2_r": 5.5,
+        "sl_scalp_mult": 1.2, "tp1_scalp": 2.0, "tp2_scalp": 3.5,
         "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.52, "consecutive_reversal": 6,
-        "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 0.9,
-    },
-    "STEP INDEX": {
-        "gen_type": "STEP", "vol_class": "STEP", "sigma_seed": 0.20,
-        "spread": 0.01, "adx_trend_min": 10, "adx_strong": 18,
-        "sl_atr_mult": 1.5, "tp1_r": 2.0, "tp2_r": 3.0,
-        "bb_squeeze_threshold": 0.4, "zscore_extreme": 2.0,
-        "hurst_trend_min": 0.55, "consecutive_reversal": 10,
-        "roc_extreme_pct": 0.2, "mean_reversion_bias": 0.8, "risk_mult": 1.5,
+        "hurst_trend_min": 0.50, "consecutive_reversal": 6,
+        "roc_extreme_pct": 2.5, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+        "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+        "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+        "drift_ema_fast": 8, "drift_ema_slow": 21,
+        "spike_size_min_atr": 2.5,
+        "post_spike_fade_pct": 0.30,
+        "max_hold_scalp": 20, "max_hold_day": 80,
     },
 }
 
 DEFAULT_PROFILE = {
-    "gen_type": "GBM", "vol_class": "UNKNOWN", "sigma_seed": 0.50,
-    "spread": 0.05, "adx_trend_min": 15, "adx_strong": 25,
-    "sl_atr_mult": 2.5, "tp1_r": 3.0, "tp2_r": 5.0,
-    "bb_squeeze_threshold": 0.6, "zscore_extreme": 2.0,
-    "hurst_trend_min": 0.53, "consecutive_reversal": 6,
-    "roc_extreme_pct": 1.0, "mean_reversion_bias": 0.5, "risk_mult": 1.0,
+    "gen_type": "BOOM", "vol_class": "BOOM", "sigma_seed": 0.50,
+    "spike_lambda": 1/500, "spike_direction": "UP", "drift_direction": "DOWN",
+    "spike_avg_ticks": 500, "spike_freq": "MEDIUM",
+    "spread": 0.10, "adx_trend_min": 14, "adx_strong": 22,
+    "sl_atr_mult": 1.8, "tp1_r": 2.5, "tp2_r": 4.0,
+    "sl_scalp_mult": 1.0, "tp1_scalp": 1.5, "tp2_scalp": 2.5,
+    "bb_squeeze_threshold": 0.55, "zscore_extreme": 1.8,
+    "hurst_trend_min": 0.50, "consecutive_reversal": 5,
+    "roc_extreme_pct": 2.0, "mean_reversion_bias": 0.3, "risk_mult": 1.0,
+    "rsi_spike_buy": 30, "rsi_spike_sell": 70,
+    "rsi_extreme_buy": 20, "rsi_extreme_sell": 80,
+    "drift_ema_fast": 5, "drift_ema_slow": 15,
+    "spike_size_min_atr": 2.0,
+    "post_spike_fade_pct": 0.35,
+    "max_hold_scalp": 15, "max_hold_day": 60,
 }
 
 def get_profile(name: str) -> dict:
@@ -1808,6 +1846,366 @@ def detect_continuation_pattern(df, direction, atr):
     except:
         return {"pattern": "NONE", "confidence": 0}
 
+# ==============================================================================
+# BC ENGINE #1: SPIKE DETECTION — Detecta spikes iminentes
+# ==============================================================================
+
+def bc_spike_detector(df, profile, lookback=30):
+    """Detecta condições de spike iminente em Boom/Crash.
+    Boom: RSI extremo baixo + drift prolongado = spike UP iminente
+    Crash: RSI extremo alto + drift prolongado = crash DOWN iminente"""
+    try:
+        if len(df) < lookback + 5:
+            return {"spike_imminent": False, "probability": 0, "type": "NONE",
+                    "candles_since_last": 999, "rsi_zone": "NEUTRAL"}
+        is_boom = profile.get('gen_type') == 'BOOM'
+        d = df.tail(lookback)
+        rsi = d['RSI'].iloc[-1] if pd.notna(d['RSI'].iloc[-1]) else 50
+        atr = d['ATR'].iloc[-1]
+        # Spike history: count candles since last spike
+        spike_min = profile.get('spike_size_min_atr', 2.0)
+        candles_since = 0
+        for i in range(len(d)-1, 0, -1):
+            move = abs(d['close'].iloc[i] - d['close'].iloc[i-1])
+            if atr > 0 and move > spike_min * atr:
+                break
+            candles_since += 1
+        # RSI zone analysis
+        rsi_buy = profile.get('rsi_spike_buy', 30)
+        rsi_sell = profile.get('rsi_spike_sell', 70)
+        rsi_ext_buy = profile.get('rsi_extreme_buy', 20)
+        rsi_ext_sell = profile.get('rsi_extreme_sell', 80)
+        if rsi <= rsi_ext_buy: rsi_zone = "EXTREME_LOW"
+        elif rsi <= rsi_buy: rsi_zone = "LOW"
+        elif rsi >= rsi_ext_sell: rsi_zone = "EXTREME_HIGH"
+        elif rsi >= rsi_sell: rsi_zone = "HIGH"
+        else: rsi_zone = "NEUTRAL"
+        # Drift measurement (how many consecutive candles in drift direction)
+        drift_count = 0
+        if is_boom:  # Boom drifts DOWN
+            for i in range(len(d)-1, max(0, len(d)-20), -1):
+                if d['close'].iloc[i] < d['open'].iloc[i]: drift_count += 1
+                else: break
+        else:  # Crash drifts UP
+            for i in range(len(d)-1, max(0, len(d)-20), -1):
+                if d['close'].iloc[i] > d['open'].iloc[i]: drift_count += 1
+                else: break
+        # Probability calculation
+        prob = 0
+        if is_boom:
+            if rsi_zone == "EXTREME_LOW": prob += 35
+            elif rsi_zone == "LOW": prob += 20
+            if drift_count >= 8: prob += 25
+            elif drift_count >= 5: prob += 15
+            elif drift_count >= 3: prob += 8
+        else:
+            if rsi_zone == "EXTREME_HIGH": prob += 35
+            elif rsi_zone == "HIGH": prob += 20
+            if drift_count >= 8: prob += 25
+            elif drift_count >= 5: prob += 15
+            elif drift_count >= 3: prob += 8
+        # Time factor: longer since last spike = higher probability
+        avg_ticks = profile.get('spike_avg_ticks', 500) / 15  # Convert ticks to M15 candles
+        if candles_since > avg_ticks * 1.5: prob += 20
+        elif candles_since > avg_ticks: prob += 12
+        elif candles_since > avg_ticks * 0.7: prob += 5
+        # BB squeeze = compression before spike
+        if 'BB_width' in d.columns and pd.notna(d['BB_width'].iloc[-1]):
+            if d['BB_width'].iloc[-1] < d['BB_width'].rolling(20).mean().iloc[-1] * 0.7:
+                prob += 10
+        spike_type = "SPIKE_UP" if is_boom else "CRASH_DOWN"
+        return {"spike_imminent": prob >= 45, "probability": min(95, prob),
+                "type": spike_type, "candles_since_last": candles_since,
+                "rsi_zone": rsi_zone, "drift_count": drift_count,
+                "rsi_value": round(float(rsi), 1)}
+    except:
+        return {"spike_imminent": False, "probability": 0, "type": "NONE",
+                "candles_since_last": 999, "rsi_zone": "NEUTRAL"}
+
+# ==============================================================================
+# BC ENGINE #2: DRIFT TRADING — Lucra com o drift natural
+# ==============================================================================
+
+def bc_drift_analyzer(df, profile, lookback=20):
+    """Analisa força do drift para trading com o fluxo natural.
+    Boom: drift DOWN = SELL | Crash: drift UP = BUY"""
+    try:
+        if len(df) < lookback + 5:
+            return {"drift_active": False, "strength": 0, "direction": "NONE",
+                    "quality": "NONE", "safe_to_ride": False}
+        is_boom = profile.get('gen_type') == 'BOOM'
+        d = df.tail(lookback)
+        ema_f = d['close'].ewm(span=profile.get('drift_ema_fast', 5)).mean()
+        ema_s = d['close'].ewm(span=profile.get('drift_ema_slow', 15)).mean()
+        # Drift direction
+        if is_boom:
+            drift_active = ema_f.iloc[-1] < ema_s.iloc[-1]  # Fast below slow = drift DOWN
+            drift_dir = "DOWN"
+            # Strength: how consistently bearish
+            bearish_candles = (d['close'] < d['open']).sum()
+            strength = min(100, int(bearish_candles / len(d) * 130))
+        else:
+            drift_active = ema_f.iloc[-1] > ema_s.iloc[-1]  # Fast above slow = drift UP
+            drift_dir = "UP"
+            bullish_candles = (d['close'] > d['open']).sum()
+            strength = min(100, int(bullish_candles / len(d) * 130))
+        # Quality: smooth drift vs choppy
+        bodies = abs(d['close'] - d['open'])
+        ranges = d['high'] - d['low']
+        ranges = ranges.replace(0, np.nan)
+        body_ratio = (bodies / ranges).dropna().mean() if len(ranges.dropna()) > 0 else 0.3
+        quality = "SMOOTH" if body_ratio > 0.55 else "MODERATE" if body_ratio > 0.35 else "CHOPPY"
+        # Safe to ride: no spike imminent (RSI not extreme)
+        rsi = d['RSI'].iloc[-1] if pd.notna(d['RSI'].iloc[-1]) else 50
+        if is_boom:
+            safe = rsi > 35  # If RSI still above 35, safe to sell (drift)
+        else:
+            safe = rsi < 65  # If RSI still below 65, safe to buy (drift)
+        return {"drift_active": drift_active, "strength": strength,
+                "direction": drift_dir, "quality": quality,
+                "safe_to_ride": safe and drift_active,
+                "body_ratio": round(float(body_ratio), 3),
+                "rsi": round(float(rsi), 1)}
+    except:
+        return {"drift_active": False, "strength": 0, "direction": "NONE",
+                "quality": "NONE", "safe_to_ride": False}
+
+# ==============================================================================
+# BC ENGINE #3: POST-SPIKE FADE — Trade após spike/crash
+# ==============================================================================
+
+def bc_post_spike_fade(df, profile, lookback=10):
+    """Detecta se um spike acabou de acontecer e calcula fade entry.
+    Após spike UP em Boom → SELL (fade parcial)
+    Após crash DOWN em Crash → BUY (fade parcial)"""
+    try:
+        if len(df) < lookback + 3:
+            return {"post_spike": False, "fade_direction": "NONE",
+                    "spike_size": 0, "fade_target": 0, "candles_ago": 999}
+        d = df.tail(lookback)
+        atr = d['ATR'].iloc[-1]
+        spike_min = profile.get('spike_size_min_atr', 2.0)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        # Find most recent spike
+        for i in range(len(d)-1, 0, -1):
+            move = d['close'].iloc[i] - d['close'].iloc[i-1]
+            abs_move = abs(move)
+            if atr > 0 and abs_move > spike_min * atr:
+                candles_ago = len(d) - 1 - i
+                if candles_ago > 5: break  # Too old, not tradeable
+                spike_size = abs_move
+                fade_pct = profile.get('post_spike_fade_pct', 0.35)
+                if is_boom and move > 0:
+                    # Spike UP just happened → SELL fade
+                    fade_target = d['close'].iloc[i] - spike_size * fade_pct
+                    return {"post_spike": True, "fade_direction": "SELL",
+                            "spike_size": round(float(spike_size), 5),
+                            "fade_target": round(float(fade_target), 5),
+                            "candles_ago": candles_ago, "spike_candle_idx": i}
+                elif not is_boom and move < 0:
+                    # Crash DOWN just happened → BUY fade
+                    fade_target = d['close'].iloc[i] + spike_size * fade_pct
+                    return {"post_spike": True, "fade_direction": "BUY",
+                            "spike_size": round(float(spike_size), 5),
+                            "fade_target": round(float(fade_target), 5),
+                            "candles_ago": candles_ago, "spike_candle_idx": i}
+                break
+        return {"post_spike": False, "fade_direction": "NONE",
+                "spike_size": 0, "fade_target": 0, "candles_ago": 999}
+    except:
+        return {"post_spike": False, "fade_direction": "NONE",
+                "spike_size": 0, "fade_target": 0, "candles_ago": 999}
+
+# ==============================================================================
+# BC ENGINE #4: SUPPLY/DEMAND ZONE DETECTION
+# ==============================================================================
+
+def bc_supply_demand_zones(df, atr, lookback=50):
+    """Detecta zonas de Supply e Demand para Boom/Crash."""
+    try:
+        if len(df) < lookback or atr == 0:
+            return {"zones": [], "nearest_demand": None, "nearest_supply": None}
+        d = df.tail(lookback)
+        price = float(d['close'].iloc[-1])
+        zones = []
+        # Find demand zones (strong rallies from a level)
+        for i in range(2, len(d)-2):
+            # Demand: price dropped to low, then rallied sharply
+            if d['low'].iloc[i] < d['low'].iloc[i-1] and d['low'].iloc[i] < d['low'].iloc[i+1]:
+                rally = d['high'].iloc[i+1] - d['low'].iloc[i]
+                if rally > atr * 1.5:
+                    zones.append({"type": "DEMAND", "price": round(float(d['low'].iloc[i]), 5),
+                                  "strength": round(float(rally / atr), 1)})
+            # Supply: price spiked to high, then dropped
+            if d['high'].iloc[i] > d['high'].iloc[i-1] and d['high'].iloc[i] > d['high'].iloc[i+1]:
+                drop = d['high'].iloc[i] - d['low'].iloc[i+1]
+                if drop > atr * 1.5:
+                    zones.append({"type": "SUPPLY", "price": round(float(d['high'].iloc[i]), 5),
+                                  "strength": round(float(drop / atr), 1)})
+        # Sort by strength
+        zones.sort(key=lambda x: x['strength'], reverse=True)
+        zones = zones[:8]
+        # Find nearest
+        demands = [z for z in zones if z['type'] == 'DEMAND' and z['price'] < price]
+        supplies = [z for z in zones if z['type'] == 'SUPPLY' and z['price'] > price]
+        nearest_d = min(demands, key=lambda x: price - x['price']) if demands else None
+        nearest_s = min(supplies, key=lambda x: x['price'] - price) if supplies else None
+        return {"zones": zones, "nearest_demand": nearest_d, "nearest_supply": nearest_s}
+    except:
+        return {"zones": [], "nearest_demand": None, "nearest_supply": None}
+
+# ==============================================================================
+# BC ENGINE #5: SPIKE FREQUENCY ANALYZER
+# ==============================================================================
+
+def bc_spike_frequency(df, profile, lookback=100):
+    """Analisa frequência de spikes para timing."""
+    try:
+        if len(df) < lookback:
+            return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False,
+                    "spike_count": 0, "next_spike_window": "UNKNOWN"}
+        d = df.tail(lookback)
+        atr = d['ATR'].mean()
+        if atr == 0: return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False}
+        spike_min = profile.get('spike_size_min_atr', 2.0)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        # Find all spikes
+        spike_positions = []
+        for i in range(1, len(d)):
+            move = d['close'].iloc[i] - d['close'].iloc[i-1]
+            if is_boom and move > spike_min * atr:
+                spike_positions.append(i)
+            elif not is_boom and move < -spike_min * atr:
+                spike_positions.append(i)
+        if len(spike_positions) < 2:
+            return {"avg_interval": 0, "last_spike_ago": len(d) - spike_positions[-1] if spike_positions else 999,
+                    "overdue": True, "spike_count": len(spike_positions),
+                    "next_spike_window": "SOON" if spike_positions else "UNKNOWN"}
+        # Calculate intervals
+        intervals = [spike_positions[i+1] - spike_positions[i] for i in range(len(spike_positions)-1)]
+        avg_int = np.mean(intervals)
+        last_ago = len(d) - 1 - spike_positions[-1]
+        overdue = last_ago > avg_int * 1.3
+        if last_ago > avg_int * 1.5: window = "IMMINENT"
+        elif last_ago > avg_int: window = "SOON"
+        elif last_ago > avg_int * 0.5: window = "NORMAL"
+        else: window = "RECENTLY_SPIKED"
+        return {"avg_interval": round(float(avg_int), 1), "last_spike_ago": int(last_ago),
+                "overdue": overdue, "spike_count": len(spike_positions),
+                "next_spike_window": window, "intervals": [int(x) for x in intervals[-5:]]}
+    except:
+        return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False,
+                "spike_count": 0, "next_spike_window": "UNKNOWN"}
+
+# ==============================================================================
+# BC ENGINE #6: CANDLE ABSORPTION — Pressão institucional
+# ==============================================================================
+
+def bc_absorption_detector(df, direction, lookback=10):
+    """Detecta absorção: grande volume/range mas preço não move = reversão iminente."""
+    try:
+        if len(df) < lookback + 3:
+            return {"absorption": False, "type": "NONE", "strength": 0}
+        d = df.tail(lookback)
+        is_bull = direction == "BUY"
+        # Look for absorption candle: large range but small body at extreme
+        for i in range(-3, 0):
+            row = d.iloc[i]
+            rng = row['high'] - row['low']
+            body = abs(row['close'] - row['open'])
+            if rng == 0: continue
+            body_pct = body / rng
+            # Absorption: big range, tiny body (< 30% body)
+            if body_pct < 0.30 and rng > d['ATR'].iloc[-1] * 0.8:
+                if is_bull:
+                    lower_wick = min(row['open'], row['close']) - row['low']
+                    if lower_wick / rng > 0.5:
+                        return {"absorption": True, "type": "BULL_ABSORPTION",
+                                "strength": round(float(lower_wick / rng * 100), 1)}
+                else:
+                    upper_wick = row['high'] - max(row['open'], row['close'])
+                    if upper_wick / rng > 0.5:
+                        return {"absorption": True, "type": "BEAR_ABSORPTION",
+                                "strength": round(float(upper_wick / rng * 100), 1)}
+        return {"absorption": False, "type": "NONE", "strength": 0}
+    except:
+        return {"absorption": False, "type": "NONE", "strength": 0}
+
+# ==============================================================================
+# BC ENGINE #7: MULTI-SPIKE PATTERN — Spikes consecutivos
+# ==============================================================================
+
+def bc_multi_spike_pattern(df, profile, lookback=30):
+    """Detecta padrões de spikes múltiplos — spikes tendem a vir em clusters."""
+    try:
+        if len(df) < lookback:
+            return {"cluster": False, "consecutive_spikes": 0, "pattern": "NONE"}
+        d = df.tail(lookback)
+        atr = d['ATR'].mean()
+        if atr == 0: return {"cluster": False, "consecutive_spikes": 0, "pattern": "NONE"}
+        spike_min = profile.get('spike_size_min_atr', 2.0) * 0.8  # Slightly lower threshold
+        is_boom = profile.get('gen_type') == 'BOOM'
+        consecutive = 0
+        last_was_spike = False
+        for i in range(len(d)-1, max(0, len(d)-15), -1):
+            move = d['close'].iloc[i] - d['close'].iloc[i-1]
+            if is_boom and move > spike_min * atr:
+                if last_was_spike or consecutive == 0: consecutive += 1
+                last_was_spike = True
+            elif not is_boom and move < -spike_min * atr:
+                if last_was_spike or consecutive == 0: consecutive += 1
+                last_was_spike = True
+            else:
+                if consecutive > 0: break  # End of cluster
+                last_was_spike = False
+        pattern = "SPIKE_CLUSTER" if consecutive >= 3 else "DOUBLE_SPIKE" if consecutive == 2 else "SINGLE" if consecutive == 1 else "NONE"
+        return {"cluster": consecutive >= 2, "consecutive_spikes": consecutive,
+                "pattern": pattern}
+    except:
+        return {"cluster": False, "consecutive_spikes": 0, "pattern": "NONE"}
+
+# ==============================================================================
+# BC ENGINE #8: STOCHASTIC SPIKE TIMER
+# ==============================================================================
+
+def bc_stochastic_timer(df, profile):
+    """Usa Stochastic + RSI combinados para timing de spike."""
+    try:
+        if len(df) < 20:
+            return {"ready": False, "signal": "WAIT", "stoch_k": 50, "stoch_d": 50}
+        d = df.tail(20)
+        # Calculate Stochastic %K and %D
+        low14 = d['low'].rolling(14).min()
+        high14 = d['high'].rolling(14).max()
+        denom = high14 - low14
+        denom = denom.replace(0, np.nan)
+        stoch_k = ((d['close'] - low14) / denom * 100).iloc[-1]
+        stoch_d = ((d['close'] - low14) / denom * 100).rolling(3).mean().iloc[-1]
+        if pd.isna(stoch_k): stoch_k = 50
+        if pd.isna(stoch_d): stoch_d = 50
+        rsi = d['RSI'].iloc[-1] if pd.notna(d['RSI'].iloc[-1]) else 50
+        is_boom = profile.get('gen_type') == 'BOOM'
+        if is_boom:
+            # Boom spike UP: Stoch oversold + RSI oversold
+            if stoch_k < 20 and rsi < 30:
+                return {"ready": True, "signal": "SPIKE_BUY", "stoch_k": round(float(stoch_k),1),
+                        "stoch_d": round(float(stoch_d),1), "rsi": round(float(rsi),1)}
+            elif stoch_k > 80 and rsi > 70:
+                return {"ready": True, "signal": "DRIFT_SELL", "stoch_k": round(float(stoch_k),1),
+                        "stoch_d": round(float(stoch_d),1), "rsi": round(float(rsi),1)}
+        else:
+            # Crash spike DOWN: Stoch overbought + RSI overbought
+            if stoch_k > 80 and rsi > 70:
+                return {"ready": True, "signal": "SPIKE_SELL", "stoch_k": round(float(stoch_k),1),
+                        "stoch_d": round(float(stoch_d),1), "rsi": round(float(rsi),1)}
+            elif stoch_k < 20 and rsi < 30:
+                return {"ready": True, "signal": "DRIFT_BUY", "stoch_k": round(float(stoch_k),1),
+                        "stoch_d": round(float(stoch_d),1), "rsi": round(float(rsi),1)}
+        return {"ready": False, "signal": "WAIT", "stoch_k": round(float(stoch_k),1),
+                "stoch_d": round(float(stoch_d),1), "rsi": round(float(rsi),1)}
+    except:
+        return {"ready": False, "signal": "WAIT", "stoch_k": 50, "stoch_d": 50}
+
 
 # ==============================================================================
 # V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
@@ -2283,8 +2681,10 @@ def get_assets():
     for url in DERIV_SERVERS:
         res = asyncio.run(socket_req(url, req))
         if res and 'active_symbols' in res:
+            # V23-BC: ONLY Boom and Crash indices
             return {x['display_name'].upper(): x['symbol'] for x in res['active_symbols']
-                    if x['market'] == 'synthetic_index'}
+                    if x['market'] == 'synthetic_index'
+                    and ('BOOM' in x['display_name'].upper() or 'CRASH' in x['display_name'].upper())}
     return None
 
 async def fetch_multi_tf(code):
@@ -3279,60 +3679,65 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V23 — PRECISION SNIPER ENGINE [Gemini 3 Pro]
-Missão: Explorar edges estatísticos reais nos sintéticos Deriv com entradas SNIPER
+FUNÇÃO: ANALISTA V23-BC — BOOM/CRASH PRECISION SNIPER [Gemini 3 Pro]
+Missão: Sinais de alta precisão EXCLUSIVOS para Boom e Crash indices da Deriv
+APENAS Day Trade + Scalp — SEM Swing Trade
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
-**V23 — PRECISION SNIPER (23 upgrades):**
-Anti-Ilusão: Score com bonus groups (sem inflação), Random Walk penalty,
-  PF mínimo 1.1, Slippage no backtest, MC confidence flag
-Detecção de Tendência: Market Structure (HH/HL, BOS, CHoCH),
-  Multi-Speed Bias (M15+H1+H4), Candle Momentum Engine
-Entradas Sniper: Pullback Quality Score, Liquidity Sweep Detector,
-  Entry Sync Score, Breakout Retest, Multi-entry levels
-Agressividade: CPI Gate adaptativo, Score override, Scalp Mode,
-  Adaptive TP (S/R aware), Continuation Patterns
+**REGRAS BOOM/CRASH:**
+- BOOM: Preço faz DRIFT para BAIXO e SPIKE para CIMA
+  → SELL = seguir o drift (mais seguro)
+  → BUY = capturar o spike (maior R:R)
+- CRASH: Preço faz DRIFT para CIMA e SPIKE para BAIXO
+  → BUY = seguir o drift (mais seguro)
+  → SELL = capturar o crash (maior R:R)
+
+**ENGINES ESPECIALIZADOS:**
+- Spike Detection (RSI extreme + drift duration + BB squeeze)
+- Drift Analyzer (força e qualidade do drift)
+- Post-Spike Fade (trade após spike/crash)
+- Supply/Demand Zones (níveis institucionais)
+- Spike Frequency (timing baseado em frequência média)
+- Stochastic Timer (combinação Stoch + RSI)
+- Absorption Detector (pressão institucional)
+- Multi-Spike Pattern (clusters de spikes)
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V23: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE}/200 | **CPI:** {CPI}/100
-**Tipo:** {STYLE} | **Edge Real:** {VR_HAS_EDGE} | **Sync:** {ENTRY_SYNC}
+## ⚡ VEREDICTO V23-BC: [ {DECISION} ]
+**Grade:** {GRADE} | **Score:** {SCORE} | **Tipo:** {BOOM/CRASH}
+**Setup:** {DRIFT_RIDE / SPIKE_CATCH / POST_SPIKE / SCALP / DAY / REVERSAL}
 
-### 🏗️ ESTRUTURA DE MERCADO
-- Market Structure: {trend} (HH:{hh} HL:{hl} | BOS:{bos} CHoCH:{choch})
-- Bias Multi-Speed: Fast={fast} Med={med} Slow={slow}
-- Early Reversal: {Y/N}
+### 🎯 SPIKE ANALYSIS
+- Spike Detector: {prob}% iminente ({IMMINENT/SOON/NORMAL})
+- Último spike há: {N} candles (média: {avg})
+- RSI Zone: {EXTREME_LOW/LOW/NEUTRAL/HIGH/EXTREME_HIGH}
+- Stoch Timer: K={k} D={d} → {SPIKE_BUY/DRIFT_SELL/WAIT}
 
-### 🧮 MODELO DO GERADOR
-- Sigma calibrado: {X}% | Vol Ratio: S={short} M={med} L={long}
-- Consensus: {SIGNAL} → Direção: {compress_direction}
+### 📊 DRIFT ANALYSIS
+- Drift: {ACTIVE/INACTIVE} ({UP/DOWN}) Força: {strength}%
+- Qualidade: {SMOOTH/MODERATE/CHOPPY}
+- Seguro para ride: {SIM/NÃO}
 
-### 📊 EDGE ESTATÍSTICO
-- Variance Ratio: {type} ({N} significativos)
-- Autocorrelação: lag-1={acf_1}
-- Random Walk Check: Hurst={H} (penalidade: {penalty})
-
-### 🎯 ENTRADAS SNIPER
-- Entry Sync: {score}/100 ({ready})
-- Candle Momentum: {conviction} ({score})
-- Pullback Quality: {quality} (depth={depth}%)
-- Liquidity Sweep: {type}
-- Continuation: {pattern}
-- Entries: Agressivo={E1} | Ideal={E2} | Sniper={E3}
+### 🔄 POST-SPIKE FADE
+- Post-spike detectado: {SIM/NÃO}
+- Direção fade: {BUY/SELL}
+- Alvo fade: {price}
 
 ### 🎯 PLANO DE TRADE
-{Entradas + Trailing + Smart TP adaptativo}
-BE em: {trail_be} | Trail 1R em: {trail_1r}
+Entry: {price} | SL: {price} | TP1: {price} | TP2: {price}
+Trail BE: {price} | Trail 1R: {price}
+Entries: Agressivo={E1} | Ideal={E2} | Sniper={E3}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V23 Insight:* {Usar Market Structure para confirmar direção. Se BOS detectado,
-alta confiança. Se CHoCH, possível reversão. Pullback Quality EXCELLENT =
-entrada sniper ideal. Se Random Walk penalty ativo, dizer claramente
-que NÃO HÁ edge. Se Entry Sync < 60, recomendar ESPERAR.
-Quando Liquidity Sweep detectado, entrada de altíssima probabilidade.}
+*V23-BC Insight:* {Analisar especificamente o comportamento Boom/Crash.
+Se spike iminente (prob > 60%), recomendar spike catch com SL apertado.
+Se drift forte e smooth, recomendar drift ride.
+Se post-spike detectado, recomendar fade com target calculado.
+NUNCA recomendar Swing Trade. Apenas Day Trade e Scalp.
+Ser AGRESSIVO mas PRECISO — entrar com convicção.}
 """
 
 # ==============================================================================
@@ -3414,6 +3819,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
     cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
+
+    # ═══ V23-BC BOOM/CRASH ENGINES ═══
+    bc_spike = bc_spike_detector(m15, profile, lookback=30)
+    bc_drift = bc_drift_analyzer(m15, profile, lookback=20)
+    bc_fade = bc_post_spike_fade(m15, profile, lookback=10)
+    bc_sd = bc_supply_demand_zones(h1, c1['ATR'], lookback=50)
+    bc_freq = bc_spike_frequency(m15, profile, lookback=100)
+    bc_absorb = bc_absorption_detector(m15, bias, lookback=10)
+    bc_multi = bc_multi_spike_pattern(m15, profile, lookback=30)
+    bc_stoch = bc_stochastic_timer(m15, profile)
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -3638,6 +4053,102 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         # VOL_COMPRESS → Contra o movimento
         # TRANSITIONAL → Esperar ou size reduzido
 
+        # ═══ V23-BC: BOOM/CRASH PRIORITY SETUPS ═══
+        is_bc = gen_type in ["BOOM", "CRASH"]
+
+        # BC-0: POST-SPIKE FADE (highest priority — time sensitive)
+        if is_bc and bc_fade.get('post_spike'):
+            fade_dir = bc_fade['fade_direction']
+            if (fade_dir == "BUY" and is_long) or (fade_dir == "SELL" and not is_long):
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (POST-SPIKE FADE)"
+                if is_long:
+                    sl_val = entry - profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                else:
+                    sl_val = entry + profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                entry_type = f"Fade spike {bc_fade.get('candles_ago',0)} bars ago (size={bc_fade.get('spike_size',0):.2f})"
+                trade_style = "SCALP"; setup_type = "POST_SPIKE"
+                return
+
+        # BC-1: SPIKE CATCH (imminent spike — high R:R)
+        if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= 50:
+            is_boom = gen_type == "BOOM"
+            if is_boom and is_long:  # Boom spike UP → BUY
+                sig = "LONG (SPIKE CATCH)"
+                sl_val = entry - profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"Spike UP {bc_spike['probability']}% | RSI:{bc_spike.get('rsi_zone','?')} | Drift:{bc_spike.get('drift_count',0)} bars"
+                trade_style = "DAY"; setup_type = "SPIKE_CATCH"
+                return
+            elif not is_boom and not is_long:  # Crash spike DOWN → SELL
+                sig = "SHORT (SPIKE CATCH)"
+                sl_val = entry + profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"Crash DOWN {bc_spike['probability']}% | RSI:{bc_spike.get('rsi_zone','?')} | Drift:{bc_spike.get('drift_count',0)} bars"
+                trade_style = "DAY"; setup_type = "SPIKE_CATCH"
+                return
+
+        # BC-2: DRIFT RIDE (follow the natural drift — safest)
+        if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40:
+            is_boom = gen_type == "BOOM"
+            if is_boom and not is_long:  # Boom drifts DOWN → SELL
+                sig = "SHORT (DRIFT RIDE)"
+                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                entry_type = f"Drift DOWN str={bc_drift['strength']}% q={bc_drift['quality']} RSI:{bc_drift.get('rsi',50):.0f}"
+                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
+                setup_type = "DRIFT_RIDE"
+                return
+            elif not is_boom and is_long:  # Crash drifts UP → BUY
+                sig = "LONG (DRIFT RIDE)"
+                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                entry_type = f"Drift UP str={bc_drift['strength']}% q={bc_drift['quality']} RSI:{bc_drift.get('rsi',50):.0f}"
+                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
+                setup_type = "DRIFT_RIDE"
+                return
+
+        # BC-3: STOCHASTIC SPIKE TIMER (confirmed signal)
+        if is_bc and bc_stoch.get('ready'):
+            stoch_sig = bc_stoch['signal']
+            if stoch_sig == "SPIKE_BUY" and is_long:
+                sig = "LONG (STOCH SPIKE)"
+                sl_val = entry - profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → SPIKE BUY"
+                trade_style = "DAY"; setup_type = "SPIKE_CATCH"
+                return
+            elif stoch_sig == "SPIKE_SELL" and not is_long:
+                sig = "SHORT (STOCH CRASH)"
+                sl_val = entry + profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → CRASH SELL"
+                trade_style = "DAY"; setup_type = "SPIKE_CATCH"
+                return
+            elif stoch_sig == "DRIFT_SELL" and not is_long:
+                sig = "SHORT (STOCH DRIFT)"
+                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT SELL"
+                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
+                return
+            elif stoch_sig == "DRIFT_BUY" and is_long:
+                sig = "LONG (STOCH DRIFT)"
+                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT BUY"
+                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
+                return
+
+        # BC-4: REVERSAL (CHoCH + absorption + supply/demand)
+        if is_bc and mkt_struct.get('choch'):
+            choch_bull = "BULL" in str(mkt_struct.get('last_event', ''))
+            choch_bear = "BEAR" in str(mkt_struct.get('last_event', ''))
+            if choch_bull and is_long and bc_absorb.get('absorption'):
+                sig = "LONG (REVERSAL)"
+                sl_val = entry - profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"CHoCH Bull + Absorption ({bc_absorb.get('strength',0):.0f}%)"
+                trade_style = "DAY"; setup_type = "REVERSAL"
+                return
+            elif choch_bear and not is_long and bc_absorb.get('absorption'):
+                sig = "SHORT (REVERSAL)"
+                sl_val = entry + profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
+                trade_style = "DAY"; setup_type = "REVERSAL"
+                return
+
         # 1. GENERATOR SETUPS (PRIORIDADE)
         if gen_type == "GBM" and gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 40:
             # 🔴 FIX #2: Direção CONTRA o movimento
@@ -3856,11 +4367,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
         continuation_bonus=continuation_bonus, retest_bonus=retest_bonus)
 
-    # Filters — V23: Adaptive, honest, but more aggressive where appropriate
-    configs = {"PERFECT_STORM":(90,1.3),"BREAKOUT":(55,1.3),"MEAN_REVERSION":(40,1.1),
-               "GEN_VOL_COMPRESS":(40,1.0),"GEN_SPIKE_DRIFT":(35,0.9),"GEN_STEP_REVERT":(35,0.9),
-               "GEN_PRICE_DEV":(40,1.0),"DAY":(45,1.2),"SWING":(60,1.3),
-               "SCALP":(35,1.1),"BREAKOUT_RETEST":(45,1.2),"CONTINUATION":(40,1.1)}
+    # Filters — V23-BC: Aggressive but precise for Boom/Crash
+    configs = {"PERFECT_STORM":(80,1.2),"BREAKOUT":(50,1.2),"MEAN_REVERSION":(35,1.0),
+               "GEN_VOL_COMPRESS":(35,0.9),"GEN_SPIKE_DRIFT":(30,0.8),"GEN_STEP_REVERT":(30,0.8),
+               "GEN_PRICE_DEV":(35,1.0),"DAY":(40,1.1),"SWING":(55,1.2),
+               # BC-specific — more aggressive thresholds
+               "SPIKE_CATCH":(30,0.8),"DRIFT_RIDE":(25,0.8),"POST_SPIKE":(20,0.7),
+               "REVERSAL":(40,1.0),
+               "SCALP":(25,0.9),"BREAKOUT_RETEST":(40,1.1),"CONTINUATION":(35,1.0)}
     ms, mpf = configs.get(setup_type, (60, 1.3))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
 
@@ -3895,6 +4409,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
           "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
           "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
           "SWING":(adapted_profile['tp1_r'],adapted_profile['tp2_r']),
+          # BC-specific TP (scalp = tighter, spike catch = wider)
+          "SPIKE_CATCH":(3.0,6.0),"DRIFT_RIDE":(1.5,2.5),"POST_SPIKE":(1.2,2.0),
+          "REVERSAL":(2.5,4.0),
           "SCALP":(1.5,2.5),"BREAKOUT_RETEST":(2.5,4),"CONTINUATION":(2,3.5)}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
 
@@ -3941,7 +4458,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Pyramid
     pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
-    show = any(x in sig for x in ["SWING","DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","STEP","DEVIATION","PRICE","SCALP","RETEST","CONTINUATION"])
+    show = any(x in sig for x in ["DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","SPIKE","STEP","DEVIATION","PRICE","SCALP","RETEST","CONTINUATION","FADE","REVERSAL"])
 
     imgs = [
         plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
@@ -4003,6 +4520,25 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"⚡ EARLY REVERSAL → {reversal_dir}")
     if retest_bonus > 0:
         confs.append("🔄 Breakout Retest")
+    # V23-BC: Boom/Crash specific confluences
+    if bc_spike.get('spike_imminent'):
+        confs.append(f"⚡ SPIKE IMMINENT ({bc_spike['probability']}%) RSI:{bc_spike.get('rsi_zone','?')}")
+    if bc_drift.get('safe_to_ride'):
+        confs.append(f"🌊 Drift {bc_drift['direction']} str={bc_drift['strength']}% ({bc_drift['quality']})")
+    if bc_fade.get('post_spike'):
+        confs.append(f"🔄 Post-Spike Fade → {bc_fade['fade_direction']} (target={bc_fade.get('fade_target',0):.2f})")
+    if bc_freq.get('overdue'):
+        confs.append(f"⏰ Spike OVERDUE (last {bc_freq['last_spike_ago']} bars, avg {bc_freq.get('avg_interval',0):.0f})")
+    if bc_stoch.get('ready'):
+        confs.append(f"📊 Stoch Timer: {bc_stoch['signal']} (K={bc_stoch['stoch_k']:.0f})")
+    if bc_absorb.get('absorption'):
+        confs.append(f"💪 Absorption {bc_absorb['type']} ({bc_absorb['strength']:.0f}%)")
+    if bc_multi.get('cluster'):
+        confs.append(f"🔥 {bc_multi['pattern']} ({bc_multi['consecutive_spikes']} spikes)")
+    if bc_sd.get('nearest_demand') and bias == "BULLISH":
+        confs.append(f"📍 Demand Zone @ {bc_sd['nearest_demand']['price']:.2f}")
+    if bc_sd.get('nearest_supply') and bias == "BEARISH":
+        confs.append(f"📍 Supply Zone @ {bc_sd['nearest_supply']['price']:.2f}")
 
     risks = []
     if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
@@ -4031,6 +4567,17 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         risks.append(f"⚡ CHoCH AGAINST bias ({mkt_struct.get('last_event','?')})")
     if sim.get('TOTAL_TRADES', 0) < 20: risks.append(f"⚠️ Low trades ({sim.get('TOTAL_TRADES',0)})")
     if early_reversal: risks.append(f"⚡ EARLY REVERSAL active — H4 not confirmed")
+    # V23-BC: Boom/Crash specific risks
+    if bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) > 60:
+        spike_dir = bc_spike.get('type', '')
+        if ("UP" in spike_dir and "SHORT" in sig) or ("DOWN" in spike_dir and "LONG" in sig):
+            risks.append(f"🚨 SPIKE CONTRA sua posição! ({bc_spike['probability']}%)")
+    if bc_freq.get('next_spike_window') == "RECENTLY_SPIKED":
+        risks.append("⚠️ Spike recente — pode repetir ou reverter")
+    if bc_drift.get('quality') == "CHOPPY":
+        risks.append("⚠️ Drift CHOPPY — entradas menos confiáveis")
+    if not bc_drift.get('safe_to_ride') and setup_type == "DRIFT_RIDE":
+        risks.append("🚫 RSI em zona de perigo para drift")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -4110,6 +4657,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "TRAIL_1R": float(round(trail_1, 5)),
         # V23: MC confidence
         "MC_CONFIDENCE": "HIGH" if sim.get('TOTAL_TRADES', 0) >= 30 else "LOW",
+        # V23-BC: Boom/Crash engine data
+        "BC_SPIKE": convert_np(bc_spike),
+        "BC_DRIFT": convert_np(bc_drift),
+        "BC_FADE": convert_np(bc_fade),
+        "BC_SD_ZONES": convert_np(bc_sd),
+        "BC_FREQ": convert_np(bc_freq),
+        "BC_ABSORB": convert_np(bc_absorb),
+        "BC_MULTI": convert_np(bc_multi),
+        "BC_STOCH": convert_np(bc_stoch),
     }
 
 # ==============================================================================
@@ -4165,7 +4721,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V23</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V23-BC</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -4190,15 +4746,15 @@ with st.sidebar:
 
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Statistical Edge Engine V23<br>
-        Market Structure · Sniper Entries<br>
-        Anti-Illusion · Adaptive CPI
+        Boom/Crash Sniper V23-BC<br>
+        Spike · Drift · Post-Spike Fade<br>
+        Day Trade + Scalp Only
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Precision Sniper Engine V23</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Boom/Crash Sniper V23-BC | Day Trade + Scalp</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -4422,6 +4978,57 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 mc_conf = data.get('MC_CONFIDENCE', 'LOW')
                 mc_color = "🟢" if mc_conf == "HIGH" else "🟡"
                 tl3.metric(f"MC Confidence {mc_color}", mc_conf, f"{data.get('TOTAL_TRADES',0)} trades")
+
+            # ── V23-BC: BOOM/CRASH ENGINE ──
+            st.markdown("## ⚡ Boom/Crash Engine")
+            bcs = data.get('BC_SPIKE', {})
+            bcd = data.get('BC_DRIFT', {})
+            bcf = data.get('BC_FADE', {})
+            bcfr = data.get('BC_FREQ', {})
+            bcst = data.get('BC_STOCH', {})
+            bcab = data.get('BC_ABSORB', {})
+            bcm = data.get('BC_MULTI', {})
+
+            # Spike Detection row
+            bc1, bc2, bc3, bc4 = st.columns(4)
+            spike_prob = bcs.get('probability', 0)
+            spike_color = "🔴" if spike_prob >= 60 else "🟡" if spike_prob >= 40 else "🟢"
+            bc1.metric(f"Spike Prob {spike_color}", f"{spike_prob}%", bcs.get('type', 'NONE'))
+            bc2.metric("RSI Zone", bcs.get('rsi_zone', '?'), f"RSI={bcs.get('rsi_value', 50)}")
+            bc3.metric("Drift Count", f"{bcs.get('drift_count', 0)} bars")
+            bc4.metric("Last Spike", f"{bcs.get('candles_since_last', '?')} bars ago")
+
+            # Drift Analysis row
+            bc5, bc6, bc7, bc8 = st.columns(4)
+            drift_safe = "✅ SAFE" if bcd.get('safe_to_ride') else "❌ RISKY"
+            bc5.metric("Drift", f"{bcd.get('direction','?')} {bcd.get('strength',0)}%", bcd.get('quality', '?'))
+            bc6.metric("Drift Ride", drift_safe)
+            # Frequency
+            freq_win = bcfr.get('next_spike_window', '?')
+            freq_color = "🔴" if freq_win == "IMMINENT" else "🟡" if freq_win == "SOON" else "🟢"
+            bc7.metric(f"Spike Window {freq_color}", freq_win, f"avg={bcfr.get('avg_interval',0):.0f} bars")
+            bc8.metric("Spike Count", f"{bcfr.get('spike_count',0)}", f"in last 100 bars")
+
+            # Stochastic + Post-spike + Absorption row
+            bc9, bc10, bc11 = st.columns(3)
+            stoch_sig = bcst.get('signal', 'WAIT')
+            stoch_color = "🟢" if stoch_sig != "WAIT" else "⚪"
+            bc9.metric(f"Stoch Timer {stoch_color}", stoch_sig, f"K={bcst.get('stoch_k',50):.0f} D={bcst.get('stoch_d',50):.0f}")
+            fade_txt = f"→ {bcf.get('fade_direction','?')}" if bcf.get('post_spike') else "No spike"
+            bc10.metric("Post-Spike", "🎯 ACTIVE" if bcf.get('post_spike') else "—", fade_txt)
+            bc11.metric("Absorption", "💪 YES" if bcab.get('absorption') else "—",
+                       f"{bcab.get('type','')} {bcab.get('strength',0):.0f}%" if bcab.get('absorption') else "")
+
+            # Supply/Demand zones
+            bcsd = data.get('BC_SD_ZONES', {})
+            if bcsd.get('nearest_demand') or bcsd.get('nearest_supply'):
+                sd1, sd2 = st.columns(2)
+                if bcsd.get('nearest_demand'):
+                    sd1.metric("📍 Demand", f"{bcsd['nearest_demand']['price']:.2f}",
+                              f"str={bcsd['nearest_demand'].get('strength',0):.1f}×ATR")
+                if bcsd.get('nearest_supply'):
+                    sd2.metric("📍 Supply", f"{bcsd['nearest_supply']['price']:.2f}",
+                              f"str={bcsd['nearest_supply'].get('strength',0):.1f}×ATR")
 
             st.markdown("## Distribution")
             da = data.get('DIST_ANALYSIS', {})
