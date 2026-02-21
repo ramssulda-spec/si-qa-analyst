@@ -3518,10 +3518,10 @@ def convert_np(obj):
 
 # Modelos em ordem de preferência (fallback automático)
 GEMINI_MODELS = [
-    "models/gemini-3.1-pro",
-    "models/gemini-3.0-pro",
-    "models/gemini-3.0-flash",
     "models/gemini-2.0-flash",
+    "models/gemini-3.0-flash",
+    "models/gemini-3.0-pro",
+    "models/gemini-3.1-pro",
 ]
 
 def compress_image_for_ai(img, max_size=800):
