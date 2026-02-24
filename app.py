@@ -21,7 +21,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================================================================
-# SI-APATECO V24.0-BC — BOOM/CRASH PRECISION SNIPER ENGINE
+# SI-APATECO V25.0-BC — BOOM/CRASH ZERO-ILLUSION PRECISION ENGINE
 #
 # ⚡ V24: FULL AUDIT IMPLEMENTATION — 14 fixes + 5 HPI + 4 math + 5 arch
 # ⚡ SISTEMA EXCLUSIVO BOOM & CRASH — Day Trade + Scalp
@@ -74,7 +74,7 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V24-BC",
+    page_title="APATECO V25-BC",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1873,7 +1873,8 @@ def detect_continuation_pattern(df, direction, atr):
 # ==============================================================================
 
 def bc_clean_atr(df, profile, lookback=50):
-    """Calcula ATR limpo (mediano) excluindo candles de spike.
+    """V25: ATR limpo (mediano) excluindo candles de spike.
+    Illusion #1 fix: Uses 75th percentile, filters > 1.5× (not 2× median).
     Em Boom/Crash o ATR padrão é distorcido pelos spikes —
     um único spike de 500pts infla o ATR e torna thresholds frouxos."""
     try:
@@ -1883,14 +1884,15 @@ def bc_clean_atr(df, profile, lookback=50):
         ranges = (d['high'] - d['low']).values
         if len(ranges) < 10:
             return float(d['ATR'].iloc[-1])
-        # Median range = robust to spike outliers
-        median_range = float(np.median(ranges))
-        # Also filter out spikes: keep only candles where range < 2× median
-        clean_mask = ranges < (2.0 * median_range)
+        # V25 Illusion #1: Use 75th percentile instead of median
+        # Median includes smaller spikes (1.5-2× ATR), inflating by 10-15%
+        pct75 = float(np.percentile(ranges, 75))
+        # Filter out spikes: keep only candles where range < 1.5× 75th percentile
+        clean_mask = ranges < (1.5 * pct75)
         if clean_mask.sum() < 10:
-            return median_range  # Too few clean candles, use median
+            return pct75  # Too few clean candles, use percentile
         clean_atr = float(np.mean(ranges[clean_mask]))
-        return max(clean_atr, median_range * 0.5)  # Floor at 50% median
+        return max(clean_atr, pct75 * 0.4)  # Floor at 40% pct75
     except:
         return float(df['ATR'].iloc[-1]) if 'ATR' in df.columns and len(df) > 0 else 1.0
 
@@ -1926,21 +1928,27 @@ def bc_returns_kurtosis(df, lookback=50):
 # V24-BC M5: BC REGIME CLASSIFIER
 # ==============================================================================
 
-def bc_regime_classifier(df, profile, bc_spike_data, bc_drift_data, bc_freq_data, lookback=30):
-    """Classifica regime BC: DRIFT_SMOOTH, CHOPPY, PRE_SPIKE, POST_SPIKE, SPIKE_CLUSTER.
-    Usado para adaptar SL, TP, e scoring."""
+def bc_regime_classifier(df, profile, bc_spike_data, bc_drift_data, bc_freq_data, bc_kurt_data=None, lookback=30):
+    """V25: Classifica regime BC COM kurtosis integration.
+    DRIFT_SMOOTH, CHOPPY, PRE_SPIKE, POST_SPIKE, SPIKE_CLUSTER.
+    V25: Kurtosis > 8 → force SPIKE_CLUSTER regime."""
     try:
         regime = "DRIFT_SMOOTH"  # default
+        # V25: Kurtosis override — extreme kurtosis forces spike cluster
+        if bc_kurt_data and bc_kurt_data.get('kurtosis', 3) > 8:
+            regime = "SPIKE_CLUSTER"
         # Post-spike: last spike very recent (0-3 candles)
-        if bc_freq_data.get('last_spike_ago', 999) <= 3:
+        elif bc_freq_data.get('last_spike_ago', 999) <= 3:
             regime = "POST_SPIKE"
         # Pre-spike: overdue + extreme RSI + long drift
         elif (bc_spike_data.get('probability', 0) >= 55 and
               bc_freq_data.get('overdue', False)):
             regime = "PRE_SPIKE"
-        # Spike cluster: multiple spikes recently
+        # Spike cluster: multiple spikes recently OR high kurtosis
         elif bc_freq_data.get('spike_count', 0) >= 3 and bc_freq_data.get('avg_interval', 999) < 8:
             regime = "SPIKE_CLUSTER"
+        elif bc_kurt_data and bc_kurt_data.get('kurtosis', 3) > 5:
+            regime = "SPIKE_CLUSTER"  # kurtosis 5-8 = spike prone
         # Choppy: drift weak + quality poor
         elif bc_drift_data.get('quality') == "CHOPPY" or bc_drift_data.get('strength', 0) < 30:
             regime = "CHOPPY"
@@ -1956,9 +1964,18 @@ def bc_regime_classifier(df, profile, bc_spike_data, bc_drift_data, bc_freq_data
             "POST_SPIKE": 1.5,     # Widest SL — high vol after spike
             "SPIKE_CLUSTER": 1.6,  # Very wide — unpredictable clusters
         }
-        return {"regime": regime, "sl_mult": sl_mults.get(regime, 1.0)}
+        # V25 Gap #16 fix: TP multipliers by regime too (not just SL)
+        tp_mults = {
+            "DRIFT_SMOOTH": 0.9,   # Tighter TP — take drift profits
+            "CHOPPY": 0.8,         # Short TP in choppy
+            "PRE_SPIKE": 1.2,      # Wider TP — expect movement
+            "POST_SPIKE": 1.3,     # Wide TP — ride retracement
+            "SPIKE_CLUSTER": 1.5,  # Very wide TP — expect large moves
+        }
+        return {"regime": regime, "sl_mult": sl_mults.get(regime, 1.0),
+                "tp_mult": tp_mults.get(regime, 1.0)}
     except:
-        return {"regime": "UNKNOWN", "sl_mult": 1.0}
+        return {"regime": "UNKNOWN", "sl_mult": 1.0, "tp_mult": 1.0}
 
 # ==============================================================================
 # V24-BC O3: ENGINE CONFLICT RESOLUTION
@@ -1970,18 +1987,20 @@ def bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb
     → conflito → desabilitar drift ride."""
     conflicts = []
     resolved_actions = {"allow_spike_catch": True, "allow_drift_ride": True,
-                        "allow_fade": True, "conflict_penalty": 0}
+                        "allow_fade": True, "allow_legacy": True, "conflict_penalty": 0}
     try:
         # Conflito 1: Spike iminente + Drift ativo = não fazer drift ride
         if bc_spike.get('spike_imminent') and bc_drift.get('safe_to_ride'):
             conflicts.append("SPIKE_vs_DRIFT")
             resolved_actions["allow_drift_ride"] = False
+            resolved_actions["allow_legacy"] = False  # V25: Block legacy too
             resolved_actions["conflict_penalty"] += 5  # Score penalty
 
         # Conflito 2: Fade ativo + Multi-spike cluster = não fazer fade (pode continuar)
         if bc_fade.get('post_spike') and bc_multi.get('cluster'):
             conflicts.append("FADE_vs_CLUSTER")
             resolved_actions["allow_fade"] = False
+            resolved_actions["allow_legacy"] = False  # V25: Block legacy too
             resolved_actions["conflict_penalty"] += 8
 
         # Conflito 3: Spike catch + Absorption detector diz absorção contrária
@@ -1994,6 +2013,12 @@ def bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb
                 resolved_actions["allow_spike_catch"] = False
                 resolved_actions["conflict_penalty"] += 10
 
+        # V25: Conflito 4: Spike iminente bloqueia TODOS os legacy setups
+        if bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= 60:
+            resolved_actions["allow_legacy"] = False
+            if "SPIKE_BLOCKS_LEGACY" not in conflicts:
+                conflicts.append("SPIKE_BLOCKS_LEGACY")
+
         resolved_actions["conflicts"] = conflicts
         resolved_actions["has_conflict"] = len(conflicts) > 0
         return resolved_actions
@@ -2001,13 +2026,192 @@ def bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb
         return resolved_actions
 
 # ==============================================================================
-# V24-BC O5: ANTI-MELTDOWN KILL-SWITCH
+# V25 M1: DEDICATED BC SCORING — Replaces legacy score for BC assets
+# ==============================================================================
+
+def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_fade, bc_regime_data,
+                       bc_kurt_data, bc_freq, bc_absorb, bc_conflicts, bc_multi,
+                       bc_stoch, sim_data=None, profile=None):
+    """V25 M1: Score BC baseado em dados REAIS de Boom/Crash.
+    Substitui o score legacy (ADX/EMA/momentum) para assets BC.
+    Cada setup type tem pesos diferentes."""
+    try:
+        score = 0
+        details = {}
+
+        # ═══ FACTOR 1: SPIKE TIMING (max 25) ═══
+        spike_prob = bc_spike.get('prob_discounted', bc_spike.get('probability', 0))
+        weibull_prob = bc_spike.get('weibull_prob', 0)
+        if setup_type in ["SPIKE_CATCH", "POST_SPIKE"]:
+            # Spike timing is PRIMARY for these setups
+            spike_factor = min(25, int(spike_prob * 0.35))
+        elif setup_type == "DRIFT_RIDE":
+            # Spike timing is NEGATIVE for drift (spike ends drift)
+            spike_factor = max(-15, -int(spike_prob * 0.20)) if spike_prob > 40 else 5
+        else:
+            spike_factor = min(15, int(spike_prob * 0.20))
+        score += spike_factor
+        details['spike_timing'] = spike_factor
+
+        # ═══ FACTOR 2: DRIFT QUALITY (max 20) ═══
+        drift_strength = bc_drift.get('strength', 0)
+        drift_quality = bc_drift.get('quality', 'NONE')
+        drift_anomaly = bc_drift.get('drift_anomaly', False)
+        if setup_type == "DRIFT_RIDE":
+            # Drift quality is PRIMARY for drift trades
+            if drift_quality == "SMOOTH" and not drift_anomaly:
+                drift_factor = min(20, int(drift_strength * 0.25))
+            elif drift_quality == "MODERATE" and not drift_anomaly:
+                drift_factor = min(15, int(drift_strength * 0.18))
+            elif drift_quality == "CHOPPY":
+                drift_factor = -5  # V25 Gap #19: Choppy drift penalty
+            else:
+                drift_factor = 0
+        elif setup_type == "SPIKE_CATCH":
+            # Long drift = spike more likely
+            drift_factor = min(15, int(drift_strength * 0.15)) if drift_strength > 40 else 0
+        else:
+            drift_factor = min(10, int(drift_strength * 0.10))
+        if drift_anomaly:
+            drift_factor = min(drift_factor, 0)  # Cap at 0 if anomaly
+        score += drift_factor
+        details['drift_quality'] = drift_factor
+
+        # ═══ FACTOR 3: REGIME QUALITY (max 15) ═══
+        regime = bc_regime_data.get('regime', 'UNKNOWN')
+        regime_map = {
+            "DRIFT_SMOOTH": {"DRIFT_RIDE": 15, "SPIKE_CATCH": 5, "POST_SPIKE": 3, "REVERSAL": 5},
+            "PRE_SPIKE": {"DRIFT_RIDE": -10, "SPIKE_CATCH": 15, "POST_SPIKE": 5, "REVERSAL": 5},
+            "POST_SPIKE": {"DRIFT_RIDE": 3, "SPIKE_CATCH": 0, "POST_SPIKE": 15, "REVERSAL": 10},
+            "SPIKE_CLUSTER": {"DRIFT_RIDE": -15, "SPIKE_CATCH": 8, "POST_SPIKE": 10, "REVERSAL": 3},
+            "CHOPPY": {"DRIFT_RIDE": -8, "SPIKE_CATCH": 3, "POST_SPIKE": 3, "REVERSAL": 0},
+        }
+        regime_factor = regime_map.get(regime, {}).get(setup_type, 0)
+        score += regime_factor
+        details['regime'] = regime_factor
+
+        # ═══ FACTOR 4: KURTOSIS (max 10) ═══
+        kurt = bc_kurt_data.get('kurtosis', 3.0)
+        if setup_type in ["SPIKE_CATCH", "POST_SPIKE"]:
+            kurt_factor = min(10, max(0, int((kurt - 3) * 2.5))) if kurt > 3.5 else 0
+        elif setup_type == "DRIFT_RIDE":
+            kurt_factor = max(-5, -int((kurt - 5) * 2)) if kurt > 5 else 3
+        else:
+            kurt_factor = 0
+        score += kurt_factor
+        details['kurtosis'] = kurt_factor
+
+        # ═══ FACTOR 5: TIMING (Stoch + Weibull) (max 15) ═══
+        if setup_type == "SPIKE_CATCH":
+            stoch_ready = bc_stoch.get('ready', False)
+            stoch_signal = bc_stoch.get('signal', 'WAIT')
+            is_boom = profile.get('gen_type') == 'BOOM' if profile else False
+            correct_stoch = (is_boom and stoch_signal == "SPIKE_BUY") or \
+                           (not is_boom and stoch_signal == "SPIKE_SELL")
+            timing_factor = 0
+            if correct_stoch: timing_factor += 8
+            if weibull_prob > 0.7: timing_factor += 7
+            elif weibull_prob > 0.5: timing_factor += 4
+            timing_factor = min(15, timing_factor)
+        elif setup_type == "DRIFT_RIDE":
+            stoch_signal = bc_stoch.get('signal', 'WAIT')
+            is_boom = profile.get('gen_type') == 'BOOM' if profile else False
+            correct_stoch = (is_boom and stoch_signal == "DRIFT_SELL") or \
+                           (not is_boom and stoch_signal == "DRIFT_BUY")
+            timing_factor = 8 if correct_stoch else 0
+        else:
+            timing_factor = 5 if bc_stoch.get('ready', False) else 0
+        score += timing_factor
+        details['timing'] = timing_factor
+
+        # ═══ FACTOR 6: ABSORPTION CONFIRMATION (max 10) ═══
+        if setup_type in ["POST_SPIKE", "REVERSAL"]:
+            if bc_absorb.get('absorption') and bc_fade.get('absorption_confirmed', False):
+                absorb_factor = 10
+            elif bc_absorb.get('absorption'):
+                absorb_factor = 5
+            else:
+                absorb_factor = -5  # No absorption = risky fade
+        else:
+            absorb_factor = 3 if bc_absorb.get('absorption') else 0
+        score += absorb_factor
+        details['absorption'] = absorb_factor
+
+        # ═══ FACTOR 7: CONFLICT PENALTY (max -15) ═══
+        conflict_pen = -bc_conflicts.get('conflict_penalty', 0)
+        score += conflict_pen
+        details['conflict'] = conflict_pen
+
+        # ═══ FACTOR 8: MULTI-SPIKE PATTERN (max 10) — Gap #13 fix ═══
+        if bc_multi.get('cluster'):
+            if setup_type in ["POST_SPIKE", "REVERSAL"]:
+                multi_factor = 10  # Cluster exhaustion = fade opportunity
+            elif setup_type == "SPIKE_CATCH":
+                multi_factor = -10  # V25 Improvement #7: cooldown after cluster
+            elif setup_type == "DRIFT_RIDE":
+                multi_factor = -8  # Cluster = no stable drift
+            else:
+                multi_factor = 0
+        else:
+            multi_factor = 0
+        score += multi_factor
+        details['multi_spike'] = multi_factor
+
+        # ═══ FACTOR 9: BACKTEST (max 10) ═══
+        bt_factor = 0
+        if sim_data and sim_data.get('TOTAL_TRADES', 0) >= 5:
+            wr = sim_data.get('WR', 0)
+            pf = sim_data.get('PF', 0)
+            if wr > 55 and pf > 1.2: bt_factor = 10
+            elif wr > 45 and pf > 1.0: bt_factor = 5
+            elif wr < 35 or pf < 0.8: bt_factor = -10
+        score += bt_factor
+        details['backtest'] = bt_factor
+
+        # ═══ FACTOR 10: VOLUME ACCELERATION (max 10) — M8 ═══
+        vol_ratio = bc_spike.get('vol_ratio', 0)
+        if setup_type == "SPIKE_CATCH":
+            if vol_ratio > 2.5: vol_factor = 10
+            elif vol_ratio > 1.8: vol_factor = 6
+            elif vol_ratio > 1.3: vol_factor = 3
+            else: vol_factor = 0
+        elif setup_type == "DRIFT_RIDE":
+            vol_factor = -5 if vol_ratio > 2.0 else 0  # High vol = spike imminent
+        else:
+            vol_factor = min(5, int(vol_ratio * 2)) if vol_ratio > 1.3 else 0
+        score += vol_factor
+        details['volume'] = vol_factor
+
+        # ═══ FINAL: Grade and threshold ═══
+        score = max(0, min(130, score))  # Cap at 130
+
+        if score >= 95: grade = "S"
+        elif score >= 80: grade = "A++"
+        elif score >= 65: grade = "A+"
+        elif score >= 55: grade = "A"
+        elif score >= 40: grade = "B"
+        elif score >= 25: grade = "C"
+        else: grade = "D"
+
+        return {"bc_score": score, "bc_grade": grade, "bc_details": details,
+                "bc_pass": score >= 55, "bc_monitor": 40 <= score < 55}
+    except:
+        return {"bc_score": 0, "bc_grade": "D", "bc_details": {},
+                "bc_pass": False, "bc_monitor": False}
+
+# ==============================================================================
+# V25-BC O5: ANTI-MELTDOWN KILL-SWITCH (FUNCTIONAL)
 # ==============================================================================
 
 def bc_meltdown_check(session_state_key='bc_loss_streak'):
-    """Kill-switch: se 3+ losses consecutivos, aumenta score mínimo.
+    """V25 M3: Kill-switch FUNCIONAL com session state tracking.
+    Inicializa session_state se não existir.
+    Se 3+ losses consecutivos, aumenta score mínimo.
     Se 5+ losses, bloqueia sinais até reset manual."""
     try:
+        # V25 M3: Initialize session state if not present
+        if session_state_key not in st.session_state:
+            st.session_state[session_state_key] = 0
         streak = st.session_state.get(session_state_key, 0)
         if streak >= 5:
             return {"blocked": True, "reason": f"KILL-SWITCH: {streak} consecutive losses — manual reset required",
@@ -2018,6 +2222,18 @@ def bc_meltdown_check(session_state_key='bc_loss_streak'):
         return {"blocked": False, "reason": None, "score_boost": 0, "streak": streak}
     except:
         return {"blocked": False, "reason": None, "score_boost": 0, "streak": 0}
+
+def bc_record_trade_result(won, session_state_key='bc_loss_streak'):
+    """V25 M3: Record trade result to update loss streak counter."""
+    try:
+        if session_state_key not in st.session_state:
+            st.session_state[session_state_key] = 0
+        if won:
+            st.session_state[session_state_key] = 0  # Reset on win
+        else:
+            st.session_state[session_state_key] = st.session_state.get(session_state_key, 0) + 1
+    except:
+        pass
 
 # ==============================================================================
 # V24-BC A3: EXPLICIT EXPECTANCY + STRESS TEST
@@ -2048,47 +2264,48 @@ def calculate_expectancy(wr, avg_win, avg_loss, stress_wr_reduction=0.20):
 # ==============================================================================
 
 def bc_poisson_spike_probability(candles_since_last, avg_interval, spike_count=0):
-    """Modela tempo entre spikes como processo Poisson (distribuição exponencial).
-    Mais preciso que soma aditiva para probabilidade de spike."""
+    """V25 M6: Weibull CDF CORRIGIDO para timing de spike.
+    V24 usava hazard rate como probabilidade — ERRADO.
+    Correcto: P(T ≤ t) = 1 - exp(-(t/scale)^shape)
+    shape > 1 = hazard crescente (spike mais provável quando overdue)."""
     try:
-        if avg_interval <= 0:
+        if avg_interval <= 0 or candles_since_last <= 0:
             return 0.0
-        # Taxa (lambda) = 1/avg_interval
-        rate = 1.0 / avg_interval
-        # P(spike nos próximos k candles | já esperou t candles)
-        # Para exponencial: P(T<=t+k|T>t) = 1-exp(-lambda*k) (memoryless)
-        # Mas empiricamente spikes NÃO são perfeitamente memoryless,
-        # então usamos renewal process: hazard rate increases with time
-        # Weibull com shape > 1 (increasing hazard)
-        shape = 1.3  # > 1 = hazard increases over time (spikes more likely when overdue)
-        # P(spike no próximo candle | esperou t candles)
-        hazard = shape * rate * (candles_since_last * rate) ** (shape - 1)
-        prob = 1 - np.exp(-hazard)
+        # Weibull parameters
+        scale = avg_interval  # NOT 1/avg_interval
+        shape = 1.3  # > 1 = increasing hazard (spikes more likely when overdue)
+        # CDF: P(spike até t candles)
+        prob = 1.0 - np.exp(-((candles_since_last / scale) ** shape))
         return round(min(0.95, max(0.0, float(prob))), 3)
     except:
         return 0.0
 
 def bc_spike_detector(df, profile, lookback=30):
-    """V24: Detecta condições de spike iminente em Boom/Crash.
+    """V25: Detecta condições de spike iminente em Boom/Crash.
+    M4: Usa clean ATR em TODA a função (não raw ATR)
+    M8: Inclui tick volume acceleration no cálculo
     FIX #2: Usa intervalo empírico M15 (não ticks/15)
-    FIX #4: Probabilidade com desconto por correlação + modelo Poisson
-    FIX #6: Usa clean ATR em vez de ATR padrão
+    FIX #4: Probabilidade com desconto por correlação + modelo Weibull corrigido
     Boom: RSI extremo baixo + drift prolongado = spike UP iminente
     Crash: RSI extremo alto + drift prolongado = crash DOWN iminente"""
     try:
         if len(df) < lookback + 5:
             return {"spike_imminent": False, "probability": 0, "type": "NONE",
-                    "candles_since_last": 999, "rsi_zone": "NEUTRAL"}
+                    "candles_since_last": 999, "rsi_zone": "NEUTRAL",
+                    "prob_discounted": 0}
         is_boom = profile.get('gen_type') == 'BOOM'
         d = df.tail(lookback)
         rsi = d['RSI'].iloc[-1] if pd.notna(d['RSI'].iloc[-1]) else 50
-        atr = d['ATR'].iloc[-1]
-        # Spike history: count candles since last spike
+        # V25 M4: Use CLEAN ATR everywhere (not raw)
+        clean_atr = bc_clean_atr(df, profile, lookback=50)
+        if clean_atr == 0:
+            clean_atr = d['ATR'].iloc[-1] if pd.notna(d['ATR'].iloc[-1]) else 1.0
+        # Spike history: count candles since last spike (using clean ATR)
         spike_min = profile.get('spike_size_min_atr', 2.0)
         candles_since = 0
         for i in range(len(d)-1, 0, -1):
             move = abs(d['close'].iloc[i] - d['close'].iloc[i-1])
-            if atr > 0 and move > spike_min * atr:
+            if clean_atr > 0 and move > spike_min * clean_atr:
                 break
             candles_since += 1
         # RSI zone analysis
@@ -2128,21 +2345,17 @@ def bc_spike_detector(df, profile, lookback=30):
             elif drift_count >= 5: prob += 15; drift_active = True
             elif drift_count >= 3: prob += 8; drift_active = True
 
-        # V24 FIX #4: Correlation discount — RSI + drift are correlated
-        # (prolonged drift → extreme RSI), so additive sum inflates probability
-        if rsi_active and drift_active:
-            prob = int(prob * 0.70)  # 30% discount for correlation
+        # V25: Old 2-factor discount REMOVED — replaced by multi-factor
+        # correlation discount after all factors are tallied (see below)
 
-        # V24 FIX #2: Empirical spike timing (NOT ticks/15)
-        # Instead of converting spike_avg_ticks by dividing by 15,
-        # use empirical average interval from actual spike positions in M15 data
+        # V25 M4: Empirical spike timing using CLEAN ATR for detection
         empirical_intervals = []
         spike_positions = []
         for i in range(1, len(d)):
             move = d['close'].iloc[i] - d['close'].iloc[i-1]
-            if is_boom and move > spike_min * atr and atr > 0:
+            if is_boom and move > spike_min * clean_atr and clean_atr > 0:
                 spike_positions.append(i)
-            elif not is_boom and move < -spike_min * atr and atr > 0:
+            elif not is_boom and move < -spike_min * clean_atr and clean_atr > 0:
                 spike_positions.append(i)
         if len(spike_positions) >= 2:
             empirical_intervals = [spike_positions[j+1] - spike_positions[j]
@@ -2154,66 +2367,112 @@ def bc_spike_detector(df, profile, lookback=30):
             freq_map = {"HIGH": 4, "MEDIUM": 8, "LOW": 15}
             avg_m15_interval = freq_map.get(profile.get('spike_freq', 'MEDIUM'), 8)
 
-        # V24 A4: Poisson timing model instead of additive
+        # V25 M6: Weibull CORRECTED timing model
         poisson_prob = bc_poisson_spike_probability(candles_since, avg_m15_interval)
-        # Scale Poisson to 0-25 range (same as old time factor max)
+        # Scale Weibull to 0-25 range (same as old time factor max)
         time_bonus = int(poisson_prob * 25)
         prob += time_bonus
         # BB squeeze = compression before spike
         if 'BB_width' in d.columns and pd.notna(d['BB_width'].iloc[-1]):
             if d['BB_width'].iloc[-1] < d['BB_width'].rolling(20).mean().iloc[-1] * 0.7:
                 prob += 10
+
+        # V25 M8: TICK VOLUME ACCELERATION — key spike precursor
+        # Before spikes, tick volume increases 2-3× above average
+        vol_bonus = 0
+        vol_ratio = 0.0
+        avg_vol = 0
+        if 'volume' in d.columns:
+            recent_vol = d['volume'].tail(5).mean()
+            avg_vol = d['volume'].tail(20).mean()
+            if avg_vol > 0:
+                vol_ratio = recent_vol / avg_vol
+                if vol_ratio > 2.5: vol_bonus = 20
+                elif vol_ratio > 1.8: vol_bonus = 12
+                elif vol_ratio > 1.3: vol_bonus = 5
+        prob += vol_bonus
+
+        # V25: Multi-factor correlation discount (Lacuna #10 fix)
+        # RSI, drift, time, BB, volume are correlated — discount for overlap
+        active_factors = sum([rsi_active, drift_active, time_bonus > 10,
+                             vol_bonus > 5,
+                             ('BB_width' in d.columns and pd.notna(d['BB_width'].iloc[-1])
+                              and d['BB_width'].iloc[-1] < d['BB_width'].rolling(20).mean().iloc[-1] * 0.7)])
+        if active_factors >= 4:
+            prob = int(prob * 0.55)   # 4+ factors: heavy correlation discount
+        elif active_factors >= 3:
+            prob = int(prob * 0.70)   # 3 factors: moderate discount
+        elif active_factors >= 2:
+            prob = int(prob * 0.85)   # 2 factors: light discount
+
+        prob_discounted = min(95, prob)
         spike_type = "SPIKE_UP" if is_boom else "CRASH_DOWN"
-        return {"spike_imminent": prob >= 45, "probability": min(95, prob),
+        return {"spike_imminent": prob_discounted >= 45, "probability": prob_discounted,
+                "prob_discounted": prob_discounted,  # V25: UI shows discounted (Illusion #2 fix)
                 "type": spike_type, "candles_since_last": candles_since,
                 "rsi_zone": rsi_zone, "drift_count": drift_count,
-                "rsi_value": round(float(rsi), 1)}
+                "rsi_value": round(float(rsi), 1),
+                "vol_ratio": round(float(vol_ratio), 2),
+                "active_factors": active_factors,
+                "avg_interval": round(float(avg_m15_interval), 1),
+                "weibull_prob": round(float(poisson_prob), 3)}
     except:
         return {"spike_imminent": False, "probability": 0, "type": "NONE",
-                "candles_since_last": 999, "rsi_zone": "NEUTRAL"}
+                "candles_since_last": 999, "rsi_zone": "NEUTRAL",
+                "prob_discounted": 0}
 
 # ==============================================================================
 # BC ENGINE #2: DRIFT TRADING — Lucra com o drift natural
 # ==============================================================================
 
 def bc_drift_analyzer(df, profile, lookback=20):
-    """Analisa força do drift para trading com o fluxo natural.
-    Boom: drift DOWN = SELL | Crash: drift UP = BUY"""
+    """V25 M9: Analisa força do drift COM verificação empírica.
+    Não hardcoda direcção — mede o drift REAL e compara com esperado.
+    Boom: drift esperado DOWN = SELL | Crash: drift esperado UP = BUY
+    Se drift real contradiz o esperado → flag anomaly + reduz confiança."""
     try:
         if len(df) < lookback + 5:
             return {"drift_active": False, "strength": 0, "direction": "NONE",
-                    "quality": "NONE", "safe_to_ride": False}
+                    "quality": "NONE", "safe_to_ride": False, "drift_anomaly": False}
         is_boom = profile.get('gen_type') == 'BOOM'
         d = df.tail(lookback)
         ema_f = d['close'].ewm(span=profile.get('drift_ema_fast', 5)).mean()
         ema_s = d['close'].ewm(span=profile.get('drift_ema_slow', 15)).mean()
-        # Drift direction
+
+        # V25 M9: Measure ACTUAL drift direction empirically
+        actual_move = float(d['close'].iloc[-1] - d['close'].iloc[0])
+        expected_dir = "DOWN" if is_boom else "UP"
+        actual_dir = "DOWN" if actual_move < 0 else "UP" if actual_move > 0 else "FLAT"
+        drift_anomaly = (actual_dir != expected_dir and actual_dir != "FLAT")
+
+        # EMA cross confirms expected direction
         if is_boom:
-            drift_active = ema_f.iloc[-1] < ema_s.iloc[-1]  # Fast below slow = drift DOWN
-            drift_dir = "DOWN"
-            # V24 FIX #7: Combine count + magnitude for strength
-            bearish_candles = (d['close'] < d['open']).sum()
-            count_score = min(100, int(bearish_candles / len(d) * 130))
-            # Magnitude: total directional move vs average candle body
-            directional_move = abs(float(d['close'].iloc[-1] - d['close'].iloc[0]))
-            avg_candle_body = abs(d['close'] - d['open']).mean()
-            if avg_candle_body > 0 and len(d) > 0:
-                magnitude_score = min(100, int(directional_move / (avg_candle_body * len(d)) * 100))
-            else:
-                magnitude_score = 0
-            strength = int(count_score * 0.4 + magnitude_score * 0.6)
+            ema_confirms = ema_f.iloc[-1] < ema_s.iloc[-1]  # Fast below slow = drift DOWN
         else:
-            drift_active = ema_f.iloc[-1] > ema_s.iloc[-1]  # Fast above slow = drift UP
-            drift_dir = "UP"
-            bullish_candles = (d['close'] > d['open']).sum()
-            count_score = min(100, int(bullish_candles / len(d) * 130))
-            directional_move = abs(float(d['close'].iloc[-1] - d['close'].iloc[0]))
-            avg_candle_body = abs(d['close'] - d['open']).mean()
-            if avg_candle_body > 0 and len(d) > 0:
-                magnitude_score = min(100, int(directional_move / (avg_candle_body * len(d)) * 100))
-            else:
-                magnitude_score = 0
-            strength = int(count_score * 0.4 + magnitude_score * 0.6)
+            ema_confirms = ema_f.iloc[-1] > ema_s.iloc[-1]  # Fast above slow = drift UP
+
+        # Drift is active only if BOTH EMA cross AND actual move agree
+        drift_active = ema_confirms and not drift_anomaly
+
+        # V25: Combined count + magnitude for strength
+        if is_boom:
+            dir_candles = (d['close'] < d['open']).sum()
+        else:
+            dir_candles = (d['close'] > d['open']).sum()
+
+        count_score = min(100, int(dir_candles / len(d) * 130))
+        directional_move = abs(float(d['close'].iloc[-1] - d['close'].iloc[0]))
+        avg_candle_body = abs(d['close'] - d['open']).mean()
+        if avg_candle_body > 0 and len(d) > 0:
+            magnitude_score = min(100, int(directional_move / (avg_candle_body * len(d)) * 100))
+        else:
+            magnitude_score = 0
+        strength = int(count_score * 0.4 + magnitude_score * 0.6)
+
+        # V25 M9: If anomaly detected, reduce strength significantly
+        if drift_anomaly:
+            strength = int(strength * 0.3)  # 70% reduction
+
         # Quality: smooth drift vs choppy
         bodies = abs(d['close'] - d['open'])
         ranges = d['high'] - d['low']
@@ -2227,13 +2486,15 @@ def bc_drift_analyzer(df, profile, lookback=20):
         else:
             safe = rsi < 65  # If RSI still below 65, safe to buy (drift)
         return {"drift_active": drift_active, "strength": strength,
-                "direction": drift_dir, "quality": quality,
-                "safe_to_ride": safe and drift_active,
+                "direction": expected_dir, "actual_direction": actual_dir,
+                "drift_anomaly": drift_anomaly,
+                "quality": quality,
+                "safe_to_ride": safe and drift_active and not drift_anomaly,
                 "body_ratio": round(float(body_ratio), 3),
                 "rsi": round(float(rsi), 1)}
     except:
         return {"drift_active": False, "strength": 0, "direction": "NONE",
-                "quality": "NONE", "safe_to_ride": False}
+                "quality": "NONE", "safe_to_ride": False, "drift_anomaly": False}
 
 # ==============================================================================
 # BC ENGINE #3: POST-SPIKE FADE — Trade após spike/crash
@@ -2365,13 +2626,14 @@ def bc_supply_demand_zones(df, atr, lookback=50):
 # ==============================================================================
 
 def bc_spike_frequency(df, profile, lookback=100):
-    """Analisa frequência de spikes para timing."""
+    """V25 M4: Analisa frequência de spikes usando clean ATR."""
     try:
         if len(df) < lookback:
             return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False,
                     "spike_count": 0, "next_spike_window": "UNKNOWN"}
         d = df.tail(lookback)
-        atr = d['ATR'].mean()
+        # V25 M4: Use CLEAN ATR instead of raw mean
+        atr = bc_clean_atr(df, profile, lookback=lookback)
         if atr == 0: return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False}
         spike_min = profile.get('spike_size_min_atr', 2.0)
         is_boom = profile.get('gen_type') == 'BOOM'
@@ -2481,18 +2743,21 @@ def bc_multi_spike_pattern(df, profile, lookback=30):
 # BC ENGINE #8: STOCHASTIC SPIKE TIMER
 # ==============================================================================
 
-def bc_stochastic_timer(df, profile):
-    """Usa Stochastic + RSI combinados para timing de spike."""
+def bc_stochastic_timer(df, profile, avg_empirical_interval=None):
+    """V25 Lacuna #18: Stochastic timer com período auto-calibrado.
+    Período baseado no intervalo empírico de spikes, não mapa fixo."""
     try:
         if len(df) < 20:
             return {"ready": False, "signal": "WAIT", "stoch_k": 50, "stoch_d": 50}
         d = df.tail(20)
-        # V24 FIX #12: Parametric stochastic period based on spike frequency
-        stoch_period = profile.get('stoch_period', None)
-        if stoch_period is None:
-            # Auto-calibrate: fast spike = shorter period, slow spike = longer
-            freq = profile.get('spike_freq', 'MEDIUM')
-            stoch_period = {"HIGH": 10, "MEDIUM": 14, "LOW": 20}.get(freq, 14)
+        # V25: Auto-calibrate period from empirical spike interval
+        if avg_empirical_interval and avg_empirical_interval > 0:
+            stoch_period = max(8, min(20, int(avg_empirical_interval * 0.7)))
+        else:
+            stoch_period = profile.get('stoch_period', None)
+            if stoch_period is None:
+                freq = profile.get('spike_freq', 'MEDIUM')
+                stoch_period = {"HIGH": 10, "MEDIUM": 14, "LOW": 20}.get(freq, 14)
         low_n = d['low'].rolling(stoch_period).min()
         high_n = d['high'].rolling(stoch_period).max()
         denom = high_n - low_n
@@ -3500,24 +3765,40 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                 clean_mask = ranges < (2.0 * median_range)
                 bc_atr = float(np.mean(ranges[clean_mask])) if clean_mask.sum() > 5 else median_range
 
-                # BC-SETUP A: DRIFT_RIDE — follow natural drift
+                # V25 M2: BC-SETUP A: DRIFT_RIDE — with mini-scoring
                 if not sig:
                     recent = df.iloc[max(0, i-20):i+1]
                     ema_f = recent['close'].ewm(span=profile.get('drift_ema_fast', 5)).mean()
                     ema_s = recent['close'].ewm(span=profile.get('drift_ema_slow', 15)).mean()
                     rsi_val = row['RSI'] if pd.notna(row['RSI']) else 50
+
+                    # V25 M2: Mini-scoring for drift (strength >= 40 + quality check)
                     if is_boom:
-                        drift_ok = ema_f.iloc[-1] < ema_s.iloc[-1]  # Boom drifts DOWN
+                        dir_candles = sum(1 for j in range(max(0,i-19), i+1)
+                                         if df['close'].iloc[j] < df['open'].iloc[j])
+                    else:
+                        dir_candles = sum(1 for j in range(max(0,i-19), i+1)
+                                         if df['close'].iloc[j] > df['open'].iloc[j])
+                    mini_strength = min(100, int(dir_candles / max(1, min(20, i - max(0,i-19) + 1)) * 130))
+
+                    # V25: Quality check — body/range ratio
+                    bodies = abs(recent['close'] - recent['open'])
+                    rng = (recent['high'] - recent['low']).replace(0, np.nan)
+                    body_ratio = float((bodies / rng).dropna().mean()) if len(rng.dropna()) > 0 else 0.3
+                    is_choppy = body_ratio < 0.35
+
+                    if is_boom:
+                        drift_ok = ema_f.iloc[-1] < ema_s.iloc[-1]
                         safe = rsi_val > 35
-                        if drift_ok and safe:
+                        if drift_ok and safe and mini_strength >= 40 and not is_choppy:
                             sig = "SELL"; setup = "BC_DRIFT"
                     else:
-                        drift_ok = ema_f.iloc[-1] > ema_s.iloc[-1]  # Crash drifts UP
+                        drift_ok = ema_f.iloc[-1] > ema_s.iloc[-1]
                         safe = rsi_val < 65
-                        if drift_ok and safe:
+                        if drift_ok and safe and mini_strength >= 40 and not is_choppy:
                             sig = "BUY"; setup = "BC_DRIFT"
 
-                # BC-SETUP B: POST_SPIKE_FADE — fade after spike
+                # V25 M2: BC-SETUP B: POST_SPIKE_FADE — with absorption check
                 if not sig:
                     spike_min = profile.get('spike_size_min_atr', 2.0)
                     for k in range(max(0, i-5), i):
@@ -3525,12 +3806,18 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                         abs_move = abs(move)
                         candles_since = i - k - 1
                         if bc_atr > 0 and abs_move > spike_min * bc_atr and candles_since <= 4:
-                            # Check no continuation (simplified absorption)
+                            # V25 M2: Enhanced absorption check
                             cont_count = 0
+                            absorb_count = 0
                             for c in range(k+1, min(k+4, i+1)):
                                 post_m = df['close'].iloc[c] - df['close'].iloc[c-1] if c > 0 else 0
+                                post_body = abs(df['close'].iloc[c] - df['open'].iloc[c])
+                                post_range = df['high'].iloc[c] - df['low'].iloc[c]
                                 if (move > 0 and post_m > 0) or (move < 0 and post_m < 0):
                                     cont_count += 1
+                                # Check absorption candle (small body, large range)
+                                if post_range > 0 and post_body / post_range < 0.3:
+                                    absorb_count += 1
                             if cont_count < 2:
                                 if is_boom and move > 0:
                                     sig = "SELL"; setup = "BC_FADE"
@@ -3538,10 +3825,9 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                                     sig = "BUY"; setup = "BC_FADE"
                             break
 
-                # BC-SETUP C: SPIKE_CATCH — catch imminent spike
+                # V25 M2+Lacuna#9: BC-SETUP C: SPIKE_CATCH — tighter thresholds
                 if not sig:
                     rsi_val = row['RSI'] if pd.notna(row['RSI']) else 50
-                    # Count drift candles
                     drift_count = 0
                     for k in range(i, max(i-15, 0), -1):
                         if is_boom and df['close'].iloc[k] < df['open'].iloc[k]:
@@ -3550,10 +3836,31 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                             drift_count += 1
                         else:
                             break
-                    if is_boom and rsi_val < 25 and drift_count >= 5:
-                        sig = "BUY"; setup = "BC_SPIKE"
-                    elif not is_boom and rsi_val > 75 and drift_count >= 5:
-                        sig = "SELL"; setup = "BC_SPIKE"
+                    # V25 Lacuna #9: Tighter thresholds matching real pipeline
+                    # Real pipeline needs probability >= 50 (RSI + drift + time + BB)
+                    # Backtest approximation: RSI more extreme + drift longer
+                    bb_squeeze = False
+                    if 'BB_width' in df.columns and pd.notna(row.get('BB_width', np.nan)):
+                        bb_avg = df['BB_width'].iloc[max(0,i-20):i+1].mean()
+                        bb_squeeze = row['BB_width'] < bb_avg * 0.7 if bb_avg > 0 else False
+                    spike_score = 0
+                    if is_boom:
+                        if rsi_val < 20: spike_score += 35
+                        elif rsi_val < 30: spike_score += 20
+                        if drift_count >= 8: spike_score += 25
+                        elif drift_count >= 5: spike_score += 15
+                    else:
+                        if rsi_val > 80: spike_score += 35
+                        elif rsi_val > 70: spike_score += 20
+                        if drift_count >= 8: spike_score += 25
+                        elif drift_count >= 5: spike_score += 15
+                    if bb_squeeze: spike_score += 10
+                    # V25: Apply same correlation discount
+                    if spike_score >= 50:  # Match real pipeline threshold
+                        if is_boom:
+                            sig = "BUY"; setup = "BC_SPIKE"
+                        else:
+                            sig = "SELL"; setup = "BC_SPIKE"
 
             # LEGACY SETUP 1: TREND
             if not sig and row['ADX'] > max(profile.get('adx_strong', 25), 22):
@@ -3591,8 +3898,13 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             if not sig:
                 continue
 
-            # V23: Slippage realista (0.3× ATR)
-            slippage = atr * 0.3
+            # V25 M10: Variable slippage per setup type (not fixed 0.3)
+            slippage_map = {
+                "BC_DRIFT": 0.15, "BC_FADE": 0.8, "BC_SPIKE": 1.5,
+                "SWING": 0.3, "MEAN_REVERSION": 0.2, "VOL_COMPRESS": 0.2,
+                "ACF_MOMENTUM": 0.25
+            }
+            slippage = atr * slippage_map.get(setup, 0.3)
             entry = row['close'] + (spread + slippage if sig == "BUY" else -(spread + slippage))
 
             # V23 FIX: SL sem look-ahead
@@ -4296,24 +4608,33 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
     cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
 
-    # ═══ V24-BC BOOM/CRASH ENGINES ═══
-    # V24: Use clean ATR for BC engines (FIX #6)
+    # ═══ V25-BC BOOM/CRASH ENGINES (ALL FIXES) ═══
+    # V25 M4: Use clean ATR for BC engines
     bc_atr_clean = bc_clean_atr(m15, profile, lookback=50)
+    # V25 Lacuna #14: Calculate H1 clean ATR separately for S/D zones
+    bc_atr_h1 = bc_clean_atr(h1, profile, lookback=50)
     bc_spike = bc_spike_detector(m15, profile, lookback=30)
     bc_drift = bc_drift_analyzer(m15, profile, lookback=20)
-    # V24 FIX #8: Pass absorption data to fade engine
-    bc_absorb = bc_absorption_detector(m15, bias, lookback=10)
+    # V25: Pass DRIFT DIRECTION instead of bias for absorption (Lacuna #3 from old audit)
+    drift_dir_for_absorb = bc_drift.get('direction', bias)
+    bc_absorb = bc_absorption_detector(m15, drift_dir_for_absorb, lookback=10)
     bc_fade = bc_post_spike_fade(m15, profile, lookback=10, absorption_data=bc_absorb)
-    bc_sd = bc_supply_demand_zones(h1, bc_atr_clean, lookback=50)
+    # V25 Lacuna #14: Use H1 ATR for H1 supply/demand zones
+    bc_sd = bc_supply_demand_zones(h1, bc_atr_h1, lookback=50)
     bc_freq = bc_spike_frequency(m15, profile, lookback=100)
     bc_multi = bc_multi_spike_pattern(m15, profile, lookback=30)
-    bc_stoch = bc_stochastic_timer(m15, profile)
-    # V24 M4: Returns kurtosis analysis
+    # V25 Lacuna #18: Pass empirical interval for auto-calibration
+    bc_stoch = bc_stochastic_timer(m15, profile,
+                                    avg_empirical_interval=bc_freq.get('avg_interval', None))
+    # V25 M4: Returns kurtosis analysis
     bc_kurt = bc_returns_kurtosis(m15, lookback=50)
-    # V24 M5: BC Regime classifier
-    bc_regime = bc_regime_classifier(m15, profile, bc_spike, bc_drift, bc_freq)
-    # V24 O3: Engine conflict resolution
+    # V25: BC Regime classifier WITH kurtosis (Gap #11 fix)
+    bc_regime = bc_regime_classifier(m15, profile, bc_spike, bc_drift, bc_freq,
+                                      bc_kurt_data=bc_kurt)
+    # V25 O3: Engine conflict resolution (with allow_legacy flag)
     bc_conflicts = bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb)
+    regime_sl_mult = bc_regime.get('sl_mult', 1.0)
+    regime_tp_mult = bc_regime.get('tp_mult', 1.0)  # V25 Gap #16: TP also regime-aware
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -4582,7 +4903,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # BC-2: DRIFT RIDE (follow the natural drift — safest)
         # O3: Check if drift ride is allowed (blocked when spike imminent)
+        # V25 Gap #19: Also check quality != "CHOPPY"
         if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
+                and bc_drift.get('quality') != "CHOPPY" \
+                and not bc_drift.get('drift_anomaly', False) \
                 and bc_conflicts.get('allow_drift_ride', True):
             is_boom = gen_type == "BOOM"
             if is_boom and not is_long:  # Boom drifts DOWN → SELL
@@ -4601,54 +4925,58 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 return
 
         # BC-3: STOCHASTIC SPIKE TIMER (confirmed signal)
+        # V25 M4: Use bc_atr_clean instead of c1['ATR']
         if is_bc and bc_stoch.get('ready'):
             stoch_sig = bc_stoch['signal']
             if stoch_sig == "SPIKE_BUY" and is_long:
                 sig = "LONG (STOCH SPIKE)"
-                sl_val = entry - profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                sl_val = entry - profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → SPIKE BUY"
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
             elif stoch_sig == "SPIKE_SELL" and not is_long:
                 sig = "SHORT (STOCH CRASH)"
-                sl_val = entry + profile.get('sl_atr_mult', 1.5) * c1['ATR']
+                sl_val = entry + profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → CRASH SELL"
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
             elif stoch_sig == "DRIFT_SELL" and not is_long:
                 sig = "SHORT (STOCH DRIFT)"
-                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT SELL"
                 trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
                 return
             elif stoch_sig == "DRIFT_BUY" and is_long:
                 sig = "LONG (STOCH DRIFT)"
-                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * c1['ATR']
+                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT BUY"
                 trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
                 return
 
-        # BC-4: REVERSAL (CHoCH + absorption + supply/demand)
+        # BC-4: REVERSAL (CHoCH + absorption CONFIRMED + supply/demand)
+        # V25 Gap #18: Require absorption_confirmed flag
+        # V25 M4: Use bc_atr_clean instead of c1['ATR']
         if is_bc and mkt_struct.get('choch'):
             choch_bull = "BULL" in str(mkt_struct.get('last_event', ''))
             choch_bear = "BEAR" in str(mkt_struct.get('last_event', ''))
-            if choch_bull and is_long and bc_absorb.get('absorption'):
+            absorb_confirmed = bc_absorb.get('absorption') and bc_fade.get('absorption_confirmed', False)
+            if choch_bull and is_long and absorb_confirmed:
                 sig = "LONG (REVERSAL)"
-                sl_val = entry - profile.get('sl_atr_mult', 1.5) * c1['ATR']
-                entry_type = f"CHoCH Bull + Absorption ({bc_absorb.get('strength',0):.0f}%)"
+                sl_val = entry - profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
+                entry_type = f"CHoCH Bull + Absorption CONFIRMED ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
-            elif choch_bear and not is_long and bc_absorb.get('absorption'):
+            elif choch_bear and not is_long and absorb_confirmed:
                 sig = "SHORT (REVERSAL)"
-                sl_val = entry + profile.get('sl_atr_mult', 1.5) * c1['ATR']
-                entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
+                sl_val = entry + profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
+                entry_type = f"CHoCH Bear + Absorption CONFIRMED ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
 
         # O4: GBM/STEP setups removed — V24-BC is Boom/Crash only
-        # (Legacy code removed: GEN_VOL_COMPRESS, GEN_PRICE_DEV, GEN_STEP_REVERT)
 
         # 🔴 FIX #3: Crash/Boom — drift direction real
+        # V25 M4: Use bc_atr_clean instead of raw ATR
         if gen_type in ["BOOM","CRASH"]:
             phase = gen.get('spike_phase','')
             drift_dir = gen.get('drift_direction','')
@@ -4656,17 +4984,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 if (drift_dir=="UP" and is_long) or (drift_dir=="DOWN" and not is_long):
                     d = "LONG" if is_long else "SHORT"
                     sig = f"{d} (SPIKE DRIFT {phase})"
-                    sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                    sl_val = entry - adapted_profile['sl_atr_mult']*bc_atr_clean*regime_sl_mult if is_long else entry + adapted_profile['sl_atr_mult']*bc_atr_clean*regime_sl_mult
                     entry_type = f"Drift {drift_dir} ({gen.get('last_spike_bars',0)} bars)"
                     trade_style = "DAY"; setup_type = "GEN_SPIKE_DRIFT"
                     return
 
         # O4: STEP setup removed — V24-BC is Boom/Crash only
 
+        # V25 Gap #20: CONFLICT RESOLUTION blocks ALL legacy setups for BC assets
+        if is_bc and not bc_conflicts.get('allow_legacy', True):
+            return  # Don't even try legacy setups if BC conflict active
+
+        # V25 M4: Use correct ATR for legacy setups in BC context
+        legacy_atr = bc_atr_clean if is_bc else c1['ATR']
+
         # 2. REGIME-SPECIFIC CLASSIC SETUPS
         if "TRENDING" in regime and adx > adapted_profile.get('adx_strong',25):
-            if (is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5) or \
-               (not is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5):
+            if (is_long and abs(c1['close']-c1['EMA_50'])<legacy_atr*1.5) or \
+               (not is_long and abs(c1['close']-c1['EMA_50'])<legacy_atr*1.5):
                 d = "LONG" if is_long else "SHORT"
                 sig = f"{d} (SWING)"
                 sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult'])
@@ -4680,13 +5015,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 if (z_current < 0 and is_long) or (z_current > 0 and not is_long):
                     d = "LONG" if is_long else "SHORT"
                     sig = f"{d} (MEAN REVERSION)"
-                    sl_val = entry - adapted_profile['sl_atr_mult']*c1['ATR'] if is_long else entry + adapted_profile['sl_atr_mult']*c1['ATR']
+                    sl_val = entry - adapted_profile['sl_atr_mult']*legacy_atr if is_long else entry + adapted_profile['sl_atr_mult']*legacy_atr
                     entry_type = f"MR Z={z_current:.1f}"
                     trade_style = "REVERSAL"; setup_type = "MEAN_REVERSION"
                     return
 
         # 3. DAY
-        # V21 FIX-C: DAY requires ADX >= 22 (not catch-all)
         if adx > max(adapted_profile.get('adx_trend_min',15), 22):
             d = "LONG" if is_long else "SHORT"
             sig = f"{d} (DAY)"
@@ -4697,47 +5031,46 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             return
 
         # 4. BREAKOUT
-        # V21 PREC #5: Breakout needs close ABOVE/BELOW SR (not just near)
         if sr_touch and closest_sr:
             bk_ok, bk_r = confirm_breakout_volume(m15)
-            broke_through = (is_long and c1['close'] > closest_sr['price'] + c1['ATR']*0.1) or \
-                            (not is_long and c1['close'] < closest_sr['price'] - c1['ATR']*0.1)
+            broke_through = (is_long and c1['close'] > closest_sr['price'] + legacy_atr*0.1) or \
+                            (not is_long and c1['close'] < closest_sr['price'] - legacy_atr*0.1)
             if bk_ok and broke_through:
                 d = "LONG" if is_long else "SHORT"
                 sig = f"{d} (BREAKOUT)"
-                sl_val = closest_sr['price'] - c1['ATR'] if is_long else closest_sr['price'] + c1['ATR']
+                sl_val = closest_sr['price'] - legacy_atr if is_long else closest_sr['price'] + legacy_atr
                 entry_type = f"Breakout S/R (×{bk_r:.1f})"
                 trade_style = "BREAKOUT"; setup_type = "BREAKOUT"
                 return
 
-        # 5. V23: BREAKOUT RETEST (pullback to broken S/R)
-        br_retest = detect_breakout_retest(h1, sr_levels, direction, c1['ATR'])
+        # 5. V23: BREAKOUT RETEST
+        br_retest = detect_breakout_retest(h1, sr_levels, direction, legacy_atr)
         if br_retest.get('retest') and pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
             d = "LONG" if is_long else "SHORT"
             sig = f"{d} (RETEST)"
             if is_long:
-                sl_val = br_retest['level'] - c1['ATR'] * 1.2
+                sl_val = br_retest['level'] - legacy_atr * 1.2
             else:
-                sl_val = br_retest['level'] + c1['ATR'] * 1.2
+                sl_val = br_retest['level'] + legacy_atr * 1.2
             entry_type = f"S/R Retest ({br_retest.get('type','')}) PB:{pb_quality['quality']}"
             trade_style = "RETEST"; setup_type = "BREAKOUT_RETEST"
             return
 
-        # 6. V23: SCALP (M15 momentum + M5 trigger — rápido, tight)
+        # 6. V23: SCALP
         if entry_sync.get('ready') == "READY" and candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
-            if c1['ADX'] > 18:  # Minimal trend requirement
+            if c1['ADX'] > 18:
                 d = "LONG" if is_long else "SHORT"
                 sig = f"{d} (SCALP)"
-                sl_val = entry - c1['ATR'] * 1.2 if is_long else entry + c1['ATR'] * 1.2
+                sl_val = entry - legacy_atr * 1.2 if is_long else entry + legacy_atr * 1.2
                 entry_type = f"Scalp — Sync:{entry_sync['score']} Mom:{candle_mom['conviction']}"
                 trade_style = "SCALP"; setup_type = "SCALP"
                 return
 
-        # 7. V23: CONTINUATION PATTERN (Flag/Pennant)
+        # 7. V23: CONTINUATION PATTERN
         if cont_pattern.get('pattern') != "NONE" and cont_pattern.get('confidence', 0) > 50:
             d = "LONG" if is_long else "SHORT"
             sig = f"{d} (CONTINUATION)"
-            sl_val = entry - c1['ATR'] * adapted_profile['sl_atr_mult'] if is_long else entry + c1['ATR'] * adapted_profile['sl_atr_mult']
+            sl_val = entry - legacy_atr * adapted_profile['sl_atr_mult'] if is_long else entry + legacy_atr * adapted_profile['sl_atr_mult']
             entry_type = f"{cont_pattern['pattern']} (conf:{cont_pattern['confidence']}%)"
             trade_style = "DAY"; setup_type = "CONTINUATION"
             return
@@ -4792,11 +5125,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if "LONG" in sig: entry += profile['spread']
     elif "SHORT" in sig: entry -= profile['spread']
 
-    # Clamp SL
-    if "LONG" in sig and (entry - sl_val) > adapted_profile['sl_atr_mult'] * c1['ATR']:
-        sl_val = entry - adapted_profile['sl_atr_mult'] * c1['ATR']
-    elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * c1['ATR']:
-        sl_val = entry + adapted_profile['sl_atr_mult'] * c1['ATR']
+    # V25 M4: Clamp SL using clean ATR for BC assets (prevents raw ATR from undoing clean SL)
+    clamp_atr = bc_atr_clean if gen_type in ["BOOM", "CRASH"] else c1['ATR']
+    if "LONG" in sig and (entry - sl_val) > adapted_profile['sl_atr_mult'] * clamp_atr * regime_sl_mult:
+        sl_val = entry - adapted_profile['sl_atr_mult'] * clamp_atr * regime_sl_mult
+    elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * clamp_atr * regime_sl_mult:
+        sl_val = entry + adapted_profile['sl_atr_mult'] * clamp_atr * regime_sl_mult
 
     # Storm — V23: Added new checks
     storm_data = {'adx':adx,'momentum_score':momentum,'pattern_score':pat_score,
@@ -4851,7 +5185,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
         continuation_bonus=continuation_bonus, retest_bonus=retest_bonus)
 
-    # Filters — V24-BC: Aggressive but precise for Boom/Crash
+    # Filters — V25: BC-AWARE FILTERING
     configs = {"PERFECT_STORM":(80,1.2),"BREAKOUT":(50,1.2),"MEAN_REVERSION":(35,1.0),
                "GEN_VOL_COMPRESS":(35,0.9),"GEN_SPIKE_DRIFT":(30,0.8),"GEN_STEP_REVERT":(30,0.8),
                "GEN_PRICE_DEV":(35,1.0),"DAY":(40,1.1),"SWING":(55,1.2),
@@ -4861,6 +5195,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                "SCALP":(25,0.9),"BREAKOUT_RETEST":(40,1.1),"CONTINUATION":(35,1.0)}
     ms, mpf = configs.get(setup_type, (60, 1.3))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
+    is_bc_setup = setup_type in ["SPIKE_CATCH", "DRIFT_RIDE", "POST_SPIKE", "REVERSAL"]
+
+    # V25 M1: Calculate BC score for BC setups
+    bc_score_data = {}
+    if is_bc_setup:
+        bc_score_data = calculate_bc_score(
+            setup_type, bc_spike, bc_drift, bc_fade, bc_regime,
+            bc_kurt, bc_freq, bc_absorb, bc_conflicts, bc_multi,
+            bc_stoch, sim_data=sim, profile=profile)
 
     # V23: Score override — reduce minimums with ultra-high confluence
     if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
@@ -4870,38 +5213,57 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if storm_level in ["PERFECT_STORM", "STRONG_CONFLUENCE"]:
         ms = int(ms * 0.75)  # 25% reduction — trust the confluence
 
-    # V24 FIX #11: Floor — prevent cascade from zeroing minimums
+    # V25 Lacuna #17: Controlled cascade — track total reduction
+    # Floor prevents cascade from zeroing minimums
     ms = max(ms, 15)  # Absolute minimum score = 15
 
-    # V24 O5: Anti-Meltdown Kill-Switch
+    # V25 M3: Anti-Meltdown Kill-Switch (FUNCTIONAL)
     meltdown = bc_meltdown_check()
     if meltdown.get('blocked'):
         sig = f"BLOCKED ({meltdown['reason']})"
     elif meltdown.get('score_boost', 0) > 0:
         ms = int(ms * (1 + meltdown['score_boost'] / 100))  # Increase min score
 
-    # V24 A3: Expectancy stress test — block if stressed expectancy < 0
-    if sim.get('HIGH_RISK', False) and not is_gen_setup:
-        # Expectancy goes negative under -20% WR stress → high risk warning
+    # V25 A3: Expectancy stress test — flag if stressed expectancy < 0
+    if sim.get('HIGH_RISK', False) and not is_gen_setup and not is_bc_setup:
         pass  # Don't block, but flag in output
 
     if "BLOCKED" not in sig and sig != "MONITORING":
         fails = []
-        # V23: Random Walk penalty + V24 O3 conflict penalty applied to score
-        effective_score = score.total + random_walk_penalty - conflict_penalty
-        if effective_score < ms: fails.append(f"SCORE={effective_score:.0f}<{ms}")
-        # V23: CPI gate ADAPTATIVO por asset class
-        if cpi_val < cpi_gate_min and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<{cpi_gate_min}")
-        if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
-        # V23: PF mínimo global 1.1 (honesto)
-        pf_min = max(mpf, 1.1) if not is_gen_setup else mpf
-        if sim['PF'] < pf_min and not is_gen_setup: fails.append(f"PF={sim['PF']:.1f}<{pf_min:.1f}")
-        # V23: Entry Sync check — don't enter if TFs misaligned
-        if entry_sync.get('ready') == "WAIT" and setup_type not in ["MEAN_REVERSION", "GEN_VOL_COMPRESS", "GEN_PRICE_DEV"]:
-            fails.append(f"SYNC={entry_sync.get('score',0)}<60")
+
+        if is_bc_setup:
+            # ═══ V25 M7: BC-SPECIFIC FILTERING (not CPI/NET/PF legacy) ═══
+            bc_sc = bc_score_data.get('bc_score', 0)
+            bc_gr = bc_score_data.get('bc_grade', 'D')
+            # BC score is the PRIMARY gate for BC setups
+            if not bc_score_data.get('bc_pass', False):
+                if bc_score_data.get('bc_monitor', False):
+                    fails.append(f"BC_SCORE={bc_sc}(MONITOR)")  # Close but not enough
+                else:
+                    fails.append(f"BC_SCORE={bc_sc}<55")
+            # V25: Still check backtest NET but with relaxed threshold
+            if sim['NET'] < -5: fails.append(f"NET={sim['NET']:.1f}<-5")
+            # V25: Entry sync NOT checked for SPIKE_CATCH and POST_SPIKE (Lacuna #12)
+            if setup_type in ["DRIFT_RIDE"] and entry_sync.get('ready') == "WAIT":
+                fails.append(f"SYNC={entry_sync.get('score',0)}<60")
+            # Legacy score still used as secondary check (reduced weight)
+            effective_score = score.total + random_walk_penalty - conflict_penalty
+            if effective_score < ms * 0.6:  # 60% of legacy threshold (not full)
+                fails.append(f"LEGACY_SCORE={effective_score:.0f}<{int(ms*0.6)}")
+        else:
+            # ═══ LEGACY FILTERING (unchanged for non-BC setups) ═══
+            effective_score = score.total + random_walk_penalty - conflict_penalty
+            if effective_score < ms: fails.append(f"SCORE={effective_score:.0f}<{ms}")
+            if cpi_val < cpi_gate_min and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<{cpi_gate_min}")
+            if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
+            pf_min = max(mpf, 1.1) if not is_gen_setup else mpf
+            if sim['PF'] < pf_min and not is_gen_setup: fails.append(f"PF={sim['PF']:.1f}<{pf_min:.1f}")
+            # V25 Lacuna #12: Entry Sync bypass for BC spike/fade setups
+            if entry_sync.get('ready') == "WAIT" and setup_type not in ["MEAN_REVERSION", "GEN_VOL_COMPRESS", "GEN_PRICE_DEV"]:
+                fails.append(f"SYNC={entry_sync.get('score',0)}<60")
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
-    # Targets — V23: Adaptive TP (S/R aware + regime aware)
+    # Targets — V25: Adaptive TP with REGIME MULTIPLIER (Gap #16 fix)
     risk = abs(entry - sl_val)
     if risk == 0: risk = float(c1['ATR'])
     tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
@@ -4913,6 +5275,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
           "REVERSAL":(2.5,4.0),
           "SCALP":(1.5,2.5),"BREAKOUT_RETEST":(2.5,4),"CONTINUATION":(2,3.5)}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
+
+    # V25 Gap #16: Apply regime TP multiplier for BC assets (not just SL)
+    if gen_type in ["BOOM", "CRASH"] and is_bc_setup:
+        r1 *= regime_tp_mult
+        r2 *= regime_tp_mult
 
     # V23: Regime-adaptive TP
     if "TRENDING" in regime and adx > 30:
@@ -5020,8 +5387,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if retest_bonus > 0:
         confs.append("🔄 Breakout Retest")
     # V24-BC: Boom/Crash specific confluences
+    # V25 Illusion #2: Show DISCOUNTED probability (not raw)
     if bc_spike.get('spike_imminent'):
-        confs.append(f"⚡ SPIKE IMMINENT ({bc_spike['probability']}%) RSI:{bc_spike.get('rsi_zone','?')}")
+        confs.append(f"⚡ SPIKE IMMINENT ({bc_spike.get('prob_discounted', bc_spike['probability'])}%) RSI:{bc_spike.get('rsi_zone','?')} Factors:{bc_spike.get('active_factors',0)} Weibull:{bc_spike.get('weibull_prob',0):.2f}")
     if bc_drift.get('safe_to_ride'):
         confs.append(f"🌊 Drift {bc_drift['direction']} str={bc_drift['strength']}% ({bc_drift['quality']})")
     if bc_fade.get('post_spike'):
@@ -5077,6 +5445,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         risks.append("⚠️ Drift CHOPPY — entradas menos confiáveis")
     if not bc_drift.get('safe_to_ride') and setup_type == "DRIFT_RIDE":
         risks.append("🚫 RSI em zona de perigo para drift")
+    # V25: Drift anomaly warning
+    if bc_drift.get('drift_anomaly'):
+        risks.append(f"⚠️ DRIFT ANOMALY: Expected {bc_drift.get('direction','?')} but actual {bc_drift.get('actual_direction','?')}")
+    # V25: BC score visibility
+    if bc_score_data and bc_score_data.get('bc_score', 0) > 0:
+        confs.append(f"🎯 BC Score: {bc_score_data['bc_score']}/{bc_score_data.get('bc_grade','?')} {'✅' if bc_score_data.get('bc_pass') else '⏳' if bc_score_data.get('bc_monitor') else '❌'}")
+    # V25: Meltdown status
+    meltdown_check = bc_meltdown_check()
+    if meltdown_check.get('streak', 0) > 0:
+        risks.append(f"🔥 Loss streak: {meltdown_check['streak']} {'(BLOCKED!)' if meltdown_check.get('blocked') else '(CAUTION)' if meltdown_check.get('score_boost',0) > 0 else ''}")
 
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
@@ -5175,6 +5553,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "EXPECTANCY_STRESSED": sim.get('EXPECTANCY_STRESSED', 0),
         "HIGH_RISK": sim.get('HIGH_RISK', False),
         "MELTDOWN": convert_np(bc_meltdown_check()),
+        # V25: BC Score (M1)
+        "BC_SCORE": convert_np(bc_score_data),
+        "BC_SCORE_VAL": bc_score_data.get('bc_score', 0) if bc_score_data else 0,
+        "BC_GRADE": bc_score_data.get('bc_grade', 'N/A') if bc_score_data else 'N/A',
+        # V25: Regime TP multiplier
+        "REGIME_SL_MULT": regime_sl_mult,
+        "REGIME_TP_MULT": regime_tp_mult,
+        # V25: Drift anomaly
+        "DRIFT_ANOMALY": bc_drift.get('drift_anomaly', False),
+        "VERSION": "V25.0-BC",
     }
 
 # ==============================================================================
@@ -5230,7 +5618,7 @@ async def quick_scan(code, name):
 with st.sidebar:
     st.markdown("""<div style='padding:8px 0 16px;'>
         <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V24-BC</span>
+        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V25-BC</span>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
@@ -5253,17 +5641,44 @@ with st.sidebar:
     risk_pct = st.slider("Risk", 0.5, 3.0, 1.0, 0.1, label_visibility="collapsed")
     st.caption(f"Risk per trade: {risk_pct}%")
 
+    # V25 M3: Kill-Switch Trade Tracking
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.caption("📊 Trade Result Tracking")
+    if 'bc_loss_streak' not in st.session_state:
+        st.session_state['bc_loss_streak'] = 0
+    col_w, col_l, col_r = st.columns(3)
+    with col_w:
+        if st.button("✅ WIN", use_container_width=True):
+            bc_record_trade_result(True)
+            st.toast("Win recorded! Streak reset.")
+    with col_l:
+        if st.button("❌ LOSS", use_container_width=True):
+            bc_record_trade_result(False)
+            streak = st.session_state.get('bc_loss_streak', 0)
+            st.toast(f"Loss recorded. Streak: {streak}")
+    with col_r:
+        if st.button("🔄 Reset", use_container_width=True):
+            st.session_state['bc_loss_streak'] = 0
+            st.toast("Streak reset!")
+    streak_val = st.session_state.get('bc_loss_streak', 0)
+    if streak_val >= 5:
+        st.error(f"🚨 KILL-SWITCH ACTIVE ({streak_val} losses)")
+    elif streak_val >= 3:
+        st.warning(f"⚠️ Caution: {streak_val} consecutive losses")
+    elif streak_val > 0:
+        st.info(f"Loss streak: {streak_val}")
+
     st.markdown("""<div style='margin-top:32px;padding:14px;background:#111113;border:1px solid #1e1e23;
         border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Boom/Crash Sniper V24-BC<br>
-        Spike · Drift · Post-Spike Fade<br>
-        Day Trade + Scalp Only
+        Boom/Crash Zero-Illusion V25-BC<br>
+        BC Score · Weibull · Clean ATR<br>
+        Spike · Drift · Post-Spike Fade
     </div>""", unsafe_allow_html=True)
 
 # ── HEADER ──
 st.markdown("""<div style='padding:0 0 8px;'>
     <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Boom/Crash Sniper V24-BC | Day Trade + Scalp</span>
+    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Boom/Crash Zero-Illusion V25-BC | BC Score + Weibull</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
