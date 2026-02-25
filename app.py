@@ -1,4 +1,3 @@
-
 import streamlit as st
 import asyncio
 import websockets
@@ -1951,9 +1950,9 @@ def bc_regime_classifier(df, profile, bc_spike_data, bc_drift_data, bc_freq_data
 
         # SL multipliers by regime (M5: Regime-Aware SL)
         sl_mults = {
-            "DRIFT_SMOOTH": 0.8,   # Tight SL — predictable
+            "DRIFT_SMOOTH": 0.65,  # Tight SL — predictable
             "CHOPPY": 1.0,         # Normal SL
-            "PRE_SPIKE": 1.3,      # Wider SL — spike imminent, noise
+            "PRE_SPIKE": 1.7,      # Wider SL — spike imminent, noise
             "POST_SPIKE": 1.5,     # Widest SL — high vol after spike
             "SPIKE_CLUSTER": 1.6,  # Very wide — unpredictable clusters
         }
@@ -2048,9 +2047,11 @@ def calculate_expectancy(wr, avg_win, avg_loss, stress_wr_reduction=0.20):
 # V24-BC A4: POISSON SPIKE TIMING MODEL
 # ==============================================================================
 
-def bc_poisson_spike_probability(candles_since_last, avg_interval, spike_count=0):
+def bc_poisson_spike_probability(candles_since_last, avg_interval, spike_count=0, shape=1.3):
     """Modela tempo entre spikes como processo Poisson (distribuição exponencial).
-    Mais preciso que soma aditiva para probabilidade de spike."""
+    Mais preciso que soma aditiva para probabilidade de spike.
+    O parâmetro `shape` (Weibull) permite ajuste dinâmico:
+    > 1 aumenta a probabilidade (hazard) quando o evento está atrasado."""
     try:
         if avg_interval <= 0:
             return 0.0
@@ -2060,8 +2061,6 @@ def bc_poisson_spike_probability(candles_since_last, avg_interval, spike_count=0
         # Para exponencial: P(T<=t+k|T>t) = 1-exp(-lambda*k) (memoryless)
         # Mas empiricamente spikes NÃO são perfeitamente memoryless,
         # então usamos renewal process: hazard rate increases with time
-        # Weibull com shape > 1 (increasing hazard)
-        shape = 1.3  # > 1 = hazard increases over time (spikes more likely when overdue)
         # P(spike no próximo candle | esperou t candles)
         hazard = shape * rate * (candles_since_last * rate) ** (shape - 1)
         prob = 1 - np.exp(-hazard)
@@ -2164,11 +2163,18 @@ def bc_spike_detector(df, profile, lookback=30):
         if 'BB_width' in d.columns and pd.notna(d['BB_width'].iloc[-1]):
             if d['BB_width'].iloc[-1] < d['BB_width'].rolling(20).mean().iloc[-1] * 0.7:
                 prob += 10
+                
+        # V24-BC NEW: Micro-Volatility Proxy (Pre-Spike Compression)
+        comp_data = detect_pre_spike_compression(df, atr, lookback=5)
+        if comp_data.get('compression'):
+            prob += comp_data.get('score', 0)
+            
         spike_type = "SPIKE_UP" if is_boom else "CRASH_DOWN"
         return {"spike_imminent": prob >= 45, "probability": min(95, prob),
                 "type": spike_type, "candles_since_last": candles_since,
                 "rsi_zone": rsi_zone, "drift_count": drift_count,
-                "rsi_value": round(float(rsi), 1)}
+                "rsi_value": round(float(rsi), 1),
+                "compression_active": comp_data.get('compression')}
     except:
         return {"spike_imminent": False, "probability": 0, "type": "NONE",
                 "candles_since_last": 999, "rsi_zone": "NEUTRAL"}
@@ -2403,6 +2409,42 @@ def bc_spike_frequency(df, profile, lookback=100):
     except:
         return {"avg_interval": 0, "last_spike_ago": 999, "overdue": False,
                 "spike_count": 0, "next_spike_window": "UNKNOWN"}
+
+# ==============================================================================
+# V24-BC NEW: PRE-SPIKE COMPRESSION (TICK DENSITY PROXY)
+# ==============================================================================
+
+def detect_pre_spike_compression(df, atr, lookback=5):
+    """Proxy para densidade de ticks: detecta compressão extrema de preço
+    (micro-volumes, wicks e corpos minúsculos) sinalizando que o algortimo
+    está 'segurando' o preço antes do spike."""
+    try:
+        if len(df) < lookback + 2 or atr == 0:
+            return {"compression": False, "score": 0, "avg_range_pct": 1.0}
+        
+        d = df.tail(lookback)
+        ranges = d['high'] - d['low']
+        avg_range = float(ranges.mean())
+        
+        range_pct_of_atr = avg_range / atr
+        
+        # Se os ultimos N candles (ex: 3-5 M1) tem range médio menor que 25% do ATR normal
+        # Isso é uma congestão forte
+        compression = range_pct_of_atr < 0.25
+        
+        score = 0
+        if range_pct_of_atr < 0.15:
+            score = 30 # Severe compression -> HIGH spike probability
+        elif range_pct_of_atr < 0.25:
+            score = 15 # Moderate compression
+            
+        return {
+            "compression": compression,
+            "score": score,
+            "avg_range_pct": round(range_pct_of_atr, 3)
+        }
+    except:
+        return {"compression": False, "score": 0, "avg_range_pct": 1.0}
 
 # ==============================================================================
 # BC ENGINE #6: CANDLE ABSORPTION — Pressão institucional
@@ -2940,8 +2982,18 @@ class AdaptiveLearnerV20:
         losses = [abs(r) for r in results if r <= 0]
         avg_win = np.mean(wins) if wins else 1.0
         avg_loss = np.mean(losses) if losses else 1.0
-        b = avg_win / avg_loss if avg_loss > 0 else 1.0  # Correct odds ratio
-        kelly = (p * b - q) / b if b > 0 else 0
+        
+        # V24-BC NEW: STRESSED Kelly (Spike Slippage + WR Penalty)
+        # Reduce WR by 15% to simulate bad market conditions
+        p_stressed = max(0.05, p - 0.15)
+        q_stressed = 1 - p_stressed
+        
+        # Increase avg_loss by 50% to account for Average Spike Loss (slippage via price gaps)
+        avg_loss_stressed = avg_loss * 1.5
+        b_stressed = avg_win / avg_loss_stressed if avg_loss_stressed > 0 else 1.0
+        
+        # Calculate Kelly with stressed parameters to avoid capital ruin on spikes
+        kelly = (p_stressed * b_stressed - q_stressed) / b_stressed if b_stressed > 0 else 0
         kelly = max(0.0, min(kelly, 0.25))
         # DD penalty contínuo
         dd_penalty = max(0.3, 1.0 - dd / 20)
