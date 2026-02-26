@@ -2071,50 +2071,64 @@ def bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb
 
 def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
                        bc_freq, bc_absorb, bc_compress, bc_conflicts,
-                       bc_stoch, sim_results=None):
-    """Scoring dedicado para setups BC usando dados dos engines BC.
-    O score legacy (ADX/EMA/momentum) é irrelevante para Boom/Crash.
-    Este score usa: Weibull timing, drift quality, regime, kurtosis,
-    absorption, volume, M5 compression, conflicts, backtest, stochastic."""
+                       bc_stoch, sim_results=None,
+                       bc_ema_stack=None, bc_gradient=None, bc_recovery=None,
+                       bc_consec=None, bc_channel=None):
+    """V24-F: Scoring dedicado BC com 12 factores (5 novos + 7 originais).
+    Usa ferramentas BC-específicas para decisão. Legacy score é secundário.
+    Factores: timing, drift_health, regime, kurtosis, recovery, compression,
+    consecutive, conflicts, backtest, stochastic, channel, stack."""
     try:
         total = 0
         breakdown = {}
+        bc_ema_stack = bc_ema_stack or {}
+        bc_gradient = bc_gradient or {}
+        bc_recovery = bc_recovery or {}
+        bc_consec = bc_consec or {}
+        bc_channel = bc_channel or {}
 
-        # 1. SPIKE TIMING (max 25pts)
-        # Weibull prob é o factor primário para SPIKE_CATCH
+        # 1. SPIKE TIMING — Weibull + consecutive (max 25pts)
         weibull = bc_spike.get('weibull_prob', 0)
-        spike_prob = bc_spike.get('prob_discounted', 0)
+        consec_risk = bc_consec.get('spike_risk', 0)
         if setup_type in ["SPIKE_CATCH"]:
-            timing_score = min(25, int(weibull * 30))  # Weibull drives spike timing
+            timing_score = min(25, int(weibull * 20) + int(consec_risk * 0.08))
         elif setup_type in ["DRIFT_RIDE"]:
-            # For drift: LOW spike probability = GOOD (safe to drift)
-            timing_score = min(25, int((1.0 - weibull) * 25))
+            timing_score = min(25, int((1.0 - weibull) * 15) + max(0, int((100 - consec_risk) * 0.10)))
         elif setup_type in ["POST_SPIKE"]:
-            # Post-spike: want spike JUST happened (low candles_since)
             csl = bc_spike.get('candles_since_last', 999)
             timing_score = 25 if csl <= 2 else 15 if csl <= 4 else 5 if csl <= 6 else 0
         else:
-            timing_score = min(25, int(spike_prob * 0.3))
+            timing_score = min(20, int(bc_spike.get('prob_discounted', 0) * 0.25))
         total += timing_score
         breakdown['spike_timing'] = timing_score
 
-        # 2. DRIFT QUALITY (max 20pts)
+        # 2. DRIFT HEALTH — Stack + Gradient + Drift analyzer (max 22pts)
         drift_str = bc_drift.get('strength', 0)
         drift_qual = bc_drift.get('quality', 'CHOPPY')
+        stack_score = bc_ema_stack.get('stack_score', 0)
+        gradient_val = bc_gradient.get('gradient', 1.0)
+        gradient_safe = bc_gradient.get('safe_to_enter', True)
+
         if setup_type in ["DRIFT_RIDE"]:
-            # Drift quality is PRIMARY for drift rides
             qual_mult = {"SMOOTH": 1.0, "MODERATE": 0.7, "CHOPPY": 0.3}.get(drift_qual, 0.5)
-            drift_score = min(20, int(drift_str * 0.2 * qual_mult))
+            drift_base = int(drift_str * 0.12 * qual_mult)
+            stack_pts = min(8, stack_score // 2)
+            grad_pts = 6 if gradient_val > 1.1 else 3 if gradient_val > 0.8 else 0
+            if not gradient_safe: grad_pts = 0  # Gradient says DYING
+            drift_score = min(22, drift_base + stack_pts + grad_pts)
         elif setup_type in ["SPIKE_CATCH"]:
-            # For spike catch: long drift = confirmation spike is coming
             drift_count = bc_spike.get('drift_count', 0)
-            drift_score = min(20, drift_count * 2)
+            destack = 5 if bc_ema_stack.get('destack_warning') else 0
+            drift_score = min(22, drift_count * 2 + destack)
+        elif setup_type in ["POST_SPIKE"]:
+            recovery_pts = 12 if bc_recovery.get('fade_safe') else 0
+            drift_score = min(22, recovery_pts + min(8, stack_score // 3))
         else:
             drift_score = min(15, int(drift_str * 0.15))
         total += drift_score
-        breakdown['drift_quality'] = drift_score
+        breakdown['drift_health'] = drift_score
 
-        # 3. REGIME (max 15pts)
+        # 3. REGIME (max 15pts) — unchanged
         regime = bc_regime.get('regime', 'UNKNOWN')
         regime_scores = {
             "DRIFT_SMOOTH": {"DRIFT_RIDE": 15, "SPIKE_CATCH": 3, "POST_SPIKE": 5, "REVERSAL": 8},
@@ -2127,65 +2141,70 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
         total += regime_score
         breakdown['regime'] = regime_score
 
-        # 4. KURTOSIS (max 10pts)
+        # 4. KURTOSIS (max 10pts) — unchanged
         kurt_val = bc_kurt.get('kurtosis', 3.0)
         if setup_type in ["SPIKE_CATCH"]:
-            # High kurtosis = spike-prone = good for spike catch
             kurt_score = min(10, int(max(0, kurt_val - 3) * 2))
         elif setup_type in ["DRIFT_RIDE"]:
-            # High kurtosis = dangerous for drift (spike imminent)
             kurt_score = min(10, int(max(0, 8 - kurt_val) * 2))
         else:
             kurt_score = 5
         total += kurt_score
         breakdown['kurtosis'] = kurt_score
 
-        # 5. ABSORPTION (max 10pts)
+        # 5. RECOVERY + ABSORPTION (max 12pts) — ENHANCED with recovery speed
         has_absorb = bc_absorb.get('absorption', False)
         absorb_str = bc_absorb.get('strength', 0)
-        if setup_type in ["POST_SPIKE", "REVERSAL"]:
-            absorb_score = min(10, int(absorb_str * 0.15)) if has_absorb else 0
+        recovery_safe = bc_recovery.get('fade_safe', False)
+        recovery_phase = bc_recovery.get('recovery_phase', 'NONE')
+
+        if setup_type in ["POST_SPIKE"]:
+            absorb_pts = min(6, int(absorb_str * 0.1)) if has_absorb else 0
+            recovery_pts = 6 if recovery_safe else (3 if recovery_phase == "MODERATE_RECOVERY" else 0)
+            absorb_score = min(12, absorb_pts + recovery_pts)
+        elif setup_type in ["REVERSAL"]:
+            absorb_score = min(12, int(absorb_str * 0.15)) if has_absorb else 0
         elif setup_type in ["DRIFT_RIDE"]:
-            absorb_score = 5  # Neutral
+            absorb_score = 6  # Neutral
         else:
             absorb_score = 3 if has_absorb else 0
         total += absorb_score
-        breakdown['absorption'] = absorb_score
+        breakdown['recovery_absorb'] = absorb_score
 
-        # 6. M5 COMPRESSION (max 10pts) — FIX #7
-        compress_level = bc_compress.get('compression', 'NONE')
+        # 6. CHANNEL POSITION (max 10pts) — NEW
+        channel_zone = bc_channel.get('entry_zone', 'NONE')
+        zone_scores = {
+            "DRIFT_RIDE": {"DRIFT_RIDE": 10, "SPIKE_CATCH": 2, "POST_SPIKE": 3},
+            "SPIKE_CATCH": {"DRIFT_RIDE": 0, "SPIKE_CATCH": 10, "POST_SPIKE": 5},
+            "POST_SPIKE": {"DRIFT_RIDE": 3, "SPIKE_CATCH": 2, "POST_SPIKE": 10},
+            "FADE_ZONE": {"DRIFT_RIDE": 2, "SPIKE_CATCH": 3, "POST_SPIKE": 8},
+            "NEUTRAL": {"DRIFT_RIDE": 5, "SPIKE_CATCH": 5, "POST_SPIKE": 5},
+        }
+        channel_score = zone_scores.get(channel_zone, {}).get(setup_type, 3)
+        total += channel_score
+        breakdown['channel'] = channel_score
+
+        # 7. M5 COMPRESSION (max 10pts)
         compress_score_raw = bc_compress.get('score', 0)
         if setup_type in ["SPIKE_CATCH"]:
-            compress_score = min(10, compress_score_raw)  # Compression = spike coming
+            compress_score = min(10, compress_score_raw)
         elif setup_type in ["DRIFT_RIDE"]:
-            # Compression = spike coming = BAD for drift
             compress_score = max(0, 10 - compress_score_raw)
         else:
             compress_score = min(5, compress_score_raw // 2)
         total += compress_score
         breakdown['m5_compression'] = compress_score
 
-        # 7. VOLUME ACCELERATION (max 10pts) — FIX #15
-        vol_ratio = bc_spike.get('vol_ratio', 0)
-        if vol_ratio > 2.5: vol_score = 10
-        elif vol_ratio > 1.8: vol_score = 7
-        elif vol_ratio > 1.3: vol_score = 4
-        else: vol_score = 0
-        if setup_type in ["DRIFT_RIDE"] and vol_ratio > 2.0:
-            vol_score = 0  # Volume spike near drift = danger
-        total += vol_score
-        breakdown['volume'] = vol_score
-
         # 8. CONFLICT PENALTY (max -15pts)
         conflict_pen = min(15, bc_conflicts.get('conflict_penalty', 0))
         if setup_type == "DRIFT_RIDE" and not bc_conflicts.get('allow_drift_ride', True):
-            conflict_pen = max(conflict_pen, 12)  # Heavy penalty
+            conflict_pen = max(conflict_pen, 12)
         elif setup_type == "SPIKE_CATCH" and not bc_conflicts.get('allow_spike_catch', True):
             conflict_pen = max(conflict_pen, 10)
         total -= conflict_pen
         breakdown['conflict_penalty'] = -conflict_pen
 
-        # 9. BACKTEST RESULTS (max 10pts)
+        # 9. BACKTEST (max 10pts)
         bt_score = 0
         if sim_results:
             wr = sim_results.get('WR', 50)
@@ -2206,17 +2225,16 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
         total += stoch_score
         breakdown['stochastic'] = stoch_score
 
-        # GRADE
-        total = max(0, min(130, total))
-        if total >= 95: grade = "S"
-        elif total >= 80: grade = "A++"
-        elif total >= 65: grade = "A+"
+        # GRADE (max ~146pts theoretical, ~100 typical)
+        total = max(0, min(146, total))
+        if total >= 100: grade = "S"
+        elif total >= 85: grade = "A++"
+        elif total >= 70: grade = "A+"
         elif total >= 55: grade = "A"
         elif total >= 40: grade = "B"
         elif total >= 25: grade = "C"
         else: grade = "D"
 
-        # PASS/FAIL
         if total >= 55: status = "PASS"
         elif total >= 40: status = "MONITOR"
         else: status = "FAIL"
@@ -2796,8 +2814,346 @@ def bc_stochastic_timer(df, profile):
 
 
 # ==============================================================================
-# V21 ENGINE #1: SAMPLE ENTROPY — Previsibilidade do gerador
+# V24-F NEW TOOL #1: EMA DRIFT STACK — Stacking detection
 # ==============================================================================
+
+def bc_ema_drift_stack(df, profile, lookback=20):
+    """Detecta se EMAs 5/10/15/20 estão empilhadas na direcção do drift.
+    Stack perfeito = drift saudável. Destack = spike proximity.
+    Boom: EMA5 < EMA10 < EMA15 < EMA20 (bearish stack)
+    Crash: EMA5 > EMA10 > EMA15 > EMA20 (bullish stack)"""
+    try:
+        if len(df) < lookback + 25:
+            return {"stacked": False, "stack_score": 0, "destack_warning": False,
+                    "direction": "NONE", "stack_quality": "NONE"}
+        d = df.tail(lookback)
+        close = d['close'].values
+        ema5 = float(pd.Series(close).ewm(span=5).mean().iloc[-1])
+        ema10 = float(pd.Series(close).ewm(span=10).mean().iloc[-1])
+        ema15 = float(pd.Series(close).ewm(span=15).mean().iloc[-1])
+        ema20 = float(pd.Series(close).ewm(span=20).mean().iloc[-1])
+        is_boom = profile.get('gen_type') == 'BOOM'
+
+        if is_boom:
+            # Boom drift DOWN: EMA5 < EMA10 < EMA15 < EMA20
+            pairs_ok = int(ema5 < ema10) + int(ema10 < ema15) + int(ema15 < ema20)
+            direction = "BEARISH"
+            # Destack warning: EMA5 crossed ABOVE EMA10 (drift weakening)
+            destack = ema5 > ema10
+        else:
+            # Crash drift UP: EMA5 > EMA10 > EMA15 > EMA20
+            pairs_ok = int(ema5 > ema10) + int(ema10 > ema15) + int(ema15 > ema20)
+            direction = "BULLISH"
+            destack = ema5 < ema10
+
+        stacked = pairs_ok == 3
+        # Stack quality by EMA separation uniformity
+        separations = [abs(ema5-ema10), abs(ema10-ema15), abs(ema15-ema20)]
+        if min(separations) > 0:
+            uniformity = min(separations) / max(separations) if max(separations) > 0 else 0
+        else:
+            uniformity = 0
+
+        if stacked and uniformity > 0.5:
+            quality = "PERFECT"
+            score = 20
+        elif stacked:
+            quality = "GOOD"
+            score = 15
+        elif pairs_ok >= 2:
+            quality = "PARTIAL"
+            score = 8
+        else:
+            quality = "BROKEN"
+            score = 0
+
+        return {"stacked": stacked, "stack_score": score, "destack_warning": destack,
+                "direction": direction, "stack_quality": quality,
+                "pairs_ok": pairs_ok, "uniformity": round(uniformity, 2),
+                "emas": {"e5": round(ema5,5), "e10": round(ema10,5),
+                         "e15": round(ema15,5), "e20": round(ema20,5)}}
+    except:
+        return {"stacked": False, "stack_score": 0, "destack_warning": False,
+                "direction": "NONE", "stack_quality": "NONE"}
+
+# ==============================================================================
+# V24-F NEW TOOL #2: DRIFT MOMENTUM GRADIENT — Drift acceleration
+# ==============================================================================
+
+def bc_drift_momentum_gradient(df, profile, lookback=15):
+    """Mede se o drift está a ACELERAR ou DESACELERAR.
+    gradient > 1.2: drift acelerando → safe to ride
+    gradient 0.8-1.2: drift estável
+    gradient < 0.8: drift desacelerando → spike approaching
+    gradient < 0.5: drift morto → spike iminente"""
+    try:
+        if len(df) < lookback + 5:
+            return {"gradient": 1.0, "phase": "STABLE", "safe_to_enter": True,
+                    "spike_proximity": 0}
+        d = df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        # Measure directional candle bodies (drift direction only)
+        bodies = abs(d['close'] - d['open']).values
+        if len(bodies) < 6:
+            return {"gradient": 1.0, "phase": "STABLE", "safe_to_enter": True,
+                    "spike_proximity": 0}
+
+        recent_bodies = float(np.mean(bodies[-3:]))
+        earlier_bodies = float(np.mean(bodies[-10:-5])) if len(bodies) >= 10 else float(np.mean(bodies[:3]))
+
+        gradient = recent_bodies / earlier_bodies if earlier_bodies > 0 else 1.0
+
+        # Also check directional consistency
+        if is_boom:
+            recent_drift = sum(1 for i in range(-3, 0) if d['close'].iloc[i] < d['open'].iloc[i])
+            earlier_drift = sum(1 for i in range(-8, -5) if d['close'].iloc[i] < d['open'].iloc[i])
+        else:
+            recent_drift = sum(1 for i in range(-3, 0) if d['close'].iloc[i] > d['open'].iloc[i])
+            earlier_drift = sum(1 for i in range(-8, -5) if d['close'].iloc[i] > d['open'].iloc[i])
+
+        drift_consistency = (recent_drift + earlier_drift) / 6.0  # 0 to 1
+
+        if gradient > 1.2 and drift_consistency > 0.6:
+            phase = "ACCELERATING"
+            safe = True
+            spike_prox = 0
+        elif gradient >= 0.8:
+            phase = "STABLE"
+            safe = True
+            spike_prox = 20
+        elif gradient >= 0.5:
+            phase = "DECELERATING"
+            safe = False  # Drift weakening
+            spike_prox = 50
+        else:
+            phase = "DYING"
+            safe = False
+            spike_prox = 80
+
+        return {"gradient": round(gradient, 3), "phase": phase,
+                "safe_to_enter": safe, "spike_proximity": spike_prox,
+                "drift_consistency": round(drift_consistency, 2)}
+    except:
+        return {"gradient": 1.0, "phase": "STABLE", "safe_to_enter": True,
+                "spike_proximity": 0}
+
+# ==============================================================================
+# V24-F NEW TOOL #3: SPIKE RECOVERY SPEED — Post-spike analysis
+# ==============================================================================
+
+def bc_spike_recovery_speed(df, profile, lookback=15):
+    """Após spike, mede velocidade de retorno ao drift.
+    Recovery rápido = drift retoma, fade safe.
+    Recovery lento = regime change possível, não entrar."""
+    try:
+        if len(df) < lookback + 3:
+            return {"has_recent_spike": False, "recovery_speed": 0,
+                    "recovery_phase": "NONE", "fade_safe": False}
+        d = df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        atr = bc_clean_atr(df, profile, lookback=50)
+        spike_min = profile.get('spike_size_min_atr', 2.0)
+
+        # Find most recent spike
+        spike_idx = -1
+        spike_size = 0
+        for i in range(len(d)-1, max(0, len(d)-8), -1):
+            move = d['close'].iloc[i] - d['close'].iloc[i-1] if i > 0 else 0
+            if atr > 0 and abs(move) > spike_min * atr:
+                spike_idx = i
+                spike_size = move
+                break
+
+        if spike_idx < 0 or spike_idx >= len(d) - 2:
+            return {"has_recent_spike": False, "recovery_speed": 0,
+                    "recovery_phase": "NONE", "fade_safe": False}
+
+        candles_after = len(d) - 1 - spike_idx
+        if candles_after < 1:
+            return {"has_recent_spike": True, "recovery_speed": 0,
+                    "recovery_phase": "JUST_SPIKED", "fade_safe": False}
+
+        # Recovery = how much price moved BACK after spike
+        price_at_spike = float(d['close'].iloc[spike_idx])
+        price_now = float(d['close'].iloc[-1])
+        recovery = (price_now - price_at_spike)
+
+        # Normalize by spike size
+        recovery_ratio = abs(recovery / spike_size) if spike_size != 0 else 0
+
+        # Direction check
+        if is_boom and spike_size > 0:
+            # Boom spike UP → recovery should be DOWN (negative)
+            recovering = recovery < 0
+        elif not is_boom and spike_size < 0:
+            # Crash spike DOWN → recovery should be UP (positive)
+            recovering = recovery > 0
+        else:
+            recovering = False
+
+        # Classify
+        if recovering and recovery_ratio > 0.3:
+            phase = "FAST_RECOVERY"
+            fade_safe = True
+        elif recovering and recovery_ratio > 0.15:
+            phase = "MODERATE_RECOVERY"
+            fade_safe = candles_after >= 2
+        elif recovery_ratio < 0.1:
+            phase = "STALLED"
+            fade_safe = False  # Not recovering, don't fade
+        else:
+            phase = "SLOW_RECOVERY"
+            fade_safe = False
+
+        return {"has_recent_spike": True, "recovery_speed": round(recovery_ratio, 3),
+                "recovery_phase": phase, "fade_safe": fade_safe,
+                "candles_after_spike": candles_after,
+                "spike_size": round(abs(spike_size), 5)}
+    except:
+        return {"has_recent_spike": False, "recovery_speed": 0,
+                "recovery_phase": "NONE", "fade_safe": False}
+
+# ==============================================================================
+# V24-F NEW TOOL #4: CONSECUTIVE DIRECTION COUNTER (Enhanced)
+# ==============================================================================
+
+def bc_consecutive_drift_counter(df, profile, lookback=20):
+    """Conta candles consecutivos na direcção do drift com zonas claras.
+    3-5: drift normal | 5-8: prolongado, spike approach | 8+: spike overdue"""
+    try:
+        if len(df) < lookback:
+            return {"count": 0, "zone": "NONE", "entry_quality": "NONE",
+                    "spike_risk": 0}
+        d = df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        count = 0
+        for i in range(len(d)-1, 0, -1):
+            if is_boom and d['close'].iloc[i] < d['open'].iloc[i]:
+                count += 1  # Bearish candle = drift direction for Boom
+            elif not is_boom and d['close'].iloc[i] > d['open'].iloc[i]:
+                count += 1  # Bullish candle = drift direction for Crash
+            else:
+                break
+
+        # Also count "mostly drift" with 1 neutral candle allowed
+        relaxed_count = 0
+        neutral_used = False
+        for i in range(len(d)-1, 0, -1):
+            if is_boom:
+                is_drift = d['close'].iloc[i] < d['open'].iloc[i]
+            else:
+                is_drift = d['close'].iloc[i] > d['open'].iloc[i]
+            is_neutral = abs(d['close'].iloc[i] - d['open'].iloc[i]) < (d['high'].iloc[i] - d['low'].iloc[i]) * 0.2
+            if is_drift:
+                relaxed_count += 1
+            elif is_neutral and not neutral_used:
+                relaxed_count += 1
+                neutral_used = True
+            else:
+                break
+
+        effective_count = max(count, relaxed_count)
+
+        if effective_count >= 10:
+            zone = "EXTREME_OVERDUE"
+            entry_q = "SPIKE_ONLY"  # Only spike catch, no drift
+            spike_risk = 95
+        elif effective_count >= 8:
+            zone = "OVERDUE"
+            entry_q = "SPIKE_PREFERRED"
+            spike_risk = 80
+        elif effective_count >= 5:
+            zone = "PROLONGED"
+            entry_q = "DRIFT_CAUTION"
+            spike_risk = 50
+        elif effective_count >= 3:
+            zone = "NORMAL"
+            entry_q = "DRIFT_SAFE"
+            spike_risk = 20
+        else:
+            zone = "FRESH"
+            entry_q = "DRIFT_OPTIMAL"
+            spike_risk = 5
+
+        return {"count": effective_count, "strict_count": count,
+                "zone": zone, "entry_quality": entry_q,
+                "spike_risk": spike_risk}
+    except:
+        return {"count": 0, "zone": "NONE", "entry_quality": "NONE",
+                "spike_risk": 0}
+
+# ==============================================================================
+# V24-F NEW TOOL #5: PRICE CHANNEL POSITION (BC-Aware)
+# ==============================================================================
+
+def bc_price_channel_position(df, profile, lookback=20):
+    """Posição do preço no canal EMA20 ± 1.5×ATR_clean.
+    Near drift band: drift maduro → spike zone
+    Mid channel: drift fresco → safe zone
+    Near counter band: pós-spike → fade zone"""
+    try:
+        if len(df) < lookback + 5:
+            return {"position": "UNKNOWN", "position_pct": 50,
+                    "band_distance": 0, "entry_zone": "NONE"}
+        d = df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        clean_atr = bc_clean_atr(df, profile, lookback=50)
+        ema20 = float(d['close'].ewm(span=20).mean().iloc[-1])
+        price = float(d['close'].iloc[-1])
+
+        upper = ema20 + 1.5 * clean_atr
+        lower = ema20 - 1.5 * clean_atr
+        channel_width = upper - lower
+        if channel_width <= 0:
+            return {"position": "UNKNOWN", "position_pct": 50,
+                    "band_distance": 0, "entry_zone": "NONE"}
+
+        # Position as percentage (0=lower, 100=upper)
+        position_pct = ((price - lower) / channel_width) * 100
+        position_pct = max(0, min(100, position_pct))
+
+        if is_boom:
+            # Boom drifts DOWN: price near LOWER band = drift mature = spike zone
+            if position_pct < 20:
+                position = "DRIFT_MATURE"
+                entry_zone = "SPIKE_CATCH"  # Near bottom = spike coming
+            elif position_pct < 40:
+                position = "DRIFT_ACTIVE"
+                entry_zone = "DRIFT_RIDE"  # Mid-lower = safe drift
+            elif position_pct < 60:
+                position = "MID_CHANNEL"
+                entry_zone = "NEUTRAL"
+            elif position_pct < 80:
+                position = "COUNTER_DRIFT"
+                entry_zone = "FADE_ZONE"  # Near top after spike UP
+            else:
+                position = "SPIKE_PEAK"
+                entry_zone = "POST_SPIKE"
+        else:
+            # Crash drifts UP: price near UPPER band = drift mature = spike zone
+            if position_pct > 80:
+                position = "DRIFT_MATURE"
+                entry_zone = "SPIKE_CATCH"
+            elif position_pct > 60:
+                position = "DRIFT_ACTIVE"
+                entry_zone = "DRIFT_RIDE"
+            elif position_pct > 40:
+                position = "MID_CHANNEL"
+                entry_zone = "NEUTRAL"
+            elif position_pct > 20:
+                position = "COUNTER_DRIFT"
+                entry_zone = "FADE_ZONE"
+            else:
+                position = "SPIKE_PEAK"
+                entry_zone = "POST_SPIKE"
+
+        return {"position": position, "position_pct": round(position_pct, 1),
+                "band_distance": round(abs(price - ema20) / clean_atr, 2) if clean_atr > 0 else 0,
+                "entry_zone": entry_zone, "ema20": round(ema20, 5),
+                "upper": round(upper, 5), "lower": round(lower, 5)}
+    except:
+        return {"position": "UNKNOWN", "position_pct": 50,
+                "band_distance": 0, "entry_zone": "NONE"}
 
 def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=200):
     """V24: SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico.
@@ -4414,47 +4770,51 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V24-BC — BOOM/CRASH PRECISION SNIPER [Gemini + Fallback]
+FUNÇÃO: ANALISTA V24-F — BOOM/CRASH ZERO-ILLUSION SNIPER [Gemini + Fallback]
 Missão: Sinais de alta precisão EXCLUSIVOS para Boom e Crash indices da Deriv
-APENAS Day Trade + Scalp — SEM Swing Trade
+APENAS Day Trade + Scalp — SEM Swing Trade — ZERO ILUSÃO
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
 **REGRAS BOOM/CRASH:**
 - BOOM: Preço faz DRIFT para BAIXO e SPIKE para CIMA
-  → SELL = seguir o drift (mais seguro)
-  → BUY = capturar o spike (maior R:R)
+  → SELL = seguir o drift (mais seguro, WR 68-75%)
+  → BUY = capturar o spike (maior R:R 3-6:1, WR 35-45%)
 - CRASH: Preço faz DRIFT para CIMA e SPIKE para BAIXO
-  → BUY = seguir o drift (mais seguro)
-  → SELL = capturar o crash (maior R:R)
+  → BUY = seguir o drift (mais seguro, WR 68-75%)
+  → SELL = capturar o crash (maior R:R 3-6:1, WR 35-45%)
 
-**ENGINES ESPECIALIZADOS:**
-- Spike Detection (RSI extreme + drift duration + BB squeeze + Poisson timing)
-- Drift Analyzer (força e qualidade do drift — count + magnitude)
-- Post-Spike Fade (trade após spike/crash — com validação absorção)
-- Supply/Demand Zones (níveis institucionais — com decay temporal)
-- Spike Frequency (timing baseado em frequência empírica M15)
-- Stochastic Timer (combinação Stoch + RSI — lookback paramétrico)
-- Absorption Detector (pressão institucional)
-- Multi-Spike Pattern (clusters de spikes — com gap tolerance)
-- Returns Kurtosis (detecção de fat-tails = spike-prone regime)
-- BC Regime Classifier (DRIFT_SMOOTH / CHOPPY / PRE_SPIKE / POST_SPIKE / SPIKE_CLUSTER)
-- Engine Conflict Resolution (SPIKE vs DRIFT, FADE vs CLUSTER, etc.)
+**ENGINES BC (12 especializados):**
+- Spike Detection: Weibull CDF corrigida + kurtosis dinâmica + volume
+- Drift Analyzer: força/qualidade drift — count + magnitude
+- Post-Spike Fade: trade após spike com validação absorção + recovery speed
+- Supply/Demand Zones: níveis institucionais com decay temporal
+- Spike Frequency: timing empírico M15
+- Stochastic Timer: Stoch + RSI — lookback paramétrico
+- Absorption Detector: pressão institucional pós-spike
+- Multi-Spike Pattern: clusters — gap tolerance
+- BC Regime Classifier: DRIFT_SMOOTH/CHOPPY/PRE_SPIKE/POST_SPIKE/SPIKE_CLUSTER
+- Engine Conflict Resolution: SPIKE vs DRIFT, FADE vs CLUSTER, etc.
+- M5 Compression Proxy: compressão M5 pré-spike
+- Returns Kurtosis: fat-tails = spike-prone regime
 
-**V24 MELHORIAS:**
-- Walk-forward agora testa setups BC (DRIFT_RIDE, POST_SPIKE, SPIKE_CATCH)
-- Kelly Criterion corrigido (usa avg_win/avg_loss, não PF)
-- Sharpe/Sortino com annualização PPY correta
-- Expectância explícita + stress test -20% WR
-- Clean ATR (mediano, exclui spikes) para thresholds mais estáveis
-- Anti-Meltdown Kill-Switch (3 losses = score +50%, 5 losses = bloqueio)
-- Regime-Aware SL (drift=tight, post-spike=wide)
+**NOVAS FERRAMENTAS TENDÊNCIA V24-F (5):**
+- EMA Drift Stack: EMAs 5/10/15/20 empilhadas = drift saudável. Destack = spike proximity.
+- Drift Momentum Gradient: aceleração/desaceleração do drift (gradient > 1.2 = seguro, < 0.5 = morto)
+- Spike Recovery Speed: velocidade retorno pós-spike (rápido = fade safe, lento = regime change)
+- Consecutive Direction Counter: candles consecutivos drift (3-5 = normal, 8+ = overdue)
+- Price Channel Position: posição EMA20 ± 1.5×ATR (drift mature vs fresh vs fade zone)
+
+**BC SCORE (12 factores, max ~146pts):**
+Score ≥55 = PASS, 40-55 = MONITOR, <40 = FAIL
+Factores: spike_timing, drift_health, regime, kurtosis, recovery_absorb,
+channel, m5_compression, conflict_penalty, backtest, stochastic
 
 **FORMATO:**
 
-## ⚡ VEREDICTO V24-BC: [ {DECISION} ]
-**Grade:** {GRADE} | **Score:** {SCORE} | **Tipo:** {BOOM/CRASH}
-**Setup:** {DRIFT_RIDE / SPIKE_CATCH / POST_SPIKE / SCALP / DAY / REVERSAL}
+## ⚡ VEREDICTO V24-F: [ {DECISION} ]
+**Grade:** {GRADE} | **BC Score:** {BC_SCORE} [{BC_GRADE}] | **Tipo:** {BOOM/CRASH}
+**Setup:** {DRIFT_RIDE / SPIKE_CATCH / POST_SPIKE / REVERSAL / DAY}
 **BC Regime:** {DRIFT_SMOOTH/CHOPPY/PRE_SPIKE/POST_SPIKE/SPIKE_CLUSTER}
 
 ### 🎯 SPIKE ANALYSIS
@@ -4544,15 +4904,29 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         gen = {"signal": "NEUTRAL", "confidence": 0}
 
     # ═══ EDGE TESTS V20 ═══
+    # V24-F PHASE 1: For BC assets, neutralize expensive statistical tests
+    # that add near-zero value (entropy O(n²), FFT, Markov) — they measure
+    # properties of spike+drift process, not useful trading info
+    is_bc_asset = gen_type in ["BOOM", "CRASH"]
+
     vr = variance_ratio_test(h1['close'])
     acf = autocorrelation_analysis(h1['close'])
-    vol_cluster = volatility_clustering_test(h1['close'])
-    dist = DistributionAnalyzer.analyze(h1)
 
-    # ═══ V21 PREDICTABILITY ENGINES ═══
-    cpi = compound_predictability_index(h1['close'], vr, acf)
-    spectral = spectral_analysis_v21(h1['close'])
-    markov = transition_matrix_v21(h1['close'])
+    if is_bc_asset:
+        # Neutralize: return cheap defaults instead of expensive computation
+        vol_cluster = {"has_clustering": False, "garch_significant": False}
+        dist = DistributionAnalyzer.analyze(h1)  # Keep: kurtosis useful for BC
+        cpi = {"cpi": 50, "regime": "MODERATE"}  # Neutral CPI — won't block BC
+        spectral = {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+        markov = {"has_dependence": False, "transition_edge": 0, "matrix": {},
+                  "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+                  "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+    else:
+        vol_cluster = volatility_clustering_test(h1['close'])
+        dist = DistributionAnalyzer.analyze(h1)
+        cpi = compound_predictability_index(h1['close'], vr, acf)
+        spectral = spectral_analysis_v21(h1['close'])
+        markov = transition_matrix_v21(h1['close'])
     regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
 
     # ═══ CLASSIC STATS ═══
@@ -4564,9 +4938,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ V21+ PRECISION ENGINES ═══
     adx_slope = adx_slope_analysis(h1)
-    ema_ribbon = ema_ribbon_analysis(h1)
+    ema_ribbon = ema_ribbon_analysis(h1)  # Keep: EMA stack useful for BC drift
     trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)
-    vwap_data = vwap_proxy_analysis(h1)
+    if is_bc_asset:
+        vwap_data = {"entry_quality": "UNKNOWN", "vwap": 0}  # No real volume in BC
+    else:
+        vwap_data = vwap_proxy_analysis(h1)
     candle_struct = candle_structure_score(m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
@@ -4600,6 +4977,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bc_regime = bc_regime_classifier(m15, profile, bc_spike, bc_drift, bc_freq)
     # V24 O3: Engine conflict resolution
     bc_conflicts = bc_resolve_engine_conflicts(bc_spike, bc_drift, bc_fade, bc_multi, bc_absorb)
+    # V24-F NEW TOOLS: 5 BC-specific trend + timing tools
+    bc_ema_stack = bc_ema_drift_stack(m15, profile, lookback=20)
+    bc_gradient = bc_drift_momentum_gradient(m15, profile, lookback=15)
+    bc_recovery = bc_spike_recovery_speed(m15, profile, lookback=15)
+    bc_consec = bc_consecutive_drift_counter(m15, profile, lookback=20)
+    bc_channel = bc_price_channel_position(m15, profile, lookback=20)
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -5003,39 +5386,40 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "BREAKOUT"; setup_type = "BREAKOUT"
                 return
 
-        # 5. V23: BREAKOUT RETEST (pullback to broken S/R)
-        br_retest = detect_breakout_retest(h1, sr_levels, direction, c1['ATR'])
-        if br_retest.get('retest') and pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
-            d = "LONG" if is_long else "SHORT"
-            sig = f"{d} (RETEST)"
-            if is_long:
-                sl_val = br_retest['level'] - c1['ATR'] * 1.2
-            else:
-                sl_val = br_retest['level'] + c1['ATR'] * 1.2
-            entry_type = f"S/R Retest ({br_retest.get('type','')}) PB:{pb_quality['quality']}"
-            trade_style = "RETEST"; setup_type = "BREAKOUT_RETEST"
-            return
+        # 5. V23: BREAKOUT RETEST — SKIP for BC (bc_supply_demand covers this)
+        if not is_bc:
+            br_retest = detect_breakout_retest(h1, sr_levels, direction, c1['ATR'])
+            if br_retest.get('retest') and pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (RETEST)"
+                if is_long:
+                    sl_val = br_retest['level'] - c1['ATR'] * 1.2
+                else:
+                    sl_val = br_retest['level'] + c1['ATR'] * 1.2
+                entry_type = f"S/R Retest ({br_retest.get('type','')}) PB:{pb_quality['quality']}"
+                trade_style = "RETEST"; setup_type = "BREAKOUT_RETEST"
+                return
 
         # 6. V23: SCALP (M15 momentum + M5 trigger — rápido, tight)
         if entry_sync.get('ready') == "READY" and candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
-            if c1['ADX'] > 18:  # Minimal trend requirement
+            if c1['ADX'] > 18:
                 d = "LONG" if is_long else "SHORT"
                 sig = f"{d} (SCALP)"
-                sl_val = entry - c1['ATR'] * 1.2 if is_long else entry + c1['ATR'] * 1.2
+                _sl_atr_sc = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
+                sl_val = entry - _sl_atr_sc * 1.2 if is_long else entry + _sl_atr_sc * 1.2
                 entry_type = f"Scalp — Sync:{entry_sync['score']} Mom:{candle_mom['conviction']}"
                 trade_style = "SCALP"; setup_type = "SCALP"
                 return
 
-        # 7. V23: CONTINUATION PATTERN (Flag/Pennant)
-        if cont_pattern.get('pattern') != "NONE" and cont_pattern.get('confidence', 0) > 50:
-            d = "LONG" if is_long else "SHORT"
-            sig = f"{d} (CONTINUATION)"
-            # FIX #2: Clean ATR for BC assets
-            _sl_atr_cont = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-            sl_val = entry - _sl_atr_cont * adapted_profile['sl_atr_mult'] if is_long else entry + _sl_atr_cont * adapted_profile['sl_atr_mult']
-            entry_type = f"{cont_pattern['pattern']} (conf:{cont_pattern['confidence']}%)"
-            trade_style = "DAY"; setup_type = "CONTINUATION"
-            return
+        # 7. CONTINUATION — SKIP for BC (drift_analyzer + gradient covers this)
+        if not is_bc:
+            if cont_pattern.get('pattern') != "NONE" and cont_pattern.get('confidence', 0) > 50:
+                d = "LONG" if is_long else "SHORT"
+                sig = f"{d} (CONTINUATION)"
+                sl_val = entry - c1['ATR'] * adapted_profile['sl_atr_mult'] if is_long else entry + c1['ATR'] * adapted_profile['sl_atr_mult']
+                entry_type = f"{cont_pattern['pattern']} (conf:{cont_pattern['confidence']}%)"
+                trade_style = "DAY"; setup_type = "CONTINUATION"
+                return
 
     # V24 FIX #5: For Crash/Boom: try BOTH drift and spike directions
     # Score for each direction is evaluated independently
@@ -5114,6 +5498,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         }
     storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
 
+    # V24-F: Neutralize storm for BC — the 20 forex criteria are irrelevant
+    # BC decisions come from BC Score, not from forex confluence counting
+    if is_bc_asset:
+        storm_bonus = 0
+        storm_level = None
+
     if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
         sig = sig.replace("LONG","LONG ⭐STORM⭐").replace("SHORT","SHORT ⭐STORM⭐")
         setup_type = "PERFECT_STORM"
@@ -5165,7 +5555,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         bc_score_data = calculate_bc_score(
             setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
             bc_freq, bc_absorb, bc_compress, bc_conflicts,
-            bc_stoch, sim_results=sim)
+            bc_stoch, sim_results=sim,
+            bc_ema_stack=bc_ema_stack, bc_gradient=bc_gradient,
+            bc_recovery=bc_recovery, bc_consec=bc_consec,
+            bc_channel=bc_channel)
 
     # V23: Score override — reduce minimums with ultra-high confluence
     if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
@@ -5192,6 +5585,20 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # FIX #7d: M5 Compression blocks scalp drift
     if is_bc_setup and bc_compress.get('block_scalp', False) and setup_type == "DRIFT_RIDE":
         sig = f"BLOCKED (M5 COMPRESSION {bc_compress.get('compression','?')} — spike proximity)"
+
+    # V24-F: Gradient DYING blocks drift ride
+    if is_bc_setup and setup_type == "DRIFT_RIDE":
+        if bc_gradient.get('phase') == "DYING":
+            sig = f"BLOCKED (DRIFT DYING — gradient {bc_gradient.get('gradient',0):.2f} — spike iminente)"
+        elif bc_consec.get('zone') in ["EXTREME_OVERDUE", "OVERDUE"]:
+            sig = f"BLOCKED (DRIFT OVERDUE — {bc_consec.get('count',0)} candles consecutivos)"
+
+    # V24-F: Recovery blocks unsafe fade
+    if is_bc_setup and setup_type == "POST_SPIKE":
+        if bc_recovery.get('has_recent_spike') and not bc_recovery.get('fade_safe', False):
+            phase = bc_recovery.get('recovery_phase', 'NONE')
+            if phase in ["STALLED", "JUST_SPIKED"]:
+                sig = f"BLOCKED (RECOVERY {phase} — fade unsafe)"
 
     if "BLOCKED" not in sig and sig != "MONITORING":
         fails = []
@@ -5399,11 +5806,25 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"📍 Demand Zone @ {bc_sd['nearest_demand']['price']:.2f}")
     if bc_sd.get('nearest_supply') and bias == "BEARISH":
         confs.append(f"📍 Supply Zone @ {bc_sd['nearest_supply']['price']:.2f}")
+    # V24-F NEW TOOLS confluences
+    if bc_ema_stack.get('stacked'):
+        confs.append(f"📶 EMA Stack: {bc_ema_stack['stack_quality']} ({bc_ema_stack['direction']}) U:{bc_ema_stack.get('uniformity',0):.0%}")
+    if bc_gradient.get('phase') in ["ACCELERATING"]:
+        confs.append(f"🚀 Drift ACCELERATING (gradient:{bc_gradient['gradient']:.2f})")
+    if bc_channel.get('entry_zone') not in ['NONE', 'NEUTRAL', 'UNKNOWN', None]:
+        confs.append(f"📏 Channel: {bc_channel['position']} → {bc_channel['entry_zone']} ({bc_channel.get('position_pct',50):.0f}%)")
+    if bc_recovery.get('has_recent_spike') and bc_recovery.get('fade_safe'):
+        confs.append(f"✅ Recovery SAFE ({bc_recovery['recovery_phase']}, speed:{bc_recovery.get('recovery_speed',0):.0%})")
+    if bc_consec.get('zone') in ['NORMAL', 'FRESH']:
+        confs.append(f"🟢 Drift Fresh ({bc_consec['count']} candles — {bc_consec['entry_quality']})")
 
     risks = []
-    if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
+    # V24-F: Skip irrelevant CPI/VR risks for BC
+    if not is_bc_asset:
+        if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
     if regime_transition == "EXHAUSTION": risks.append("\u26a0\ufe0f Regime EXHAUSTION")
-    if indep_edges['quality'] == "WEAK": risks.append(f"\u26a0\ufe0f Edges WEAK ({indep_edges['n_independent']} indep)")
+    if not is_bc_asset and indep_edges['quality'] == "WEAK":
+        risks.append(f"\u26a0\ufe0f Edges WEAK ({indep_edges['n_independent']} indep)")
     if "RANGING" in regime: risks.append("⚠️ RANGING")
     if not sim['WF_STABLE']: risks.append("⚠️ WF instável")
     if mc.get('positive_pct',0)<55: risks.append(f"⚠️ MC {mc['positive_pct']}%")
@@ -5436,10 +5857,22 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         risks.append("⚠️ Drift CHOPPY — entradas menos confiáveis")
     if not bc_drift.get('safe_to_ride') and setup_type == "DRIFT_RIDE":
         risks.append("🚫 RSI em zona de perigo para drift")
-    # FIX #7: Compression risks
     if bc_compress.get('block_scalp') and setup_type == "DRIFT_RIDE":
-        risks.append("🚫 M5 COMPRESSION EXTREMA — spike iminente, drift BLOQUEADO")
-    # FIX #5: Kill-switch risk display
+        risks.append("🚫 M5 COMPRESSION — spike proximity")
+    # V24-F NEW: Gradient + Stack + Recovery risks
+    if bc_gradient.get('phase') == "DYING":
+        risks.append(f"🚨 Drift MORTO (gradient:{bc_gradient.get('gradient',0):.2f}) — spike iminente")
+    elif bc_gradient.get('phase') == "DECELERATING":
+        risks.append(f"⚠️ Drift desacelerando (gradient:{bc_gradient.get('gradient',0):.2f})")
+    if bc_ema_stack.get('destack_warning') and setup_type == "DRIFT_RIDE":
+        risks.append("⚠️ EMA DESTACK — drift direction enfraquecendo")
+    if bc_consec.get('zone') in ["EXTREME_OVERDUE", "OVERDUE"]:
+        risks.append(f"🚨 Drift {bc_consec['count']} candles — {bc_consec['zone']}")
+    if bc_recovery.get('has_recent_spike') and bc_recovery.get('recovery_phase') == "STALLED":
+        risks.append("⚠️ Recovery STALLED — regime change possível")
+    if bc_channel.get('position') == "DRIFT_MATURE" and setup_type == "DRIFT_RIDE":
+        risks.append(f"⚠️ Channel DRIFT_MATURE — preço no limite do canal ({bc_channel.get('position_pct',0):.0f}%)")
+    # Kill-switch
     meltdown_data = bc_meltdown_check()
     if meltdown_data.get('streak', 0) >= 3:
         risks.append(f"🚨 Loss Streak: {meltdown_data['streak']} ({'BLOCKED' if meltdown_data.get('blocked') else 'CAUTION'})")
@@ -5543,6 +5976,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "BC_GRADE": bc_score_data.get('grade', 'D'),
         # FIX #7: M5 Compression
         "BC_COMPRESS": convert_np(bc_compress),
+        # V24-F NEW TOOLS
+        "BC_EMA_STACK": convert_np(bc_ema_stack),
+        "BC_GRADIENT": convert_np(bc_gradient),
+        "BC_RECOVERY": convert_np(bc_recovery),
+        "BC_CONSEC": convert_np(bc_consec),
+        "BC_CHANNEL": convert_np(bc_channel),
         # FIX #11: Regime TP mult
         "REGIME_SL_MULT": bc_regime.get('sl_mult', 1.0),
         "EXPECTANCY": sim.get('EXPECTANCY', 0),
