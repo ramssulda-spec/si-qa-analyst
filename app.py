@@ -4877,6 +4877,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bias_old = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
     if bias == "NEUTRAL": bias = bias_old  # fallback
 
+    # ═══ GENERATOR MODEL V20 ═══
+    gen_type = profile.get('gen_type', 'GBM')
+
     # V24-F COHERENCE FIX D: For BC assets, override bias to match DRIFT direction
     # Multi-speed bias uses EMA/MACD which can contradict BC drift direction
     # (e.g. BOOM drifts DOWN but after spike UP, EMAs say BULLISH → wrong bias)
@@ -4907,8 +4910,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # 🟠 FIX #1: CALIBRAR SIGMA REAL
     sigma_calibrated = calibrate_sigma(h1, ppy)
 
-    # ═══ GENERATOR MODEL V20 ═══
-    gen_type = profile.get('gen_type', 'GBM')
+    # ═══ GENERATOR ANALYSIS ═══
     if gen_type == "GBM":
         gen = GeneratorModelV20.analyze_gbm(h1, profile, sigma_calibrated, ppy)
     elif gen_type in ["BOOM", "CRASH"]:
