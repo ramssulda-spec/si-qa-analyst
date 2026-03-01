@@ -4876,24 +4876,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bias, bias_confidence, bias_score, early_reversal, reversal_dir = calculate_multi_speed_bias(h4, h1, m15, m5)
     bias_old = "BULLISH" if c4['close'] > c4['EMA_200'] else "BEARISH"
     if bias == "NEUTRAL": bias = bias_old  # fallback
-
-    # V24-F COHERENCE FIX D: For BC assets, override bias to match DRIFT direction
-    # Multi-speed bias uses EMA/MACD which can contradict BC drift direction
-    # (e.g. BOOM drifts DOWN but after spike UP, EMAs say BULLISH → wrong bias)
-    # PROFILE drift_direction is ALWAYS correct for BC.
-    if gen_type in ["BOOM", "CRASH"]:
-        profile_drift = profile.get('drift_direction', '')
-        if profile_drift == "UP":
-            bias = "BULLISH"   # Crash drifts UP → bias must be BULLISH
-        elif profile_drift == "DOWN":
-            bias = "BEARISH"   # Boom drifts DOWN → bias must be BEARISH
-        # Disable early reversal override for BC — drift direction doesn't reverse
-        early_reversal = False
-        reversal_dir = None
-    else:
-        # V23: Early reversal override — se fast+medium concordam, seguir
-        if early_reversal and reversal_dir:
-            bias = reversal_dir
+    # V23: Early reversal override — se fast+medium concordam, seguir
+    if early_reversal and reversal_dir:
+        bias = reversal_dir
     adx = c4['ADX']
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
@@ -4969,11 +4954,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     pb_quality = pullback_quality_score(m15, bias, c1['ATR'])
     liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
-    # V24-F: Skip continuation pattern for BC (redundant with drift_analyzer + gradient)
-    if gen_type in ["BOOM", "CRASH"]:
-        cont_pattern = {"pattern": "NONE", "confidence": 0}
-    else:
-        cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
+    cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
 
     # ═══ V24-F BOOM/CRASH ENGINES ═══
     # FIX #2: Use clean ATR for all BC engines
@@ -5215,16 +5196,27 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     def try_setup(direction):
         nonlocal sig, sl_val, entry_type, trade_style, setup_type, entry
         is_long = direction == "BULLISH"
-        is_bc = gen_type in ["BOOM", "CRASH"]
+        div_block = divergence and (("BEARISH" in str(divergence) and is_long and "HIDDEN" not in str(divergence)) or
+                                     ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
+        if div_block:
+            sig = f"BLOCKED (DIV: {div_detail})"; return
 
-        # ═══ V24-F SURGERY 1: BC PRIORITY SETUPS — NO DIV_BLOCK ═══
-        # BC engines are the authority on BC assets. Generic RSI/MACD divergence
-        # measures drift behavior (normal in BC) and must NOT block BC setups.
+        # REGIME-SPECIFIC STRATEGY
+        # TRENDING → Swing/Breakout
+        # RANGING → Mean Reversion
+        # VOL_COMPRESS → Contra o movimento
+        # TRANSITIONAL → Esperar ou size reduzido
+
+        # ═══ V24-BC: BOOM/CRASH PRIORITY SETUPS ═══
+        # O2: Dedicated BC Pipeline — BC setups only for BC assets
+        # O3: Conflict resolution applied BEFORE setup selection
+        is_bc = gen_type in ["BOOM", "CRASH"]
 
         # V24 M5: Regime-aware SL multiplier
         regime_sl_mult = bc_regime.get('sl_mult', 1.0) if is_bc else 1.0
 
         # BC-0: POST-SPIKE FADE (highest priority — time sensitive)
+        # O3: Check if fade is allowed by conflict resolver
         if is_bc and bc_fade.get('post_spike') and bc_conflicts.get('allow_fade', True):
             fade_dir = bc_fade['fade_direction']
             if (fade_dir == "BUY" and is_long) or (fade_dir == "SELL" and not is_long):
@@ -5240,37 +5232,39 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 return
 
         # BC-1: SPIKE CATCH (imminent spike — high R:R)
+        # O3: Check if spike catch is allowed
         if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= 50 \
                 and bc_conflicts.get('allow_spike_catch', True):
             is_boom = gen_type == "BOOM"
             if is_boom and is_long:  # Boom spike UP → BUY
                 sig = "LONG (SPIKE CATCH)"
                 sl_val = entry - profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Spike UP {bc_spike['probability']}% | Weibull:{bc_spike.get('weibull_prob',0):.0%} | Consec:{bc_consec.get('count',0)} | Grad:{bc_gradient.get('gradient',1):.2f}"
+                entry_type = f"Spike UP {bc_spike['probability']}% | RSI:{bc_spike.get('rsi_zone','?')} | Drift:{bc_spike.get('drift_count',0)} bars | Kurt:{bc_kurt.get('kurtosis',3):.1f}"
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
             elif not is_boom and not is_long:  # Crash spike DOWN → SELL
                 sig = "SHORT (SPIKE CATCH)"
                 sl_val = entry + profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Crash DOWN {bc_spike['probability']}% | Weibull:{bc_spike.get('weibull_prob',0):.0%} | Consec:{bc_consec.get('count',0)} | Grad:{bc_gradient.get('gradient',1):.2f}"
+                entry_type = f"Crash DOWN {bc_spike['probability']}% | RSI:{bc_spike.get('rsi_zone','?')} | Drift:{bc_spike.get('drift_count',0)} bars | Kurt:{bc_kurt.get('kurtosis',3):.1f}"
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
 
         # BC-2: DRIFT RIDE (follow the natural drift — safest)
+        # O3: Check if drift ride is allowed (blocked when spike imminent)
         if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
                 and bc_conflicts.get('allow_drift_ride', True):
             is_boom = gen_type == "BOOM"
             if is_boom and not is_long:  # Boom drifts DOWN → SELL
                 sig = "SHORT (DRIFT RIDE)"
                 sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift DOWN str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                entry_type = f"Drift DOWN str={bc_drift['strength']}% q={bc_drift['quality']} RSI:{bc_drift.get('rsi',50):.0f} Rgm:{bc_regime.get('regime','?')}"
                 trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
                 setup_type = "DRIFT_RIDE"
                 return
             elif not is_boom and is_long:  # Crash drifts UP → BUY
                 sig = "LONG (DRIFT RIDE)"
                 sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift UP str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                entry_type = f"Drift UP str={bc_drift['strength']}% q={bc_drift['quality']} RSI:{bc_drift.get('rsi',50):.0f} Rgm:{bc_regime.get('regime','?')}"
                 trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
                 setup_type = "DRIFT_RIDE"
                 return
@@ -5305,6 +5299,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 return
 
         # BC-4: REVERSAL (CHoCH + absorption + supply/demand)
+        # FIX #2: Use bc_atr_clean instead of c1['ATR']
         if is_bc and mkt_struct.get('choch'):
             choch_bull = "BULL" in str(mkt_struct.get('last_event', ''))
             choch_bear = "BEAR" in str(mkt_struct.get('last_event', ''))
@@ -5320,19 +5315,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
-
-        # ═══ SURGERY 3: FOR BC — STOP HERE. NO LEGACY SETUPS. ═══
-        # If no BC setup triggered, return without signal.
-        # This prevents contradictory signals from forex-style setups.
-        if is_bc:
-            return  # sig remains "MONITORING" — this is correct and honest
-
-        # ═══ NON-BC LEGACY SETUPS (only for non-BC assets) ═══
-        # Divergence block only applies to legacy setups
-        div_block = divergence and (("BEARISH" in str(divergence) and is_long and "HIDDEN" not in str(divergence)) or
-                                     ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
-        if div_block:
-            sig = f"BLOCKED (DIV: {div_detail})"; return
 
         # O4: GBM/STEP setups removed — V24-BC is Boom/Crash only
         # (Legacy code removed: GEN_VOL_COMPRESS, GEN_PRICE_DEV, GEN_STEP_REVERT)
@@ -5440,23 +5422,23 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 return
 
     # V24 FIX #5: For Crash/Boom: try BOTH drift and spike directions
-    # V24-F COHERENCE FIX: Use PROFILE directions (source of truth), not generator
-    # Generator can give wrong drift_dir post-spike (e.g. "UP" for BOOM after strong spike)
+    # Score for each direction is evaluated independently
+    # (fixes circular dependency where bias → scoring → setup → filtering)
     if gen_type in ["BOOM","CRASH"]:
-        # PROFILE directions are ALWAYS correct: BOOM=drift DOWN/spike UP, CRASH=drift UP/spike DOWN
-        profile_drift_dir = profile.get('drift_direction', '')
-        profile_spike_dir = profile.get('spike_direction', '')
+        drift_dir = gen.get('drift_direction','')
+        spike_dir = profile.get('spike_direction', '')
 
-        # Primary: Try drift direction first (safest, highest WR)
-        if profile_drift_dir == "UP": try_setup("BULLISH")
-        elif profile_drift_dir == "DOWN": try_setup("BEARISH")
+        # Primary: Try drift direction first (safest)
+        if drift_dir == "UP": try_setup("BULLISH")
+        elif drift_dir == "DOWN": try_setup("BEARISH")
 
         # If no signal from drift, try spike direction
         if sig == "MONITORING":
-            if profile_spike_dir == "UP": try_setup("BULLISH")
-            elif profile_spike_dir == "DOWN": try_setup("BEARISH")
+            if spike_dir == "UP": try_setup("BULLISH")
+            elif spike_dir == "DOWN": try_setup("BEARISH")
 
-        # NO fallback to bias — bias can contradict BC directions
+        # Final fallback: try bias
+        if sig == "MONITORING": try_setup(bias)
     else:
         try_setup(bias)
 
@@ -5466,33 +5448,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ V21+ ENTRY REFINEMENT ═══
     # Use ATR channel and VWAP for more precise entry when setup detected
     if "LONG" in sig or "SHORT" in sig:
-        # V24-F: For BC, use BC-specific entry refinement (channel position + gradient)
-        if gen_type in ["BOOM", "CRASH"]:
-            # BC entry refinement: use price channel position for better timing
-            ch_pos = bc_channel.get('position_pct', 50)
-            if setup_type == "DRIFT_RIDE":
-                entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
-            elif setup_type == "SPIKE_CATCH":
-                entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
-            elif setup_type == "POST_SPIKE":
-                entry_type = f"{entry_type} | Rec:{bc_recovery.get('recovery_phase','?')}"
-        else:
-            # Non-BC: Use forex-oriented entry refinement
-            br_rt = detect_breakout_retest(h1, sr_levels, bias, c1['ATR'])
-            if br_rt.get('retest'): retest_bonus = 6
+        # V23: Breakout Retest bonus
+        br_rt = detect_breakout_retest(h1, sr_levels, bias, c1['ATR'])
+        if br_rt.get('retest'): retest_bonus = 6
 
-            ch_quality = atr_channel.get('quality', 'UNKNOWN')
-            ch_entry = atr_channel.get('channel_entry')
-            if ch_quality in ['OPTIMAL', 'GOOD'] and ch_entry is not None:
-                if "LONG" in sig and ch_entry < entry:
-                    entry = ch_entry
-                    entry_type = f"{entry_type} → ATR-CH {ch_quality}"
-                elif "SHORT" in sig and ch_entry > entry:
-                    entry = ch_entry
-                    entry_type = f"{entry_type} → ATR-CH {ch_quality}"
-            vwap_qual = vwap_data.get('entry_quality', 'UNKNOWN')
-            if vwap_qual == 'EXCELLENT':
-                entry_type = f"{entry_type} (VWAP✓)"
+        ch_quality = atr_channel.get('quality', 'UNKNOWN')
+        ch_entry = atr_channel.get('channel_entry')
+        if ch_quality in ['OPTIMAL', 'GOOD'] and ch_entry is not None:
+            # Refine entry to ATR channel level for better R:R
+            if "LONG" in sig and ch_entry < entry:
+                entry = ch_entry
+                entry_type = f"{entry_type} → ATR-CH {ch_quality}"
+            elif "SHORT" in sig and ch_entry > entry:
+                entry = ch_entry
+                entry_type = f"{entry_type} → ATR-CH {ch_quality}"
+        # VWAP proximity refinement
+        vwap_qual = vwap_data.get('entry_quality', 'UNKNOWN')
+        if vwap_qual == 'EXCELLENT':
+            entry_type = f"{entry_type} (VWAP✓)"
 
     # Spread
     if "LONG" in sig: entry += profile['spread']
@@ -5631,9 +5604,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         fails = []
 
         if is_bc_setup:
-            # FIX #9 + COHERENCE FIX C: BC setups filtered ONLY by BC SCORE
-            # Legacy score (ADX/EMA/momentum) is NOT a gate for BC — it was calculated
-            # with potentially contradictory bias and forex-oriented criteria
+            # FIX #9: BC setups filtered by BC SCORE (not legacy ADX/EMA scoring)
             bc_score_val = bc_score_data.get('score', 0)
             bc_min = 55  # BC minimum score for PASS
             if meltdown.get('score_boost', 0) > 0:
@@ -5655,9 +5626,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                         fails.append(f"SYNC={entry_sync.get('score',0)}<40")
             # SPIKE_CATCH and POST_SPIKE: NO entry sync check
 
-            # COHERENCE FIX C: NO legacy score check for BC
-            # (removed: was blocking valid BC trades because legacy score
-            # used forex-oriented criteria that don't apply to BC)
+            # Legacy score as SECONDARY check (60% threshold)
+            effective_score = score.total + random_walk_penalty - conflict_penalty
+            legacy_min = int(ms * 0.60)  # 60% of normal minimum
+            if effective_score < legacy_min:
+                fails.append(f"LEGACY={effective_score:.0f}<{legacy_min}")
 
         else:
             # Non-BC setups: original filter logic
@@ -5671,39 +5644,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 fails.append(f"SYNC={entry_sync.get('score',0)}<60")
 
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
-
-    # ═══ V24-F COHERENCE FIX E: CROSS-VALIDATION ═══
-    # Verify signal direction is LOGICALLY POSSIBLE for this BC asset
-    # This catches any remaining contradiction from upstream logic
-    if gen_type in ["BOOM", "CRASH"] and "BLOCKED" not in sig and sig != "MONITORING":
-        is_boom = gen_type == "BOOM"
-        sig_is_long = "LONG" in sig
-
-        # Define valid direction-setup combinations
-        # BOOM: LONG only valid for SPIKE_CATCH, REVERSAL, STOCH_SPIKE
-        # BOOM: SHORT valid for DRIFT_RIDE, POST_SPIKE, SCALP, STOCH_DRIFT
-        # CRASH: SHORT only valid for SPIKE_CATCH, REVERSAL, STOCH_CRASH
-        # CRASH: LONG valid for DRIFT_RIDE, POST_SPIKE, SCALP, STOCH_DRIFT
-        valid = True
-        reason = ""
-
-        if is_boom:
-            if sig_is_long and setup_type in ["DRIFT_RIDE"]:
-                valid = False
-                reason = f"BOOM LONG+DRIFT_RIDE impossível (Boom drift=DOWN→SHORT)"
-            elif not sig_is_long and setup_type in ["SPIKE_CATCH"]:
-                valid = False
-                reason = f"BOOM SHORT+SPIKE_CATCH impossível (Boom spike=UP→LONG)"
-        else:  # CRASH
-            if not sig_is_long and setup_type in ["DRIFT_RIDE"]:
-                valid = False
-                reason = f"CRASH SHORT+DRIFT_RIDE impossível (Crash drift=UP→LONG)"
-            elif sig_is_long and setup_type in ["SPIKE_CATCH"]:
-                valid = False
-                reason = f"CRASH LONG+SPIKE_CATCH impossível (Crash spike=DOWN→SHORT)"
-
-        if not valid:
-            sig = f"BLOCKED (INCOERÊNCIA: {reason})"
 
     # Targets — V23: Adaptive TP (S/R aware + regime aware)
     risk = abs(entry - sl_val)
@@ -5736,22 +5676,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         regime_tp_mult = regime_tp_mults.get(bc_regime_name, 1.0)
         r1 *= regime_tp_mult
         r2 *= regime_tp_mult
-
-        # V24-F: Gradient-aware TP adjustment for DRIFT_RIDE
-        if setup_type == "DRIFT_RIDE":
-            grad_phase = bc_gradient.get('phase', 'STABLE')
-            if grad_phase == "ACCELERATING":
-                r1 *= 1.15; r2 *= 1.2  # Drift strong → wider TP
-            elif grad_phase == "DECELERATING":
-                r1 *= 0.85; r2 *= 0.8  # Drift weakening → tighter TP
-
-        # V24-F: Consecutive-aware TP for SPIKE_CATCH
-        if setup_type == "SPIKE_CATCH":
-            consec_count = bc_consec.get('count', 0)
-            if consec_count >= 10:
-                r1 *= 1.3; r2 *= 1.4  # Very overdue → expect bigger spike
-            elif consec_count >= 7:
-                r1 *= 1.15; r2 *= 1.2  # Moderately overdue
 
     direction = "LONG" if "LONG" in sig else "SHORT"
     tp1, tp2 = smart_tp(entry, direction, risk, r1, r2, sr_levels)
