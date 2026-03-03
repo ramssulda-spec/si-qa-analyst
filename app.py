@@ -2073,11 +2073,12 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
                        bc_freq, bc_absorb, bc_compress, bc_conflicts,
                        bc_stoch, sim_results=None,
                        bc_ema_stack=None, bc_gradient=None, bc_recovery=None,
-                       bc_consec=None, bc_channel=None):
-    """V24-F: Scoring dedicado BC com 12 factores (5 novos + 7 originais).
-    Usa ferramentas BC-específicas para decisão. Legacy score é secundário.
+                       bc_consec=None, bc_channel=None,
+                       bc_m5_pulse=None, bc_m5_struct=None, bc_m5_wicks=None):
+    """V25: Scoring dedicado BC com 12+ factores.
+    SCALP_DRIFT uses M5-specific factors (pulse, structure, wicks).
     Factores: timing, drift_health, regime, kurtosis, recovery, compression,
-    consecutive, conflicts, backtest, stochastic, channel, stack."""
+    consecutive, conflicts, backtest, stochastic, channel, stack, m5_scalp."""
     try:
         total = 0
         breakdown = {}
@@ -2086,6 +2087,103 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
         bc_recovery = bc_recovery or {}
         bc_consec = bc_consec or {}
         bc_channel = bc_channel or {}
+        bc_m5_pulse = bc_m5_pulse or {}
+        bc_m5_struct = bc_m5_struct or {}
+        bc_m5_wicks = bc_m5_wicks or {}
+
+        # ═══ SCALP_DRIFT FAST PATH — M5-specific scoring ═══
+        if setup_type == "SCALP_DRIFT":
+            # M5 Pulse (max 18pts) — PRIMARY factor
+            if bc_m5_pulse.get('optimal_entry'):
+                m5_pulse_pts = 18
+            elif bc_m5_pulse.get('pulse_active'):
+                m5_pulse_pts = 10
+            else:
+                m5_pulse_pts = 0
+            total += m5_pulse_pts
+            breakdown['m5_pulse'] = m5_pulse_pts
+
+            # M5 Structure (max 14pts)
+            if bc_m5_struct.get('entry_window') and bc_m5_struct.get('quality') == 'EXCELLENT':
+                m5_struct_pts = 14
+            elif bc_m5_struct.get('entry_window'):
+                m5_struct_pts = 10
+            elif bc_m5_struct.get('pattern') not in ['NONE', None]:
+                m5_struct_pts = 5
+            else:
+                m5_struct_pts = 0
+            total += m5_struct_pts
+            breakdown['m5_structure'] = m5_struct_pts
+
+            # M5 Wicks (max 10pts)
+            wick_sig = bc_m5_wicks.get('signal', 'NEUTRAL')
+            if wick_sig == 'STRONG_REJECTION':
+                m5_wick_pts = 10
+            elif wick_sig == 'MODERATE_REJECTION':
+                m5_wick_pts = 6
+            elif wick_sig in ['EXHAUSTION', 'WEAK_EXHAUSTION']:
+                m5_wick_pts = -8  # Penalty: drift exhausting
+            else:
+                m5_wick_pts = 2
+            total += m5_wick_pts
+            breakdown['m5_wicks'] = m5_wick_pts
+
+            # Gradient (max 12pts)
+            grad = bc_gradient.get('gradient', 1.0)
+            grad_safe = bc_gradient.get('safe_to_enter', True)
+            if grad > 1.1 and grad_safe:
+                grad_pts = 12
+            elif grad > 0.9 and grad_safe:
+                grad_pts = 8
+            elif grad > 0.8:
+                grad_pts = 4
+            else:
+                grad_pts = 0
+            total += grad_pts
+            breakdown['gradient'] = grad_pts
+
+            # Stack (max 8pts)
+            stack_pts = min(8, bc_ema_stack.get('stack_score', 0) // 2)
+            total += stack_pts
+            breakdown['stack'] = stack_pts
+
+            # Spike proximity penalty (max -15pts)
+            spike_risk = bc_consec.get('spike_risk', 0)
+            spike_pen = 0
+            if spike_risk > 70: spike_pen = -15
+            elif spike_risk > 50: spike_pen = -8
+            elif spike_risk > 30: spike_pen = -3
+            total += spike_pen
+            breakdown['spike_penalty'] = spike_pen
+
+            # Drift quality (max 8pts)
+            drift_qual = bc_drift.get('quality', 'CHOPPY')
+            drift_pts = 8 if drift_qual == 'SMOOTH' else 5 if drift_qual == 'MODERATE' else 1
+            total += drift_pts
+            breakdown['drift_quality'] = drift_pts
+
+            # Conflict penalty
+            conflict_pen = min(10, bc_conflicts.get('conflict_penalty', 0))
+            total -= conflict_pen
+            breakdown['conflict_penalty'] = -conflict_pen
+
+            # GRADE (max ~85pts, threshold: 30 for PASS)
+            total = max(0, min(90, total))
+            if total >= 70: grade = "S"
+            elif total >= 55: grade = "A+"
+            elif total >= 40: grade = "A"
+            elif total >= 30: grade = "B"
+            elif total >= 20: grade = "C"
+            else: grade = "D"
+
+            if total >= 30: status = "PASS"    # Lower threshold for scalp
+            elif total >= 20: status = "MONITOR"
+            else: status = "FAIL"
+
+            return {"score": total, "grade": grade, "status": status,
+                    "breakdown": breakdown, "setup_type": setup_type}
+
+        # ═══ STANDARD BC SCORING (non-scalp setups) ═══
 
         # 1. SPIKE TIMING — Weibull + consecutive (max 25pts)
         weibull = bc_spike.get('weibull_prob', 0)
@@ -3154,6 +3252,261 @@ def bc_price_channel_position(df, profile, lookback=20):
     except:
         return {"position": "UNKNOWN", "position_pct": 50,
                 "band_distance": 0, "entry_zone": "NONE"}
+
+# ==============================================================================
+# V25-SCALP ENGINE #1: M5 MOMENTUM PULSE — Scalp entry timing
+# ==============================================================================
+
+def bc_m5_momentum_pulse(m5_df, profile, lookback=15):
+    """Detecta pulsos de momentum M5 para scalp timing.
+    O drift BC vem em PULSOS de 5-15min seguidos de micro-pausa.
+    O scalp ideal entra no INÍCIO do pulso e sai antes da pausa.
+    Boom drift DOWN: pulso = candles M5 bearish consecutivos com corpo > 40% range
+    Crash drift UP: pulso = candles M5 bullish consecutivos com corpo > 40% range"""
+    try:
+        if m5_df is None or len(m5_df) < lookback + 3:
+            return {"pulse_active": False, "pulse_strength": 0, "pulse_candles": 0,
+                    "pulse_phase": "NO_DATA", "optimal_entry": False}
+        d = m5_df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+
+        # Count consecutive drift-direction candles with body > 40% range
+        pulse_candles = 0
+        pulse_bodies = []
+        for i in range(len(d)-1, 0, -1):
+            rng = float(d['high'].iloc[i] - d['low'].iloc[i])
+            body = float(abs(d['close'].iloc[i] - d['open'].iloc[i]))
+            body_pct = body / rng if rng > 0 else 0
+
+            if is_boom:
+                is_drift_candle = d['close'].iloc[i] < d['open'].iloc[i]  # Bearish
+            else:
+                is_drift_candle = d['close'].iloc[i] > d['open'].iloc[i]  # Bullish
+
+            # Allow 1 weak candle (doji) within pulse
+            is_neutral = body_pct < 0.25
+            if is_drift_candle and body_pct > 0.30:
+                pulse_candles += 1
+                pulse_bodies.append(body)
+            elif is_neutral and pulse_candles > 0 and pulse_candles < 6:
+                pulse_candles += 1  # Allow 1 doji mid-pulse
+                pulse_bodies.append(body * 0.5)
+            else:
+                break
+
+        # Pulse strength: avg body size relative to range
+        if pulse_bodies:
+            avg_body = float(np.mean(pulse_bodies))
+            avg_range = float((d['high'] - d['low']).tail(lookback).mean())
+            pulse_strength = min(100, int(avg_body / avg_range * 150)) if avg_range > 0 else 0
+        else:
+            pulse_strength = 0
+
+        # Check if bodies are GROWING (acceleration) or SHRINKING (fading)
+        if len(pulse_bodies) >= 3:
+            recent = float(np.mean(pulse_bodies[:2]))  # Most recent 2
+            earlier = float(np.mean(pulse_bodies[-2:]))  # Earliest 2
+            body_trend = recent / earlier if earlier > 0 else 1.0
+        else:
+            body_trend = 1.0
+
+        # Classify phase
+        if pulse_candles == 0:
+            phase = "PAUSED"
+            optimal = False
+        elif pulse_candles <= 2 and pulse_strength > 40:
+            phase = "STARTING"
+            optimal = True  # ← BEST entry point
+        elif pulse_candles <= 5 and body_trend >= 0.9:
+            phase = "STRONG"
+            optimal = False  # Already running
+        elif body_trend < 0.7:
+            phase = "FADING"
+            optimal = False
+        else:
+            phase = "EXTENDED"
+            optimal = False
+
+        # Also check: is there a pause before this pulse? (confirms fresh pulse)
+        if pulse_candles >= 1 and pulse_candles <= 3:
+            # Check if candle before pulse was against drift or doji
+            pre_pulse_idx = len(d) - 1 - pulse_candles
+            if pre_pulse_idx >= 0:
+                pre_rng = float(d['high'].iloc[pre_pulse_idx] - d['low'].iloc[pre_pulse_idx])
+                pre_body = float(abs(d['close'].iloc[pre_pulse_idx] - d['open'].iloc[pre_pulse_idx]))
+                pre_body_pct = pre_body / pre_rng if pre_rng > 0 else 0
+                if pre_body_pct < 0.35:  # Doji/small candle before pulse = fresh start
+                    if phase == "STARTING":
+                        pulse_strength = min(100, pulse_strength + 15)
+
+        return {"pulse_active": pulse_candles >= 2, "pulse_strength": pulse_strength,
+                "pulse_candles": pulse_candles, "pulse_phase": phase,
+                "optimal_entry": optimal, "body_trend": round(body_trend, 2)}
+    except:
+        return {"pulse_active": False, "pulse_strength": 0, "pulse_candles": 0,
+                "pulse_phase": "ERROR", "optimal_entry": False}
+
+# ==============================================================================
+# V25-SCALP ENGINE #2: M5 MICRO STRUCTURE — Pattern detection
+# ==============================================================================
+
+def bc_m5_micro_structure(m5_df, profile, lookback=20):
+    """Detecta padrões M5: micro-pullback, micro-consolidação, micro-breakout.
+    Antes de cada pulso, o preço faz micro-consolidação de 2-4 candles M5.
+    Detectar isto permite entrar no INÍCIO do próximo pulso."""
+    try:
+        if m5_df is None or len(m5_df) < lookback:
+            return {"pattern": "NONE", "quality": "WEAK", "entry_window": False,
+                    "expected_move_atr": 0}
+        d = m5_df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        ranges = (d['high'] - d['low']).values
+        avg_range = float(np.mean(ranges)) if len(ranges) > 0 else 1
+
+        # Last 5 candles analysis
+        last5 = d.tail(5)
+        last5_ranges = (last5['high'] - last5['low']).values
+        last5_avg_range = float(np.mean(last5_ranges)) if len(last5_ranges) > 0 else 1
+
+        # MICRO CONSOLIDATION: last 3-5 candles have shrinking ranges
+        shrinking = all(last5_ranges[i] <= last5_ranges[i-1] * 1.1 for i in range(max(1, len(last5_ranges)-3), len(last5_ranges)))
+        tight_range = last5_avg_range < avg_range * 0.6
+
+        # MICRO PULLBACK: 1-3 candles against drift direction, small range
+        pullback_count = 0
+        for i in range(len(last5)-1, max(0, len(last5)-4), -1):
+            if is_boom:
+                against_drift = last5['close'].iloc[i] > last5['open'].iloc[i]  # Bullish = against boom drift
+            else:
+                against_drift = last5['close'].iloc[i] < last5['open'].iloc[i]  # Bearish = against crash drift
+            body = abs(float(last5['close'].iloc[i] - last5['open'].iloc[i]))
+            small_body = body < avg_range * 0.5
+            if against_drift and small_body:
+                pullback_count += 1
+            else:
+                break
+
+        # MICRO BREAKOUT: last candle breaks consolidation range in drift direction
+        last_candle = d.iloc[-1]
+        prev_high = float(d['high'].iloc[-4:-1].max())
+        prev_low = float(d['low'].iloc[-4:-1].min())
+        if is_boom:
+            breakout = float(last_candle['close']) < prev_low  # Break below = drift breakout
+        else:
+            breakout = float(last_candle['close']) > prev_high  # Break above = drift breakout
+
+        last_body_pct = abs(float(last_candle['close'] - last_candle['open'])) / float(last_candle['high'] - last_candle['low']) if float(last_candle['high'] - last_candle['low']) > 0 else 0
+
+        # Classify pattern
+        if breakout and last_body_pct > 0.55:
+            pattern = "MICRO_BREAKOUT"
+            quality = "EXCELLENT"
+            entry_window = True
+        elif pullback_count >= 1 and pullback_count <= 3:
+            # Check if last candle is resuming drift direction
+            if is_boom:
+                resuming = float(last_candle['close']) < float(last_candle['open'])
+            else:
+                resuming = float(last_candle['close']) > float(last_candle['open'])
+            if resuming:
+                pattern = "MICRO_PULLBACK"
+                quality = "EXCELLENT" if last_body_pct > 0.5 else "GOOD"
+                entry_window = True
+            else:
+                pattern = "MICRO_PULLBACK"
+                quality = "GOOD" if pullback_count <= 2 else "WEAK"
+                entry_window = False  # Still pulling back
+        elif shrinking and tight_range:
+            pattern = "MICRO_CONSOLIDATION"
+            quality = "GOOD"
+            entry_window = False  # Wait for breakout
+        else:
+            pattern = "NONE"
+            quality = "WEAK"
+            entry_window = False
+
+        # Expected move: based on previous pulse sizes
+        prev_bodies = abs(d['close'] - d['open']).values
+        expected_move = float(np.mean(sorted(prev_bodies, reverse=True)[:5])) if len(prev_bodies) >= 5 else avg_range
+
+        return {"pattern": pattern, "quality": quality, "entry_window": entry_window,
+                "expected_move_atr": round(expected_move / avg_range, 2) if avg_range > 0 else 0,
+                "pullback_candles": pullback_count,
+                "consolidation": shrinking and tight_range}
+    except:
+        return {"pattern": "NONE", "quality": "WEAK", "entry_window": False,
+                "expected_move_atr": 0}
+
+# ==============================================================================
+# V25-SCALP ENGINE #3: M5 WICKS ANALYSIS — Rejection/exhaustion
+# ==============================================================================
+
+def bc_m5_wicks_analysis(m5_df, profile, lookback=10):
+    """Analisa pavios M5: wicks contra drift = rejeição (drift continua).
+    Wicks na direcção drift = absorção/exaustão (spike approach).
+    Boom drift DOWN: pavio superior longo = rejection bull → safe
+    Crash drift UP: pavio inferior longo = rejection bear → safe"""
+    try:
+        if m5_df is None or len(m5_df) < lookback:
+            return {"rejection_wicks": 0, "exhaustion_wicks": 0,
+                    "wick_ratio": 0.5, "signal": "NEUTRAL"}
+        d = m5_df.tail(lookback)
+        is_boom = profile.get('gen_type') == 'BOOM'
+        rejection_count = 0
+        exhaustion_count = 0
+        total_significant = 0
+
+        for i in range(len(d)):
+            rng = float(d['high'].iloc[i] - d['low'].iloc[i])
+            if rng == 0: continue
+            upper_wick = float(d['high'].iloc[i] - max(d['close'].iloc[i], d['open'].iloc[i]))
+            lower_wick = float(min(d['close'].iloc[i], d['open'].iloc[i]) - d['low'].iloc[i])
+            upper_pct = upper_wick / rng
+            lower_pct = lower_wick / rng
+
+            # Significant wick = > 35% of range
+            if is_boom:
+                # Boom drifts DOWN. Upper wick = rejection of upward move = safe
+                if upper_pct > 0.35:
+                    rejection_count += 1
+                    total_significant += 1
+                # Lower wick = rejection of downward (drift) = exhaustion
+                if lower_pct > 0.35:
+                    exhaustion_count += 1
+                    total_significant += 1
+            else:
+                # Crash drifts UP. Lower wick = rejection of downward move = safe
+                if lower_pct > 0.35:
+                    rejection_count += 1
+                    total_significant += 1
+                # Upper wick = rejection of upward (drift) = exhaustion
+                if upper_pct > 0.35:
+                    exhaustion_count += 1
+                    total_significant += 1
+
+        if total_significant == 0:
+            ratio = 0.5
+        else:
+            ratio = rejection_count / total_significant
+
+        if rejection_count >= 4:
+            signal = "STRONG_REJECTION"
+        elif rejection_count >= 2 and exhaustion_count <= 1:
+            signal = "MODERATE_REJECTION"
+        elif exhaustion_count >= 3:
+            signal = "EXHAUSTION"
+        elif exhaustion_count >= 2 and rejection_count <= 1:
+            signal = "WEAK_EXHAUSTION"
+        else:
+            signal = "NEUTRAL"
+
+        return {"rejection_wicks": rejection_count, "exhaustion_wicks": exhaustion_count,
+                "wick_ratio": round(ratio, 2), "signal": signal,
+                "total_significant": total_significant}
+    except:
+        return {"rejection_wicks": 0, "exhaustion_wicks": 0,
+                "wick_ratio": 0.5, "signal": "NEUTRAL"}
+
 
 def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=200):
     """V24: SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico.
@@ -4770,9 +5123,9 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-FUNÇÃO: ANALISTA V24-F — BOOM/CRASH ZERO-ILLUSION SNIPER [Gemini + Fallback]
+FUNÇÃO: ANALISTA V25-SCALP — BOOM/CRASH ZERO-ILLUSION SNIPER [Gemini + Fallback]
 Missão: Sinais de alta precisão EXCLUSIVOS para Boom e Crash indices da Deriv
-APENAS Day Trade + Scalp — SEM Swing Trade — ZERO ILUSÃO
+APENAS Day Trade + Scalp — SEM Swing Trade — ZERO ILUSÃO — M5 PRECISION
 
 **RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO**
 
@@ -4805,16 +5158,23 @@ APENAS Day Trade + Scalp — SEM Swing Trade — ZERO ILUSÃO
 - Consecutive Direction Counter: candles consecutivos drift (3-5 = normal, 8+ = overdue)
 - Price Channel Position: posição EMA20 ± 1.5×ATR (drift mature vs fresh vs fade zone)
 
-**BC SCORE (12 factores, max ~146pts):**
-Score ≥55 = PASS, 40-55 = MONITOR, <40 = FAIL
-Factores: spike_timing, drift_health, regime, kurtosis, recovery_absorb,
-channel, m5_compression, conflict_penalty, backtest, stochastic
+**V25-SCALP: ENGINES M5 PRECISÃO (3):**
+- M5 Momentum Pulse: detecta pulsos de drift M5 (STARTING=entry ideal, STRONG=já correu, FADING=sair)
+- M5 Micro Structure: padrões M5 (MICRO_PULLBACK, MICRO_CONSOLIDATION, MICRO_BREAKOUT)
+- M5 Wicks Analysis: pavios M5 (STRONG_REJECTION=safe, EXHAUSTION=drift exausto)
+
+**BC SCORE:**
+- Setups normais: 12 factores, max ~146pts, threshold ≥55
+- SCALP_DRIFT: 8 factores M5-específicos, max ~85pts, threshold ≥30
+Score factores: spike_timing, drift_health, regime, kurtosis, recovery_absorb,
+channel, m5_compression, conflict_penalty, backtest, stochastic,
+m5_pulse, m5_structure, m5_wicks (scalp only)
 
 **FORMATO:**
 
 ## ⚡ VEREDICTO V24-F: [ {DECISION} ]
 **Grade:** {GRADE} | **BC Score:** {BC_SCORE} [{BC_GRADE}] | **Tipo:** {BOOM/CRASH}
-**Setup:** {DRIFT_RIDE / SPIKE_CATCH / POST_SPIKE / REVERSAL / DAY}
+**Setup:** {SCALP_DRIFT / DRIFT_RIDE / SPIKE_CATCH / POST_SPIKE / REVERSAL / DAY}
 **BC Regime:** {DRIFT_SMOOTH/CHOPPY/PRE_SPIKE/POST_SPIKE/SPIKE_CLUSTER}
 
 ### 🎯 SPIKE ANALYSIS
@@ -4828,6 +5188,12 @@ channel, m5_compression, conflict_penalty, backtest, stochastic
 - Drift: {ACTIVE/INACTIVE} ({UP/DOWN}) Força: {strength}%
 - Qualidade: {SMOOTH/MODERATE/CHOPPY}
 - Seguro para ride: {SIM/NÃO}
+
+### ⚡ M5 SCALP ANALYSIS (quando SCALP_DRIFT)
+- M5 Pulse: {STARTING/STRONG/FADING/PAUSED} ({N} candles, str:{X}%)
+- M5 Structure: {MICRO_PULLBACK/MICRO_CONSOLIDATION/MICRO_BREAKOUT} ({quality})
+- M5 Wicks: {STRONG_REJECTION/EXHAUSTION/NEUTRAL} ({N}/{total})
+- Max Hold: {N candles M15 (~Xh)}
 
 ### 🔄 POST-SPIKE FADE
 - Post-spike detectado: {SIM/NÃO}
@@ -4848,14 +5214,17 @@ Entries: Agressivo={E1} | Ideal={E2} | Sniper={E3}
 
 ### ⚠️ CONFLUÊNCIAS + RISCOS
 
-*V24-BC Insight:* {Analisar especificamente o comportamento Boom/Crash.
+*V25-BC Insight:* {Analisar especificamente o comportamento Boom/Crash.
 Considerar BC Regime para adaptar recomendação.
 Se regime PRE_SPIKE e prob > 60%, recomendar spike catch com SL adaptado.
 Se DRIFT_SMOOTH e drift forte, recomendar drift ride com SL tight.
+Se M5 pulse STARTING + drift active, recomendar SCALP_DRIFT (mais agressivo).
 Se POST_SPIKE e absorção confirmada, recomendar fade com target calculado.
+Se M5 wicks EXHAUSTION, alertar drift exausto e NÃO entrar scalp.
 Se engine conflicts presentes, alertar e ajustar recomendação.
 Se expectancy stressed < 0, alertar HIGH RISK.
 NUNCA recomendar Swing Trade. Apenas Day Trade e Scalp.
+SCALP = SL tighter (0.7×ATR), TP tighter (1.0-1.8R), max hold 10-15 candles M15.
 Ser AGRESSIVO mas PRECISO — entrar com convicção.}
 """
 
@@ -5004,6 +5373,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bc_recovery = bc_spike_recovery_speed(m15, profile, lookback=15)
     bc_consec = bc_consecutive_drift_counter(m15, profile, lookback=20)
     bc_channel = bc_price_channel_position(m15, profile, lookback=20)
+    # V25-SCALP: M5 precision engines for scalp timing
+    bc_m5_pulse = bc_m5_momentum_pulse(m5, profile, lookback=15)
+    bc_m5_struct = bc_m5_micro_structure(m5, profile, lookback=20)
+    bc_m5_wicks = bc_m5_wicks_analysis(m5, profile, lookback=10)
 
     # Divergências
     rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
@@ -5257,6 +5630,42 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 entry_type = f"Crash DOWN {bc_spike['probability']}% | Weibull:{bc_spike.get('weibull_prob',0):.0%} | Consec:{bc_consec.get('count',0)} | Grad:{bc_gradient.get('gradient',1):.2f}"
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
+
+        # BC-1.5: SCALP DRIFT (aggressive micro-drift — M5 timed, tight SL)
+        # More aggressive than DRIFT_RIDE: lower strength threshold (25 vs 40)
+        # BUT requires M5 pulse confirmation + stack + gradient + wick safety
+        if is_bc and bc_drift.get('drift_active') and bc_drift.get('strength', 0) >= 25 \
+                and bc_conflicts.get('allow_drift_ride', True):
+            m5_pulse_ok = bc_m5_pulse.get('optimal_entry', False)
+            m5_struct_ok = bc_m5_struct.get('entry_window', False)
+            stack_ok = bc_ema_stack.get('pairs_ok', 0) >= 2
+            gradient_ok = bc_gradient.get('gradient', 0) >= 0.8
+            wick_safe = bc_m5_wicks.get('signal') not in ['EXHAUSTION', 'WEAK_EXHAUSTION']
+            spike_safe = bc_consec.get('spike_risk', 0) < 70
+
+            # Need at least: (M5 pulse OR M5 structure) + stack + gradient + wick + spike safety
+            m5_confirmed = m5_pulse_ok or m5_struct_ok
+            if m5_confirmed and stack_ok and gradient_ok and wick_safe and spike_safe:
+                is_boom = gen_type == "BOOM"
+                # Adaptive SL: tightens with spike proximity
+                spike_proximity = bc_consec.get('spike_risk', 0) / 100.0
+                scalp_sl_mult = profile.get('sl_scalp_mult', 1.0) * 0.7 * (1.0 - spike_proximity * 0.25)
+                scalp_sl_mult = max(0.4, scalp_sl_mult)  # Floor: never less than 0.4× ATR
+
+                if is_boom and not is_long:  # Boom drift DOWN → SELL scalp
+                    sig = "SHORT (SCALP DRIFT)"
+                    sl_val = entry + scalp_sl_mult * bc_atr_clean * regime_sl_mult
+                    m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
+                    entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
+                    trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
+                    return
+                elif not is_boom and is_long:  # Crash drift UP → BUY scalp
+                    sig = "LONG (SCALP DRIFT)"
+                    sl_val = entry - scalp_sl_mult * bc_atr_clean * regime_sl_mult
+                    m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
+                    entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
+                    trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
+                    return
 
         # BC-2: DRIFT RIDE (follow the natural drift — safest)
         if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
@@ -5572,11 +5981,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                "GEN_PRICE_DEV":(35,1.0),"DAY":(40,1.1),
                # BC-specific — more aggressive thresholds
                "SPIKE_CATCH":(30,0.8),"DRIFT_RIDE":(25,0.8),"POST_SPIKE":(20,0.7),
-               "REVERSAL":(40,1.0),
+               "REVERSAL":(40,1.0),"SCALP_DRIFT":(20,0.7),
                "SCALP":(25,0.9),"BREAKOUT_RETEST":(40,1.1),"CONTINUATION":(35,1.0)}
     ms, mpf = configs.get(setup_type, (60, 1.3))
     is_gen_setup = setup_type and "GEN" in str(setup_type)
-    is_bc_setup = setup_type in ["SPIKE_CATCH", "DRIFT_RIDE", "POST_SPIKE", "REVERSAL"]
+    is_bc_setup = setup_type in ["SPIKE_CATCH", "DRIFT_RIDE", "POST_SPIKE", "REVERSAL", "SCALP_DRIFT"]
 
     # FIX #8: Calculate BC Score for BC setups
     bc_score_data = {"score": 0, "grade": "D", "status": "FAIL"}
@@ -5587,7 +5996,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             bc_stoch, sim_results=sim,
             bc_ema_stack=bc_ema_stack, bc_gradient=bc_gradient,
             bc_recovery=bc_recovery, bc_consec=bc_consec,
-            bc_channel=bc_channel)
+            bc_channel=bc_channel,
+            bc_m5_pulse=bc_m5_pulse, bc_m5_struct=bc_m5_struct,
+            bc_m5_wicks=bc_m5_wicks)
 
     # V23: Score override — reduce minimums with ultra-high confluence
     if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
@@ -5611,16 +6022,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if sim.get('HIGH_RISK', False) and not is_gen_setup:
         pass  # Flag only, don't block
 
-    # FIX #7d: M5 Compression blocks scalp drift
-    if is_bc_setup and bc_compress.get('block_scalp', False) and setup_type == "DRIFT_RIDE":
-        sig = f"BLOCKED (M5 COMPRESSION {bc_compress.get('compression','?')} — spike proximity)"
-
-    # V24-F: Gradient DYING blocks drift ride
-    if is_bc_setup and setup_type == "DRIFT_RIDE":
+    # V24-F: Gradient DYING blocks drift ride AND scalp drift
+    if is_bc_setup and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
         if bc_gradient.get('phase') == "DYING":
             sig = f"BLOCKED (DRIFT DYING — gradient {bc_gradient.get('gradient',0):.2f} — spike iminente)"
         elif bc_consec.get('zone') in ["EXTREME_OVERDUE", "OVERDUE"]:
             sig = f"BLOCKED (DRIFT OVERDUE — {bc_consec.get('count',0)} candles consecutivos)"
+
+    # V24-F: M5 compression blocks scalp drift (spike imminent)
+    if is_bc_setup and bc_compress.get('block_scalp', False) and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
+        sig = f"BLOCKED (M5 COMPRESSION {bc_compress.get('compression','?')} — spike proximity)"
+
+    # V25-SCALP: M5 exhaustion blocks scalp
+    if is_bc_setup and setup_type == "SCALP_DRIFT":
+        if bc_m5_wicks.get('signal') in ['EXHAUSTION', 'WEAK_EXHAUSTION']:
+            sig = f"BLOCKED (M5 WICKS EXHAUSTION — drift exausto)"
 
     # V24-F: Recovery blocks unsafe fade
     if is_bc_setup and setup_type == "POST_SPIKE":
@@ -5634,10 +6050,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         if is_bc_setup:
             # FIX #9 + COHERENCE FIX C: BC setups filtered ONLY by BC SCORE
-            # Legacy score (ADX/EMA/momentum) is NOT a gate for BC — it was calculated
-            # with potentially contradictory bias and forex-oriented criteria
             bc_score_val = bc_score_data.get('score', 0)
-            bc_min = 55  # BC minimum score for PASS
+            # V25-SCALP: SCALP_DRIFT uses lower threshold (30) — compensated by tight SL
+            if setup_type == "SCALP_DRIFT":
+                bc_min = 30
+            else:
+                bc_min = 55  # Standard BC minimum
             if meltdown.get('score_boost', 0) > 0:
                 bc_min = int(bc_min * 1.5)  # 50% higher during loss streak
 
@@ -5648,14 +6066,13 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             if sim['NET'] < -5:
                 fails.append(f"NET={sim['NET']:.0f}<-5")
 
-            # FIX #10: Entry Sync bypass for SPIKE_CATCH and POST_SPIKE
-            # These setups COUNTER the drift, so TF alignment is naturally low
+            # FIX #10: Entry Sync bypass for SPIKE_CATCH, POST_SPIKE, and SCALP_DRIFT
+            # SCALP_DRIFT uses M5 timing instead of TF alignment
             if setup_type in ["DRIFT_RIDE", "REVERSAL"]:
                 if entry_sync.get('ready') == "WAIT":
-                    # Use reduced threshold for BC (40 instead of 60)
                     if entry_sync.get('score', 0) < 40:
                         fails.append(f"SYNC={entry_sync.get('score',0)}<40")
-            # SPIKE_CATCH and POST_SPIKE: NO entry sync check
+            # SPIKE_CATCH, POST_SPIKE, SCALP_DRIFT: NO entry sync check
 
             # COHERENCE FIX C: NO legacy score check for BC
             # (removed: was blocking valid BC trades because legacy score
@@ -5683,23 +6100,23 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # Define valid direction-setup combinations
         # BOOM: LONG only valid for SPIKE_CATCH, REVERSAL, STOCH_SPIKE
-        # BOOM: SHORT valid for DRIFT_RIDE, POST_SPIKE, SCALP, STOCH_DRIFT
+        # BOOM: SHORT valid for DRIFT_RIDE, SCALP_DRIFT, POST_SPIKE, STOCH_DRIFT
         # CRASH: SHORT only valid for SPIKE_CATCH, REVERSAL, STOCH_CRASH
-        # CRASH: LONG valid for DRIFT_RIDE, POST_SPIKE, SCALP, STOCH_DRIFT
+        # CRASH: LONG valid for DRIFT_RIDE, SCALP_DRIFT, POST_SPIKE, STOCH_DRIFT
         valid = True
         reason = ""
 
         if is_boom:
-            if sig_is_long and setup_type in ["DRIFT_RIDE"]:
+            if sig_is_long and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
                 valid = False
-                reason = f"BOOM LONG+DRIFT_RIDE impossível (Boom drift=DOWN→SHORT)"
+                reason = f"BOOM LONG+{setup_type} impossível (Boom drift=DOWN→SHORT)"
             elif not sig_is_long and setup_type in ["SPIKE_CATCH"]:
                 valid = False
                 reason = f"BOOM SHORT+SPIKE_CATCH impossível (Boom spike=UP→LONG)"
         else:  # CRASH
-            if not sig_is_long and setup_type in ["DRIFT_RIDE"]:
+            if not sig_is_long and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
                 valid = False
-                reason = f"CRASH SHORT+DRIFT_RIDE impossível (Crash drift=UP→LONG)"
+                reason = f"CRASH SHORT+{setup_type} impossível (Crash drift=UP→LONG)"
             elif sig_is_long and setup_type in ["SPIKE_CATCH"]:
                 valid = False
                 reason = f"CRASH LONG+SPIKE_CATCH impossível (Crash spike=DOWN→SHORT)"
@@ -5715,7 +6132,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
           "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
           # BC-specific TP (scalp = tighter, spike catch = wider)
           "SPIKE_CATCH":(3.0,6.0),"DRIFT_RIDE":(1.5,2.5),"POST_SPIKE":(1.2,2.0),
-          "REVERSAL":(2.5,4.0),
+          "REVERSAL":(2.5,4.0),"SCALP_DRIFT":(1.0,1.8),
           "SCALP":(1.5,2.5),"BREAKOUT_RETEST":(2.5,4),"CONTINUATION":(2,3.5)}
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
 
@@ -5746,6 +6163,20 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 r1 *= 1.15; r2 *= 1.2  # Drift strong → wider TP
             elif grad_phase == "DECELERATING":
                 r1 *= 0.85; r2 *= 0.8  # Drift weakening → tighter TP
+
+        # V25-SCALP: TP adjustment for SCALP_DRIFT based on M5 pulse + drift quality
+        if setup_type == "SCALP_DRIFT":
+            # Drift quality bonus
+            if bc_drift.get('quality') == 'SMOOTH':
+                r1 *= 1.15; r2 *= 1.2
+            # M5 pulse strength bonus
+            pulse_str = bc_m5_pulse.get('pulse_strength', 0)
+            if pulse_str > 70:
+                r1 *= 1.1; r2 *= 1.15  # Strong pulse → wider TP
+            # Gradient bonus
+            grad_phase = bc_gradient.get('phase', 'STABLE')
+            if grad_phase == "ACCELERATING":
+                r1 *= 1.1; r2 *= 1.15
 
         # V24-F: Consecutive-aware TP for SPIKE_CATCH
         if setup_type == "SPIKE_CATCH":
@@ -5895,6 +6326,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"✅ Recovery SAFE ({bc_recovery['recovery_phase']}, speed:{bc_recovery.get('recovery_speed',0):.0%})")
     if bc_consec.get('zone') in ['NORMAL', 'FRESH']:
         confs.append(f"🟢 Drift Fresh ({bc_consec['count']} candles — {bc_consec['entry_quality']})")
+    # V25-SCALP: M5 precision confluences
+    if bc_m5_pulse.get('optimal_entry'):
+        confs.append(f"🔋 M5 Pulse: {bc_m5_pulse['pulse_phase']} ({bc_m5_pulse['pulse_candles']}c, str:{bc_m5_pulse['pulse_strength']}%)")
+    elif bc_m5_pulse.get('pulse_active'):
+        confs.append(f"⚡ M5 Pulse: {bc_m5_pulse['pulse_phase']} ({bc_m5_pulse['pulse_candles']}c)")
+    if bc_m5_struct.get('entry_window'):
+        confs.append(f"🔬 M5: {bc_m5_struct['pattern']} → Entry Window ({bc_m5_struct['quality']})")
+    if bc_m5_wicks.get('signal') in ['STRONG_REJECTION', 'MODERATE_REJECTION']:
+        confs.append(f"💪 M5 Wicks: {bc_m5_wicks['signal']} ({bc_m5_wicks['rejection_wicks']}/{bc_m5_wicks.get('total_significant',0)})")
 
     risks = []
     # V24-F: Skip irrelevant CPI/VR risks for BC
@@ -5935,28 +6375,49 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         risks.append("⚠️ Drift CHOPPY — entradas menos confiáveis")
     if not bc_drift.get('safe_to_ride') and setup_type == "DRIFT_RIDE":
         risks.append("🚫 RSI em zona de perigo para drift")
-    if bc_compress.get('block_scalp') and setup_type == "DRIFT_RIDE":
+    if bc_compress.get('block_scalp') and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
         risks.append("🚫 M5 COMPRESSION — spike proximity")
+    # V25-SCALP: M5 precision risks
+    if bc_m5_wicks.get('signal') in ['EXHAUSTION', 'WEAK_EXHAUSTION']:
+        risks.append(f"🚨 M5 Wicks EXHAUSTION ({bc_m5_wicks.get('exhaustion_wicks',0)} wicks) — drift exausto")
+    if bc_m5_pulse.get('pulse_phase') == 'FADING':
+        risks.append("⚠️ M5 Pulse FADING — momentum a enfraquecer")
+    if bc_m5_pulse.get('pulse_phase') == 'EXTENDED':
+        risks.append("⚠️ M5 Pulse EXTENDED — entrada tardia")
+    if bc_m5_struct.get('pattern') == 'MICRO_CONSOLIDATION' and not bc_m5_struct.get('entry_window'):
+        risks.append("⏳ M5 em consolidação — aguardar breakout")
     # V24-F NEW: Gradient + Stack + Recovery risks
     if bc_gradient.get('phase') == "DYING":
         risks.append(f"🚨 Drift MORTO (gradient:{bc_gradient.get('gradient',0):.2f}) — spike iminente")
     elif bc_gradient.get('phase') == "DECELERATING":
         risks.append(f"⚠️ Drift desacelerando (gradient:{bc_gradient.get('gradient',0):.2f})")
-    if bc_ema_stack.get('destack_warning') and setup_type == "DRIFT_RIDE":
+    if bc_ema_stack.get('destack_warning') and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
         risks.append("⚠️ EMA DESTACK — drift direction enfraquecendo")
     if bc_consec.get('zone') in ["EXTREME_OVERDUE", "OVERDUE"]:
         risks.append(f"🚨 Drift {bc_consec['count']} candles — {bc_consec['zone']}")
     if bc_recovery.get('has_recent_spike') and bc_recovery.get('recovery_phase') == "STALLED":
         risks.append("⚠️ Recovery STALLED — regime change possível")
-    if bc_channel.get('position') == "DRIFT_MATURE" and setup_type == "DRIFT_RIDE":
+    if bc_channel.get('position') == "DRIFT_MATURE" and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
         risks.append(f"⚠️ Channel DRIFT_MATURE — preço no limite do canal ({bc_channel.get('position_pct',0):.0f}%)")
     # Kill-switch
     meltdown_data = bc_meltdown_check()
     if meltdown_data.get('streak', 0) >= 3:
         risks.append(f"🚨 Loss Streak: {meltdown_data['streak']} ({'BLOCKED' if meltdown_data.get('blocked') else 'CAUTION'})")
 
+    # V25-SCALP: Max hold time based on setup type
+    if setup_type == "SCALP_DRIFT":
+        max_hold = profile.get('max_hold_scalp', 15)
+        max_hold_info = f"{max_hold} candles M15 (~{max_hold*15//60}h{max_hold*15%60}m)"
+    elif trade_style == "SCALP":
+        max_hold = profile.get('max_hold_scalp', 15)
+        max_hold_info = f"{max_hold} candles M15 (~{max_hold*15//60}h{max_hold*15%60}m)"
+    else:
+        max_hold = profile.get('max_hold_day', 60)
+        max_hold_info = f"{max_hold} candles M15 (~{max_hold*15//60}h)"
+
     return {
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
+        "MAX_HOLD": max_hold_info,
         "SETUP_SCORE": float(round(score.total,1)), "BASE_SCORE": float(round(score.base_total,1)),
         "BONUS_SCORE": float(round(score.bonus_total,1)), "SETUP_GRADE": score.grade,
         "INDEX_PROFILE": vc, "GEN_TYPE": gen_type,
@@ -6060,6 +6521,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "BC_RECOVERY": convert_np(bc_recovery),
         "BC_CONSEC": convert_np(bc_consec),
         "BC_CHANNEL": convert_np(bc_channel),
+        "BC_M5_PULSE": convert_np(bc_m5_pulse),
+        "BC_M5_STRUCT": convert_np(bc_m5_struct),
+        "BC_M5_WICKS": convert_np(bc_m5_wicks),
         # FIX #11: Regime TP mult
         "REGIME_SL_MULT": bc_regime.get('sl_mult', 1.0),
         "EXPECTANCY": sim.get('EXPECTANCY', 0),
