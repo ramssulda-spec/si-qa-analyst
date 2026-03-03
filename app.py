@@ -74,7 +74,7 @@ warnings.filterwarnings('ignore')
 # ==============================================================================
 
 st.set_page_config(
-    page_title="APATECO V24-BC",
+    page_title="APATECO V25",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -82,55 +82,206 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    /* ── BASE ── */
-    .stApp {
-        background: #09090b;
-        color: #a1a1aa;
-        font-family: 'Inter', -apple-system, sans-serif;
+    /* ═══════════════════════════════════════════
+       KEYFRAME ANIMATIONS
+       ═══════════════════════════════════════════ */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes slideInLeft {
+        from { opacity: 0; transform: translateX(-16px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fillBar {
+        from { width: 0%; }
+    }
+    @keyframes gradientRotate {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 8px rgba(99,102,241,0.15); }
+        50% { box-shadow: 0 0 24px rgba(99,102,241,0.3); }
+    }
+    @keyframes livePulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    @keyframes popIn {
+        0% { opacity: 0; transform: scale(0.8); }
+        70% { transform: scale(1.05); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    @keyframes borderGlow {
+        0%, 100% { border-color: rgba(99,102,241,0.2); }
+        50% { border-color: rgba(99,102,241,0.5); }
+    }
+    @keyframes scanSlide {
+        from { opacity: 0; transform: translateX(-12px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ═══════════════════════════════════════════
+       BASE THEME — Deep Space Terminal
+       ═══════════════════════════════════════════ */
+    :root {
+        --bg-base: #07070d;
+        --bg-surface: #0c0c15;
+        --bg-elevated: #10101c;
+        --bg-hover: #161625;
+        --border: #1a1a2e;
+        --border-subtle: #13132a;
+        --border-hover: #2a2a4e;
+        --text-primary: #eeeef0;
+        --text-secondary: #8888a0;
+        --text-muted: #505068;
+        --accent: #6366f1;
+        --accent-light: #818cf8;
+        --accent-dim: #4f46e5;
+        --accent-glow: rgba(99,102,241,0.12);
+        --success: #10b981;
+        --success-dim: rgba(16,185,129,0.1);
+        --danger: #ef4444;
+        --danger-dim: rgba(239,68,68,0.1);
+        --warning: #f59e0b;
+        --warning-dim: rgba(245,158,11,0.1);
+        --info: #3b82f6;
+    }
+
+    .stApp {
+        background: var(--bg-base);
+        color: var(--text-secondary);
+        font-family: 'DM Sans', -apple-system, sans-serif;
+    }
+
+    /* Subtle dot grid background */
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-image: radial-gradient(circle, rgba(99,102,241,0.03) 1px, transparent 1px);
+        background-size: 32px 32px;
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* Ambient glow */
+    .stApp::after {
+        content: '';
+        position: fixed;
+        top: -30%; left: -10%;
+        width: 50%; height: 50%;
+        background: radial-gradient(ellipse, rgba(99,102,241,0.04) 0%, transparent 70%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* ── SIDEBAR ── */
     section[data-testid="stSidebar"] {
-        background: #09090b;
-        border-right: 1px solid #1a1a1f;
+        background: var(--bg-base);
+        border-right: 1px solid var(--border);
+    }
+    section[data-testid="stSidebar"]::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 120px;
+        background: linear-gradient(180deg, rgba(99,102,241,0.06) 0%, transparent 100%);
+        pointer-events: none;
     }
     section[data-testid="stSidebar"] .stMarkdown p,
     section[data-testid="stSidebar"] .stMarkdown span {
-        color: #71717a;
+        color: var(--text-muted);
         font-size: 13px;
     }
 
-    /* ── TYPOGRAPHY ── */
-    h1 { font-family:'Inter',sans-serif!important; font-weight:300!important; color:#fafafa!important;
-         letter-spacing:-0.5px!important; font-size:28px!important; text-transform:none!important;
-         text-shadow:none!important; border:none!important; }
-    h2 { font-family:'Inter',sans-serif!important; font-weight:500!important; color:#e4e4e7!important;
-         font-size:16px!important; letter-spacing:0.3px!important; text-transform:uppercase!important;
-         text-shadow:none!important; border:none!important; margin-top:28px!important; }
-    h3 { font-family:'Inter',sans-serif!important; font-weight:500!important; color:#a1a1aa!important;
-         font-size:13px!important; letter-spacing:0.5px!important; text-transform:uppercase!important;
-         text-shadow:none!important; border:none!important; }
-    p, li, span { font-family:'Inter',sans-serif; }
+    /* ═══════════════════════════════════════════
+       TYPOGRAPHY
+       ═══════════════════════════════════════════ */
+    h1 {
+        font-family: 'Outfit', sans-serif !important;
+        font-weight: 300 !important;
+        color: var(--text-primary) !important;
+        letter-spacing: -0.5px !important;
+        font-size: 28px !important;
+        text-shadow: none !important;
+        border: none !important;
+    }
+    h2 {
+        font-family: 'Outfit', sans-serif !important;
+        font-weight: 600 !important;
+        color: var(--text-primary) !important;
+        font-size: 15px !important;
+        letter-spacing: 1.2px !important;
+        text-transform: uppercase !important;
+        text-shadow: none !important;
+        border: none !important;
+        margin-top: 32px !important;
+        padding-bottom: 10px !important;
+        position: relative;
+        animation: slideInLeft 0.5s ease-out;
+    }
+    h2::after {
+        content: '';
+        position: absolute;
+        bottom: 0; left: 0;
+        width: 32px; height: 2px;
+        background: linear-gradient(90deg, var(--accent), transparent);
+        border-radius: 2px;
+    }
+    h3 {
+        font-family: 'Outfit', sans-serif !important;
+        font-weight: 500 !important;
+        color: var(--text-secondary) !important;
+        font-size: 13px !important;
+        letter-spacing: 0.8px !important;
+        text-transform: uppercase !important;
+        text-shadow: none !important;
+        border: none !important;
+    }
+    p, li, span { font-family: 'DM Sans', sans-serif; }
 
-    /* ── METRICS ── */
+    /* ═══════════════════════════════════════════
+       METRIC CARDS — Glassmorphic
+       ═══════════════════════════════════════════ */
     div[data-testid="stMetric"] {
-        background: #111113;
-        border: 1px solid #1e1e23;
-        border-radius: 10px;
-        padding: 16px 18px;
-        border-right: 1px solid #1e1e23;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 20px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeInUp 0.5s ease-out backwards;
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-elevated);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px var(--border-hover);
     }
     div[data-testid="stMetric"] label {
-        color: #52525b !important;
-        font-size: 11px !important;
-        letter-spacing: 0.8px;
+        color: var(--text-muted) !important;
+        font-size: 10.5px !important;
+        letter-spacing: 1px;
         text-transform: uppercase;
-        font-weight: 500 !important;
+        font-weight: 600 !important;
+        font-family: 'Outfit', sans-serif !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: #fafafa !important;
+        color: var(--text-primary) !important;
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 20px !important;
+        font-size: 19px !important;
         font-weight: 500 !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
@@ -138,177 +289,332 @@ st.markdown("""
         font-size: 11px !important;
     }
 
-    /* ── BUTTONS ── */
+    /* Stagger metric animations */
+    div[data-testid="column"]:nth-child(1) div[data-testid="stMetric"] { animation-delay: 0.05s; }
+    div[data-testid="column"]:nth-child(2) div[data-testid="stMetric"] { animation-delay: 0.1s; }
+    div[data-testid="column"]:nth-child(3) div[data-testid="stMetric"] { animation-delay: 0.15s; }
+    div[data-testid="column"]:nth-child(4) div[data-testid="stMetric"] { animation-delay: 0.2s; }
+    div[data-testid="column"]:nth-child(5) div[data-testid="stMetric"] { animation-delay: 0.25s; }
+    div[data-testid="column"]:nth-child(6) div[data-testid="stMetric"] { animation-delay: 0.3s; }
+
+    /* ═══════════════════════════════════════════
+       BUTTONS — Accent Gradient
+       ═══════════════════════════════════════════ */
     .stButton > button {
-        background: #fafafa;
-        color: #09090b;
-        font-family: 'Inter', sans-serif;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+        color: #ffffff;
+        font-family: 'Outfit', sans-serif;
         font-weight: 600;
         font-size: 13px;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
         padding: 12px 24px;
-        border-radius: 8px;
+        border-radius: 10px;
         border: none;
         width: 100%;
-        transition: all 0.2s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        text-transform: uppercase;
+        position: relative;
+        overflow: hidden;
+    }
+    .stButton > button::before {
+        content: '';
+        position: absolute;
+        top: 0; left: -100%; width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        transition: left 0.5s;
     }
     .stButton > button:hover {
-        background: #e4e4e7;
-        box-shadow: 0 4px 20px rgba(255,255,255,0.06);
+        background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 100%);
+        box-shadow: 0 4px 24px rgba(99,102,241,0.3), 0 0 0 1px rgba(99,102,241,0.2);
         transform: translateY(-1px);
     }
+    .stButton > button:hover::before { left: 100%; }
 
-    /* ── CARDS ── */
+    /* ═══════════════════════════════════════════
+       CARDS
+       ═══════════════════════════════════════════ */
     .card {
-        background: #111113;
-        border: 1px solid #1e1e23;
-        border-radius: 12px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
         padding: 24px;
         margin: 8px 0;
+        animation: fadeInUp 0.5s ease-out;
     }
     .card-accent {
-        background: linear-gradient(135deg, #111113 0%, #13131a 100%);
-        border: 1px solid #27272a;
-        border-radius: 14px;
+        background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+        border: 1px solid var(--border-hover);
+        border-radius: 16px;
         padding: 28px;
         margin: 12px 0;
+        box-shadow: 0 4px 32px rgba(0,0,0,0.2);
+        animation: fadeInUp 0.6s ease-out;
+    }
+    .card-glow {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        margin: 12px 0;
+        position: relative;
+        overflow: hidden;
+        animation: fadeInUp 0.5s ease-out;
+    }
+    .card-glow::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: -1px; right: -1px; bottom: -1px;
+        border-radius: 17px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-dim), #a855f7, var(--accent));
+        background-size: 300% 300%;
+        animation: gradientRotate 4s ease infinite;
+        z-index: -1;
+        opacity: 0.5;
+    }
+    .card-glow::after {
+        content: '';
+        position: absolute;
+        top: 1px; left: 1px; right: 1px; bottom: 1px;
+        border-radius: 15px;
+        background: var(--bg-surface);
+        z-index: -1;
     }
 
-    /* ── GRADE BADGES ── */
+    /* ═══════════════════════════════════════════
+       GRADE BADGES — Animated Premium
+       ═══════════════════════════════════════════ */
     .grade-s {
-        background: linear-gradient(135deg, #7c3aed20, #a855f710);
-        border: 1px solid #7c3aed40;
+        background: linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(168,85,247,0.04) 100%);
+        border: 1px solid rgba(124,58,237,0.25);
         color: #c4b5fd;
-        border-radius: 12px; padding: 24px; text-align: center;
+        border-radius: 16px; padding: 28px; text-align: center;
+        animation: pulseGlow 3s ease infinite, fadeInUp 0.6s ease-out;
+        position: relative;
+        overflow: hidden;
     }
-    .grade-s .grade-letter { font-size: 48px; font-weight: 700; color: #a78bfa; }
-    .grade-app {
-        background: linear-gradient(135deg, #05966920, #10b98110);
-        border: 1px solid #10b98140;
-        color: #6ee7b7;
-        border-radius: 12px; padding: 24px; text-align: center;
+    .grade-s::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.12) 0%, transparent 60%);
+        pointer-events: none;
     }
-    .grade-app .grade-letter { font-size: 48px; font-weight: 700; color: #34d399; }
-    .grade-ap {
-        background: linear-gradient(135deg, #2563eb20, #3b82f610);
-        border: 1px solid #3b82f640;
-        color: #93c5fd;
-        border-radius: 12px; padding: 24px; text-align: center;
-    }
-    .grade-ap .grade-letter { font-size: 48px; font-weight: 700; color: #60a5fa; }
-    .grade-a {
-        background: linear-gradient(135deg, #06b6d420, #22d3ee10);
-        border: 1px solid #22d3ee30;
-        color: #a5f3fc;
-        border-radius: 12px; padding: 24px; text-align: center;
-    }
-    .grade-a .grade-letter { font-size: 48px; font-weight: 700; color: #67e8f9; }
-    .grade-low {
-        background: #111113;
-        border: 1px solid #27272a;
-        color: #71717a;
-        border-radius: 12px; padding: 24px; text-align: center;
-    }
-    .grade-low .grade-letter { font-size: 48px; font-weight: 700; color: #52525b; }
+    .grade-s .grade-letter { font-size: 56px; font-weight: 800; color: #a78bfa;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(167,139,250,0.3); }
 
-    /* ── SCORE BAR ── */
+    .grade-app {
+        background: linear-gradient(135deg, rgba(5,150,105,0.08) 0%, rgba(16,185,129,0.04) 100%);
+        border: 1px solid rgba(16,185,129,0.25);
+        color: #6ee7b7;
+        border-radius: 16px; padding: 28px; text-align: center;
+        animation: fadeInUp 0.6s ease-out;
+        position: relative; overflow: hidden;
+    }
+    .grade-app::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(16,185,129,0.1) 0%, transparent 60%);
+        pointer-events: none;
+    }
+    .grade-app .grade-letter { font-size: 56px; font-weight: 800; color: #34d399;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(52,211,153,0.25); }
+
+    .grade-ap {
+        background: linear-gradient(135deg, rgba(37,99,235,0.08) 0%, rgba(59,130,246,0.04) 100%);
+        border: 1px solid rgba(59,130,246,0.25);
+        color: #93c5fd;
+        border-radius: 16px; padding: 28px; text-align: center;
+        animation: fadeInUp 0.6s ease-out;
+        position: relative; overflow: hidden;
+    }
+    .grade-ap::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 60%);
+        pointer-events: none;
+    }
+    .grade-ap .grade-letter { font-size: 56px; font-weight: 800; color: #60a5fa;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(96,165,250,0.25); }
+
+    .grade-a {
+        background: linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(34,211,238,0.04) 100%);
+        border: 1px solid rgba(34,211,238,0.2);
+        color: #a5f3fc;
+        border-radius: 16px; padding: 28px; text-align: center;
+        animation: fadeInUp 0.6s ease-out;
+        position: relative; overflow: hidden;
+    }
+    .grade-a::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: radial-gradient(ellipse at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 60%);
+        pointer-events: none;
+    }
+    .grade-a .grade-letter { font-size: 56px; font-weight: 800; color: #67e8f9;
+        font-family: 'Outfit', sans-serif; }
+
+    .grade-low {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        border-radius: 16px; padding: 28px; text-align: center;
+        animation: fadeInUp 0.6s ease-out;
+    }
+    .grade-low .grade-letter { font-size: 56px; font-weight: 800; color: var(--text-muted);
+        font-family: 'Outfit', sans-serif; }
+
+    /* ═══════════════════════════════════════════
+       SCORE BAR — Animated Fill
+       ═══════════════════════════════════════════ */
     .score-bar-outer {
-        background: #1a1a1f;
-        border-radius: 6px;
-        height: 8px;
-        margin: 8px 0 4px;
+        background: rgba(255,255,255,0.04);
+        border-radius: 8px;
+        height: 6px;
+        margin: 10px 0 6px;
         overflow: hidden;
     }
     .score-bar-inner {
         height: 100%;
-        border-radius: 6px;
-        transition: width 1s ease;
+        border-radius: 8px;
+        transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fillBar 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+    }
+    .score-bar-inner::after {
+        content: '';
+        position: absolute;
+        top: 0; right: 0;
+        width: 24px; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+        border-radius: 8px;
     }
 
-    /* ── SIGNAL TAGS ── */
+    /* ═══════════════════════════════════════════
+       SIGNAL TAGS — Premium Badges
+       ═══════════════════════════════════════════ */
     .tag-long {
         display: inline-block;
-        background: #05966915;
+        background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
         color: #34d399;
-        border: 1px solid #10b98130;
-        padding: 4px 12px;
-        border-radius: 6px;
+        border: 1px solid rgba(16,185,129,0.25);
+        padding: 6px 16px;
+        border-radius: 8px;
         font-size: 12px;
         font-weight: 600;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        animation: popIn 0.4s ease-out;
     }
     .tag-short {
         display: inline-block;
-        background: #ef444415;
+        background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.04));
         color: #f87171;
-        border: 1px solid #ef444430;
-        padding: 4px 12px;
-        border-radius: 6px;
+        border: 1px solid rgba(239,68,68,0.25);
+        padding: 6px 16px;
+        border-radius: 8px;
         font-size: 12px;
         font-weight: 600;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        animation: popIn 0.4s ease-out;
     }
     .tag-blocked {
         display: inline-block;
-        background: #71717a10;
-        color: #71717a;
-        border: 1px solid #52525b30;
-        padding: 4px 12px;
-        border-radius: 6px;
+        background: rgba(255,255,255,0.03);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        padding: 6px 16px;
+        border-radius: 8px;
         font-size: 12px;
         font-weight: 500;
+        letter-spacing: 0.5px;
     }
     .tag-monitoring {
         display: inline-block;
-        background: #f59e0b10;
+        background: linear-gradient(135deg, rgba(245,158,11,0.1), rgba(245,158,11,0.03));
         color: #fbbf24;
-        border: 1px solid #f59e0b30;
-        padding: 4px 12px;
-        border-radius: 6px;
+        border: 1px solid rgba(245,158,11,0.25);
+        padding: 6px 16px;
+        border-radius: 8px;
         font-size: 12px;
         font-weight: 500;
+        letter-spacing: 0.5px;
     }
-
-    /* ── CONFLUENCE PILLS ── */
-    .pill {
+    .tag-scalp {
         display: inline-block;
-        background: #18181b;
-        border: 1px solid #27272a;
-        color: #a1a1aa;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        margin: 3px 3px;
-        font-weight: 400;
+        background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(99,102,241,0.04));
+        color: var(--accent-light);
+        border: 1px solid rgba(99,102,241,0.25);
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.8px;
+        margin-left: 6px;
     }
-    .pill-green { border-color: #10b98130; color: #6ee7b7; background: #10b98108; }
-    .pill-red { border-color: #ef444430; color: #fca5a5; background: #ef444408; }
-    .pill-purple { border-color: #7c3aed30; color: #c4b5fd; background: #7c3aed08; }
-    .pill-blue { border-color: #3b82f630; color: #93c5fd; background: #3b82f608; }
 
-    /* ── SCANNER ROWS ── */
+    /* ═══════════════════════════════════════════
+       CONFLUENCE PILLS — Animated
+       ═══════════════════════════════════════════ */
+    .pill {
+        display: inline-flex;
+        align-items: center;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        padding: 7px 14px;
+        border-radius: 24px;
+        font-size: 12px;
+        margin: 4px 4px;
+        font-weight: 400;
+        transition: all 0.25s ease;
+        animation: popIn 0.4s ease-out backwards;
+    }
+    .pill:nth-child(1) { animation-delay: 0.05s; }
+    .pill:nth-child(2) { animation-delay: 0.1s; }
+    .pill:nth-child(3) { animation-delay: 0.15s; }
+    .pill:nth-child(4) { animation-delay: 0.2s; }
+    .pill:nth-child(5) { animation-delay: 0.25s; }
+    .pill:nth-child(6) { animation-delay: 0.3s; }
+    .pill:nth-child(7) { animation-delay: 0.35s; }
+    .pill:nth-child(8) { animation-delay: 0.4s; }
+    .pill-green { border-color: rgba(16,185,129,0.2); color: #6ee7b7; background: rgba(16,185,129,0.06); }
+    .pill-green:hover { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); }
+    .pill-red { border-color: rgba(239,68,68,0.2); color: #fca5a5; background: rgba(239,68,68,0.06); }
+    .pill-red:hover { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); }
+    .pill-purple { border-color: rgba(124,58,237,0.2); color: #c4b5fd; background: rgba(124,58,237,0.06); }
+    .pill-blue { border-color: rgba(59,130,246,0.2); color: #93c5fd; background: rgba(59,130,246,0.06); }
+
+    /* ═══════════════════════════════════════════
+       SCANNER ROWS — Animated Slide
+       ═══════════════════════════════════════════ */
     .scan-row {
-        background: #111113;
-        border: 1px solid #1e1e23;
-        border-radius: 10px;
-        padding: 14px 18px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 20px;
         margin: 6px 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        transition: border-color 0.2s;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: scanSlide 0.5s ease-out backwards;
     }
-    .scan-row:hover { border-color: #3b82f640; }
+    .scan-row:hover {
+        border-color: var(--accent);
+        background: var(--bg-elevated);
+        transform: translateX(4px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2), -2px 0 0 var(--accent);
+    }
     .scan-rank {
-        color: #52525b;
+        color: var(--text-muted);
         font-family: 'JetBrains Mono', monospace;
         font-size: 12px;
         width: 28px;
     }
     .scan-name {
-        color: #fafafa;
+        color: var(--text-primary);
+        font-family: 'Outfit', sans-serif;
         font-weight: 600;
         font-size: 14px;
         flex: 1;
@@ -316,71 +622,209 @@ st.markdown("""
     }
     .scan-score {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 18px;
+        font-size: 20px;
         font-weight: 600;
         margin: 0 16px;
     }
     .scan-meta {
-        color: #52525b;
+        color: var(--text-muted);
         font-size: 11px;
         font-family: 'JetBrains Mono', monospace;
     }
 
-    /* ── TRADE PLAN TABLE ── */
+    /* ═══════════════════════════════════════════
+       TRADE PLAN TABLE
+       ═══════════════════════════════════════════ */
     .plan-row {
         display: flex;
         align-items: center;
-        padding: 12px 16px;
-        border-bottom: 1px solid #1e1e23;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border-subtle);
+        transition: background 0.2s ease;
     }
     .plan-row:last-child { border-bottom: none; }
+    .plan-row:hover { background: rgba(255,255,255,0.015); }
     .plan-label {
-        color: #52525b;
-        font-size: 11px;
+        color: var(--text-muted);
+        font-size: 10.5px;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
+        letter-spacing: 1px;
         width: 80px;
-        font-weight: 500;
+        font-weight: 600;
+        font-family: 'Outfit', sans-serif;
     }
     .plan-value {
-        color: #fafafa;
+        color: var(--text-primary);
         font-family: 'JetBrains Mono', monospace;
         font-size: 15px;
         font-weight: 500;
         flex: 1;
     }
     .plan-note {
-        color: #52525b;
+        color: var(--text-muted);
         font-size: 12px;
     }
 
-    /* ── MISC ── */
+    /* ═══════════════════════════════════════════
+       SECTION HEADER
+       ═══════════════════════════════════════════ */
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 32px 0 14px;
+        animation: slideInLeft 0.5s ease-out;
+    }
+    .section-icon {
+        width: 32px; height: 32px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px;
+        background: var(--accent-glow);
+        border: 1px solid rgba(99,102,241,0.15);
+    }
+    .section-title {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--text-primary);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .section-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--border), transparent);
+    }
+
+    /* ═══════════════════════════════════════════
+       DIVIDER — Gradient
+       ═══════════════════════════════════════════ */
     .divider {
         height: 1px;
-        background: #1e1e23;
-        margin: 20px 0;
+        background: linear-gradient(90deg, transparent, var(--border), transparent);
+        margin: 24px 0;
         border: none;
     }
+
+    /* ═══════════════════════════════════════════
+       UTILITY CLASSES
+       ═══════════════════════════════════════════ */
     .mono { font-family: 'JetBrains Mono', monospace; }
-    .muted { color: #52525b; }
+    .muted { color: var(--text-muted); }
     .text-sm { font-size: 12px; }
     .text-xs { font-size: 11px; }
 
-    /* ── TABS ── */
-    .stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 1px solid #1e1e23; }
+    /* ═══════════════════════════════════════════
+       HEADER BAR — Logo + Version
+       ═══════════════════════════════════════════ */
+    .header-bar {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        padding: 4px 0 16px;
+        animation: fadeIn 0.8s ease-out;
+    }
+    .header-logo {
+        font-family: 'Outfit', sans-serif;
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: -1.5px;
+        background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-light) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .header-version {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--accent);
+        background: var(--accent-glow);
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid rgba(99,102,241,0.15);
+        font-weight: 500;
+    }
+    .header-sub {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    /* ═══════════════════════════════════════════
+       LIVE PULSE INDICATOR
+       ═══════════════════════════════════════════ */
+    .live-dot {
+        display: inline-block;
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--success);
+        animation: livePulse 2s ease-in-out infinite;
+        margin-right: 6px;
+    }
+
+    /* ═══════════════════════════════════════════
+       SIDEBAR INFO BOX
+       ═══════════════════════════════════════════ */
+    .sidebar-info {
+        margin-top: 16px;
+        padding: 16px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        line-height: 1.8;
+    }
+    .sidebar-info strong {
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+
+    /* ═══════════════════════════════════════════
+       TABS — Modern
+       ═══════════════════════════════════════════ */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+    }
     .stTabs [data-baseweb="tab"] {
-        background: transparent; color: #52525b; font-family:'Inter',sans-serif;
-        font-weight: 500; font-size: 13px; padding: 10px 20px;
+        background: transparent;
+        color: var(--text-muted);
+        font-family: 'Outfit', sans-serif;
+        font-weight: 500;
+        font-size: 13px;
+        padding: 12px 24px;
         border-bottom: 2px solid transparent;
+        transition: all 0.3s ease;
     }
-    .stTabs [aria-selected="true"] { color: #fafafa; border-bottom-color: #fafafa; background: transparent; }
+    .stTabs [aria-selected="true"] {
+        color: var(--text-primary);
+        border-bottom-color: var(--accent);
+        background: transparent;
+    }
 
-    /* ── STATUS ── */
+    /* ═══════════════════════════════════════════
+       STATUS WIDGET — Enhanced
+       ═══════════════════════════════════════════ */
     div[data-testid="stStatusWidget"] {
-        background: #111113; border: 1px solid #1e1e23; border-radius: 10px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
     }
 
-    /* ── HIDE EXTRA ── */
+    /* ═══════════════════════════════════════════
+       SELECTBOX + INPUTS
+       ═══════════════════════════════════════════ */
+    div[data-testid="stSelectbox"] > div > div {
+        background: var(--bg-surface);
+        border-color: var(--border);
+        border-radius: 10px;
+    }
+
+    /* ═══════════════════════════════════════════
+       HIDE STREAMLIT EXTRAS
+       ═══════════════════════════════════════════ */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display: none;}
@@ -6584,14 +7028,30 @@ async def quick_scan(code, name):
 
 # ── SIDEBAR ──
 with st.sidebar:
-    st.markdown("""<div style='padding:8px 0 16px;'>
-        <span style='font-size:24px;font-weight:300;color:#fafafa;letter-spacing:-0.5px;'>APATECO</span>
-        <span style='font-size:11px;color:#52525b;margin-left:6px;font-weight:500;'>V24-F</span>
+    st.markdown("""<div style='padding:12px 0 20px;'>
+        <div style='display:flex;align-items:center;gap:10px;'>
+            <div style='width:36px;height:36px;border-radius:10px;
+                background:linear-gradient(135deg,#6366f1,#4f46e5);
+                display:flex;align-items:center;justify-content:center;
+                font-size:16px;font-weight:800;color:#fff;font-family:Outfit,sans-serif;
+                box-shadow:0 4px 16px rgba(99,102,241,0.3);'>◆</div>
+            <div>
+                <div style='font-family:Outfit,sans-serif;font-size:22px;font-weight:700;
+                    color:#eeeef0;letter-spacing:-0.5px;'>APATECO</div>
+                <div style='font-family:JetBrains Mono,monospace;font-size:10px;
+                    color:#6366f1;letter-spacing:1px;'>V25-SCALP</div>
+            </div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
     if "GEMINI_API_KEY" in st.secrets:
         api = st.secrets["GEMINI_API_KEY"]
-        st.markdown("<span class='pill pill-green' style='font-size:11px;'>API Connected</span>", unsafe_allow_html=True)
+        st.markdown("""<div style='display:flex;align-items:center;gap:6px;padding:6px 12px;
+            background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);
+            border-radius:8px;margin-bottom:8px;'>
+            <span class='live-dot'></span>
+            <span style='font-size:11px;color:#6ee7b7;font-weight:500;font-family:Outfit,sans-serif;'>API Connected</span>
+        </div>""", unsafe_allow_html=True)
     else:
         api = st.text_input("Gemini API Key", type="password", label_visibility="collapsed",
                              placeholder="Enter API key...")
@@ -6609,11 +7069,11 @@ with st.sidebar:
     risk_pct = st.slider("Risk", 0.5, 3.0, 1.0, 0.1, label_visibility="collapsed")
     st.caption(f"Risk per trade: {risk_pct}%")
 
-    st.markdown("""<div style='margin-top:16px;padding:14px;background:#111113;border:1px solid #1e1e23;
-        border-radius:8px;font-size:11px;color:#3f3f46;line-height:1.6;'>
-        Boom/Crash Sniper V24-F<br>
-        Zero-Illusion | Scalp + Day Trade<br>
-        Weibull · Clean ATR · BC Score
+    st.markdown("""<div class='sidebar-info'>
+        <strong>APATECO V25-SCALP</strong><br>
+        Zero-Illusion · M5 Precision<br>
+        Weibull · Clean ATR · BC Score<br>
+        <span style='color:#6366f1;'>◆</span> 15 BC Engines · 3 M5 Scalp
     </div>""", unsafe_allow_html=True)
 
     # FIX #5: Kill-Switch Trade Tracking (FUNCTIONAL)
@@ -6639,9 +7099,10 @@ with st.sidebar:
         st.info(f"📊 Streak: {ks_streak} loss(es)")
 
 # ── HEADER ──
-st.markdown("""<div style='padding:0 0 8px;'>
-    <span style='font-size:32px;font-weight:300;color:#fafafa;letter-spacing:-1px;'>APATECO</span>
-    <span style='font-size:13px;color:#3f3f46;margin-left:8px;'>Boom/Crash Zero-Illusion V24-F | Scalp + Day Trade</span>
+st.markdown("""<div class='header-bar'>
+    <span class='header-logo'>APATECO</span>
+    <span class='header-version'>V25</span>
+    <span class='header-sub'>Boom/Crash · Zero-Illusion · M5 Scalp Precision</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -6656,10 +7117,17 @@ if mode == "Analysis":
     with left:
         target = st.selectbox("Asset", list(assets.keys()), label_visibility="collapsed")
         prof = get_profile(target)
-        st.markdown(f"""<div style='padding:10px 14px;background:#111113;border:1px solid #1e1e23;
-            border-radius:8px;margin:8px 0 16px;'>
-            <span style='color:#fafafa;font-size:13px;font-weight:500;'>{prof['vol_class']}</span><br>
-            <span class='mono text-xs muted'>{prof.get('gen_type','—')}</span>
+        st.markdown(f"""<div style='padding:12px 16px;background:var(--bg-surface);border:1px solid var(--border);
+            border-radius:10px;margin:8px 0 16px;'>
+            <div style='display:flex;align-items:center;justify-content:space-between;'>
+                <div>
+                    <span style='color:var(--text-primary);font-size:13px;font-weight:600;
+                        font-family:Outfit,sans-serif;'>{prof['vol_class']}</span><br>
+                    <span class='mono text-xs' style='color:var(--accent-light);'>{prof.get('gen_type','—')}</span>
+                </div>
+                <div style='width:8px;height:8px;border-radius:50%;
+                    background:{"var(--success)" if prof.get("gen_type","") in ["BOOM","CRASH"] else "var(--text-muted)"};'></div>
+            </div>
         </div>""", unsafe_allow_html=True)
         run = st.button("Analyze", use_container_width=True)
 
@@ -6667,12 +7135,13 @@ if mode == "Analysis":
         if run:
             if not api: st.error("API key required"); st.stop()
 
-            status = st.status("Analyzing...", expanded=True)
-            status.write("📡 Fetching multi-timeframe data...")
+            status = st.status("◆ Analyzing...", expanded=True)
+            status.write("📡 Connecting to Deriv — fetching multi-timeframe data...")
             h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
             if err: status.update(state='error'); st.error(err); st.stop()
-            status.write("🧮 Running statistical analysis...")
+            status.write("🧮 Running 15 BC engines + 3 M5 scalp engines...")
             data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
+            status.write("📊 Statistical validation + Monte Carlo simulation...")
             imgs = data.pop("IMAGES")
             
             # ── GEMINI AI COM RETRY + FALLBACK ──
@@ -6714,40 +7183,71 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 *💡 Dica: Se o erro persistir, verifique sua API key e tente novamente em alguns minutos.*"""
                 status.update(label="⚠️ Done (sem IA)", state="complete")
 
-            # ── GRADE CARD ──
+            # ── GRADE CARD ── (V25 Premium)
             g = data['SETUP_GRADE']
             grade_class = {"S":"grade-s","A++":"grade-app","A+":"grade-ap","A":"grade-a"}.get(g,"grade-low")
             score_pct = min(data['SETUP_SCORE'] / 220 * 100, 100)
-            bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#52525b")
+            bar_color = {"S":"#a78bfa","A++":"#34d399","A+":"#60a5fa","A":"#67e8f9"}.get(g,"#505068")
 
             # Decision tag
             d = data['FINAL_DECISION']
             if "LONG" in d:
-                tag = f"<span class='tag-long'>LONG</span>"
+                tag = f"<span class='tag-long'>▲ LONG</span>"
             elif "SHORT" in d:
-                tag = f"<span class='tag-short'>SHORT</span>"
+                tag = f"<span class='tag-short'>▼ SHORT</span>"
             elif "BLOCKED" in d:
-                tag = f"<span class='tag-blocked'>BLOCKED</span>"
+                tag = f"<span class='tag-blocked'>⊘ BLOCKED</span>"
             else:
-                tag = f"<span class='tag-monitoring'>MONITORING</span>"
+                tag = f"<span class='tag-monitoring'>◉ MONITORING</span>"
+
+            # Style tag
+            style_tag = ""
+            if data.get('TRADE_STYLE') == "SCALP":
+                style_tag = "<span class='tag-scalp'>⚡ SCALP</span>"
+            elif data.get('TRADE_STYLE') == "DAY":
+                style_tag = "<span class='tag-scalp' style='color:#3b82f6;border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);'>◎ DAY</span>"
+
+            # BC Score badge
+            bc_s = data.get('BC_SCORE', {})
+            bc_badge = ""
+            if bc_s.get('score', 0) > 0:
+                bc_grade = bc_s.get('grade', '?')
+                bc_score_val = bc_s.get('score', 0)
+                bc_color = "#a78bfa" if bc_grade == "S" else "#34d399" if bc_grade in ["A+","A++"] else "#60a5fa" if bc_grade in ["A","B"] else "#505068"
+                bc_badge = f"""<span style='font-family:JetBrains Mono,monospace;font-size:11px;
+                    color:{bc_color};background:rgba(99,102,241,0.06);
+                    padding:3px 8px;border-radius:4px;margin-left:8px;'>
+                    BC:{bc_score_val} [{bc_grade}]</span>"""
 
             st.markdown(f"""
-            <div class='{grade_class}' style='margin:8px 0 20px;'>
+            <div class='{grade_class}' style='margin:8px 0 24px;'>
+                <div style='display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;'>
+                    <span style='font-family:Outfit,sans-serif;font-size:11px;letter-spacing:1.5px;
+                        text-transform:uppercase;opacity:0.6;'>Setup Grade</span>
+                </div>
                 <div class='grade-letter'>{g}</div>
-                <div style='font-family:JetBrains Mono,monospace;font-size:22px;margin:4px 0;color:#fafafa;'>
-                    {data['SETUP_SCORE']:.0f}<span style='color:#52525b;font-size:14px;'> / 220</span>
+                <div style='font-family:JetBrains Mono,monospace;font-size:24px;margin:8px 0;color:var(--text-primary);'>
+                    {data['SETUP_SCORE']:.0f}<span style='color:var(--text-muted);font-size:14px;'> / 220</span>
+                    {bc_badge}
                 </div>
                 <div class='score-bar-outer'>
-                    <div class='score-bar-inner' style='width:{score_pct}%;background:{bar_color};'></div>
+                    <div class='score-bar-inner' style='width:{score_pct}%;background:linear-gradient(90deg,{bar_color},{bar_color}dd);'></div>
                 </div>
-                <div style='margin-top:12px;'>{tag}</div>
-                <div style='color:#52525b;font-size:12px;margin-top:6px;'>
-                    {data.get('SETUP_TYPE','—')} · {data['GEN_TYPE']}
+                <div style='margin-top:14px;display:flex;align-items:center;justify-content:center;gap:6px;'>
+                    {tag}{style_tag}
+                </div>
+                <div style='color:var(--text-muted);font-size:12px;margin-top:8px;
+                    font-family:JetBrains Mono,monospace;'>
+                    {data.get('SETUP_TYPE','—')} · {data['GEN_TYPE']} · {data.get('MAX_HOLD','—')}
                 </div>
             </div>""", unsafe_allow_html=True)
 
             # ── GENERATOR MODEL ──
-            st.markdown("## Generator")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>⚙️</div>
+                <span class='section-title'>Generator</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             ga = data.get('GEN_ANALYSIS', {})
             g1, g2, g3, g4 = st.columns(4)
             g1.metric("Type", data['GEN_TYPE'])
@@ -6768,7 +7268,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 pz.metric("Price Z", f"{ga.get('z_price',0):.2f}")
 
             # ── STATISTICAL EDGE ──
-            st.markdown("## Edge Analysis")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>📊</div>
+                <span class='section-title'>Edge Analysis</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             e1, e2, e3, e4 = st.columns(4)
             vrt = data.get('VR_TEST', {})
             e1.metric("Variance Ratio",
@@ -6786,7 +7290,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 
             # ── DISTRIBUTION ──
             # ═══ V21: PREDICTABILITY INDEX ═══
-            st.markdown("## Predictability")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>🔮</div>
+                <span class='section-title'>Predictability</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             cpi_data = data.get('CPI', {})
             cpi_v = cpi_data.get('cpi', 0)
             cpi_reg = cpi_data.get('regime', '?')
@@ -6806,7 +7314,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             mc3.metric("Regime Shift", data.get('REGIME_TRANSITION', 'STABLE'), data.get('RT_DETAIL',''))
 
             # ── V21+ ENTRY PRECISION ──
-            st.markdown("## Entry Precision")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>🎯</div>
+                <span class='section-title'>Entry Precision</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             adx_sl = data.get('ADX_SLOPE', {})
             ribbon = data.get('EMA_RIBBON', {})
             coherence = data.get('TREND_COHERENCE', {})
@@ -6827,7 +7339,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
 
             # ── V23 SNIPER ENGINE ──
-            st.markdown("## Sniper Engine V23")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>🔫</div>
+                <span class='section-title'>Sniper Engine V23</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             ms_data = data.get('MKT_STRUCTURE', {})
             cm_data = data.get('CANDLE_MOMENTUM', {})
             pb_data = data.get('PULLBACK_QUALITY', {})
@@ -6854,7 +7370,10 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 
             # V23: Multi-entry levels (if signal active)
             if data.get('ENTRY_SNIPER') and any(x in data.get('FINAL_DECISION','') for x in ["LONG","SHORT"]):
-                st.markdown("### 🎯 Entry Levels")
+                st.markdown("""<div class='section-header' style='margin:20px 0 10px;'>
+                    <span class='section-title' style='font-size:12px;'>🎯 Entry Levels</span>
+                    <div class='section-line'></div>
+                </div>""", unsafe_allow_html=True)
                 el1, el2, el3 = st.columns(3)
                 el1.metric("Agressivo", f"{data.get('ENTRY_AGGRESSIVE',0):.5f}")
                 el2.metric("Ideal", f"{data.get('ENTRY_IDEAL',0):.5f}")
@@ -6867,7 +7386,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 tl3.metric(f"MC Confidence {mc_color}", mc_conf, f"{data.get('TOTAL_TRADES',0)} trades")
 
             # ── V24-BC: BOOM/CRASH ENGINE ──
-            st.markdown("## ⚡ Boom/Crash Engine")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon' style='background:rgba(245,158,11,0.1);border-color:rgba(245,158,11,0.15);'>⚡</div>
+                <span class='section-title'>Boom/Crash Engine</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             bcs = data.get('BC_SPIKE', {})
             bcd = data.get('BC_DRIFT', {})
             bcf = data.get('BC_FADE', {})
@@ -6952,7 +7475,72 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                     sd2.metric("📍 Supply", f"{bcsd['nearest_supply']['price']:.2f}",
                               f"str={bcsd['nearest_supply'].get('strength',0):.1f}×ATR")
 
-            st.markdown("## Distribution")
+            # V24-F TOOLS: EMA Stack + Gradient + Recovery + Consecutive + Channel
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>📡</div>
+                <span class='section-title'>Trend Tools V24-F</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
+            bc_stk = data.get('BC_EMA_STACK', {})
+            bc_grd = data.get('BC_GRADIENT', {})
+            bc_rec = data.get('BC_RECOVERY', {})
+            bc_csc = data.get('BC_CONSECUTIVE', {})
+            bc_chn = data.get('BC_CHANNEL', {})
+
+            tf1, tf2, tf3, tf4, tf5 = st.columns(5)
+            stk_q = bc_stk.get('stack_quality', '?')
+            stk_c = "🟢" if stk_q in ["PERFECT","GOOD"] else "🟡" if stk_q == "WEAK" else "⚪"
+            tf1.metric(f"EMA Stack {stk_c}", stk_q, bc_stk.get('direction','?'))
+
+            grd_phase = bc_grd.get('phase', '?')
+            grd_c = "🟢" if grd_phase == "ACCELERATING" else "🟡" if grd_phase in ["STABLE","DECELERATING"] else "🔴" if grd_phase == "DYING" else "⚪"
+            tf2.metric(f"Gradient {grd_c}", grd_phase, f"{bc_grd.get('gradient',0):.2f}")
+
+            rec_phase = bc_rec.get('recovery_phase', '?')
+            rec_c = "🟢" if bc_rec.get('fade_safe') else "🔴" if rec_phase in ["STALLED","JUST_SPIKED"] else "⚪"
+            tf3.metric(f"Recovery {rec_c}", rec_phase, f"spd={bc_rec.get('recovery_speed',0):.0%}" if bc_rec.get('has_recent_spike') else "No spike")
+
+            csc_zone = bc_csc.get('zone', '?')
+            csc_c = "🟢" if csc_zone in ["FRESH","NORMAL"] else "🟡" if csc_zone == "EXTENDED" else "🔴"
+            tf4.metric(f"Consecutive {csc_c}", f"{bc_csc.get('count',0)} bars", bc_csc.get('entry_quality','?'))
+
+            chn_pos = bc_chn.get('position', '?')
+            chn_c = "🟢" if bc_chn.get('entry_zone') not in ['NONE','NEUTRAL','UNKNOWN',None] else "⚪"
+            tf5.metric(f"Channel {chn_c}", chn_pos, f"{bc_chn.get('position_pct',50):.0f}%")
+
+            # V25-SCALP: M5 Precision Tools
+            bc_mp = data.get('BC_M5_PULSE', {})
+            bc_ms = data.get('BC_M5_STRUCT', {})
+            bc_mw = data.get('BC_M5_WICKS', {})
+            has_m5 = bc_mp.get('pulse_phase','NO_DATA') != 'NO_DATA'
+            if has_m5:
+                st.markdown("""<div class='section-header'>
+                    <div class='section-icon' style='background:rgba(99,102,241,0.15);'>⚡</div>
+                    <span class='section-title'>M5 Scalp Precision</span>
+                    <div class='section-line'></div>
+                </div>""", unsafe_allow_html=True)
+
+                m1, m2, m3 = st.columns(3)
+                pulse_phase = bc_mp.get('pulse_phase', '?')
+                pulse_c = "🟢" if bc_mp.get('optimal_entry') else "🟡" if bc_mp.get('pulse_active') else "⚪"
+                m1.metric(f"M5 Pulse {pulse_c}", pulse_phase,
+                         f"{bc_mp.get('pulse_candles',0)}c · str:{bc_mp.get('pulse_strength',0)}%")
+
+                struct_pat = bc_ms.get('pattern', 'NONE')
+                struct_c = "🟢" if bc_ms.get('entry_window') else "🟡" if struct_pat != 'NONE' else "⚪"
+                m2.metric(f"M5 Structure {struct_c}", struct_pat,
+                         f"{bc_ms.get('quality','?')} · {'Entry ✓' if bc_ms.get('entry_window') else 'Wait'}")
+
+                wick_sig = bc_mw.get('signal', 'NEUTRAL')
+                wick_c = "🟢" if wick_sig in ['STRONG_REJECTION','MODERATE_REJECTION'] else "🔴" if 'EXHAUSTION' in wick_sig else "⚪"
+                m3.metric(f"M5 Wicks {wick_c}", wick_sig,
+                         f"rej:{bc_mw.get('rejection_wicks',0)} exh:{bc_mw.get('exhaustion_wicks',0)}")
+
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>📉</div>
+                <span class='section-title'>Distribution</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             da = data.get('DIST_ANALYSIS', {})
             d1, d2, d3, d4 = st.columns(4)
             d1.metric("Skewness", f"{da.get('skewness',0):.3f}")
@@ -6961,7 +7549,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             d4.metric("Percentile", f"{da.get('percentile',50):.0f}%")
 
             # ── BACKTEST ──
-            st.markdown("## Validation")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>✅</div>
+                <span class='section-title'>Validation</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             v1, v2, v3, v4, v5, v6 = st.columns(6)
             v1.metric("Win Rate", f"{data['WIN_RATE']}%")
             v2.metric("Profit Factor", f"{data['PROFIT_FACTOR']}")
@@ -6995,14 +7587,20 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             mc_conf = data.get('MC_CONFIDENCE', 'LOW')
             mc4.metric("MC Confidence", mc_conf, f"{data.get('TOTAL_TRADES',0)} trades")
 
-            # ── CONFLUENCES & RISKS ──
+            # ── CONFLUENCES & RISKS ── (V25 Enhanced)
             if data['CONFLUENCES'] or data['RISKS']:
-                st.markdown("## Confluences")
-                conf_html = ""
+                st.markdown("""<div class='section-header'>
+                    <div class='section-icon' style='background:rgba(16,185,129,0.1);'>✦</div>
+                    <span class='section-title'>Confluences & Risks</span>
+                    <div class='section-line'></div>
+                </div>""", unsafe_allow_html=True)
+                conf_html = "<div style='margin-bottom:12px;'>"
                 for c in data.get('CONFLUENCES', []):
                     conf_html += f"<span class='pill pill-green'>{c}</span> "
+                conf_html += "</div><div>"
                 for r in data.get('RISKS', []):
                     conf_html += f"<span class='pill pill-red'>{r}</span> "
+                conf_html += "</div>"
                 st.markdown(conf_html, unsafe_allow_html=True)
 
             # ── TRADE PLAN ──
@@ -7010,11 +7608,15 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             is_active = any(x in d for x in ["DAY","BREAKOUT","STORM","REVERSION",
                                                "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
             if is_active:
-                st.markdown("## Trade Plan")
+                st.markdown("""<div class='section-header'>
+                    <div class='section-icon' style='background:rgba(16,185,129,0.1);'>🎯</div>
+                    <span class='section-title'>Trade Plan</span>
+                    <div class='section-line'></div>
+                </div>""", unsafe_allow_html=True)
 
-                # Entry/SL/TP as clean card
+                # Entry/SL/TP as glowing card
                 entry_color = "#22c55e" if "LONG" in d else "#ef4444"
-                st.markdown(f"""<div class='card'>
+                st.markdown(f"""<div class='card-glow'>
                     <div class='plan-row'>
                         <span class='plan-label'>Entry</span>
                         <span class='plan-value' style='color:{entry_color};'>{data['ENTRY']}</span>
@@ -7045,7 +7647,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 # Pyramid
                 pyr = data.get('PYRAMID', {})
                 if pyr.get('n_levels', 0) > 1:
-                    st.markdown("## Pyramid")
+                    st.markdown("""<div class='section-header'>
+                    <div class='section-icon'>△</div>
+                    <span class='section-title'>Pyramid</span>
+                    <div class='section-line'></div>
+                </div>""", unsafe_allow_html=True)
                     pyr_html = "<div class='card'>"
                     for i, l in enumerate(pyr.get('levels', [])):
                         pyr_html += f"""<div class='plan-row'>
@@ -7062,19 +7668,29 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 
             elif "BLOCKED" in d:
                 reason = d.replace("BLOCKED (","").rstrip(")")
-                st.markdown(f"""<div class='card' style='border-color:#ef444420;'>
-                    <span style='color:#ef4444;font-size:14px;font-weight:500;'>Blocked</span><br>
-                    <span class='mono text-sm muted'>{reason}</span>
+                st.markdown(f"""<div class='card' style='border-color:rgba(239,68,68,0.15);border-left:3px solid rgba(239,68,68,0.4);'>
+                    <div style='display:flex;align-items:center;gap:8px;'>
+                        <span style='font-size:18px;'>⊘</span>
+                        <span style='color:#ef4444;font-size:14px;font-weight:600;font-family:Outfit,sans-serif;'>Trade Blocked</span>
+                    </div>
+                    <span class='mono text-sm' style='color:var(--text-secondary);margin-top:6px;display:block;'>{reason}</span>
                 </div>""", unsafe_allow_html=True)
             else:
-                st.markdown("""<div class='card'>
-                    <span style='color:#f59e0b;font-size:14px;font-weight:500;'>Monitoring</span><br>
-                    <span class='text-sm muted'>No setup detected. Waiting for conditions.</span>
+                st.markdown("""<div class='card' style='border-color:rgba(245,158,11,0.15);border-left:3px solid rgba(245,158,11,0.3);'>
+                    <div style='display:flex;align-items:center;gap:8px;'>
+                        <span style='font-size:18px;'>◉</span>
+                        <span style='color:#f59e0b;font-size:14px;font-weight:600;font-family:Outfit,sans-serif;'>Monitoring</span>
+                    </div>
+                    <span class='text-sm' style='color:var(--text-secondary);margin-top:4px;display:block;'>No setup detected. Waiting for conditions to align.</span>
                 </div>""", unsafe_allow_html=True)
 
             # ── CHARTS ──
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-            st.markdown("## Charts")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon'>📈</div>
+                <span class='section-title'>Charts</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             tabs = st.tabs(["H4", "H1", "M15"])
             for i, t in enumerate(tabs):
                 with t:
@@ -7082,7 +7698,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 
             # ── AI INSIGHT ──
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-            st.markdown("## AI Analysis")
+            st.markdown("""<div class='section-header'>
+                <div class='section-icon' style='background:rgba(168,85,247,0.12);border-color:rgba(168,85,247,0.15);'>🧠</div>
+                <span class='section-title'>AI Analysis</span>
+                <div class='section-line'></div>
+            </div>""", unsafe_allow_html=True)
             st.markdown(f"""<div class='card-accent'>
                 {ai}
             </div>""", unsafe_allow_html=True)
@@ -7091,8 +7711,12 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 # SCANNER MODE
 # ==============================================================================
 elif mode == "Scanner":
-    st.markdown("## Scanner")
-    st.markdown("<p class='text-sm muted' style='margin-top:-8px;'>Scan all synthetic indices for statistical edge opportunities.</p>",
+    st.markdown("""<div class='section-header'>
+        <div class='section-icon'>🔍</div>
+        <span class='section-title'>Scanner</span>
+        <div class='section-line'></div>
+    </div>""", unsafe_allow_html=True)
+    st.markdown("<p class='text-sm' style='color:var(--text-muted);margin-top:-4px;'>Scan all synthetic indices for statistical edge opportunities.</p>",
                 unsafe_allow_html=True)
 
     if st.button("Scan All Assets", use_container_width=True):
@@ -7103,21 +7727,23 @@ elif mode == "Scanner":
             valid = sorted([r for r in results if r], key=lambda x: x['score'], reverse=True)
 
         if valid:
-            st.markdown(f"<p class='text-sm muted' style='margin:12px 0;'>{len(valid)} assets scanned</p>",
-                        unsafe_allow_html=True)
+            st.markdown(f"""<div style='display:flex;align-items:center;gap:8px;margin:16px 0;'>
+                <span class='live-dot'></span>
+                <span style='font-size:12px;color:var(--text-secondary);'>{len(valid)} assets scanned</span>
+            </div>""", unsafe_allow_html=True)
 
             for i, r in enumerate(valid[:12]):
                 score = r['score']
-                sc = "#22c55e" if score >= 50 else "#f59e0b" if score >= 30 else "#52525b"
-                bias_c = "#22c55e" if r['bias'] == "BULLISH" else "#ef4444"
-                vr_tag = "<span class='pill pill-green' style='font-size:10px;'>VR Edge</span>" if r.get('vr_edge') else ""
+                sc = "var(--success)" if score >= 50 else "var(--warning)" if score >= 30 else "var(--text-muted)"
+                bias_c = "var(--success)" if r['bias'] == "BULLISH" else "var(--danger)"
+                vr_tag = "<span class='pill pill-green' style='font-size:10px;padding:2px 8px;'>VR Edge</span>" if r.get('vr_edge') else ""
 
-                st.markdown(f"""<div class='scan-row'>
+                st.markdown(f"""<div class='scan-row' style='animation-delay:{i*0.05}s;'>
                     <span class='scan-rank'>#{i+1}</span>
                     <span class='scan-name'>{r['name']}</span>
                     <span class='scan-score' style='color:{sc};'>{score}</span>
                     <div>
-                        <span class='pill' style='font-size:10px;color:{bias_c};border-color:{bias_c}30;'>{r['bias']}</span>
+                        <span class='pill' style='font-size:10px;padding:2px 8px;color:{bias_c};border-color:{bias_c}30;'>{r['bias']}</span>
                         {vr_tag}
                     </div>
                     <span class='scan-meta' style='min-width:260px;text-align:right;'>
