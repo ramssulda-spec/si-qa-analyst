@@ -82,13 +82,13 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
     /* ═══════════════════════════════════════════
        KEYFRAME ANIMATIONS
        ═══════════════════════════════════════════ */
     @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
+        from { opacity: 0; transform: translateY(24px); }
         to { opacity: 1; transform: translateY(0); }
     }
     @keyframes fadeIn {
@@ -96,7 +96,11 @@ st.markdown("""
         to { opacity: 1; }
     }
     @keyframes slideInLeft {
-        from { opacity: 0; transform: translateX(-16px); }
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(20px); }
         to { opacity: 1; transform: translateX(0); }
     }
     @keyframes fillBar {
@@ -108,16 +112,16 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
     @keyframes pulseGlow {
-        0%, 100% { box-shadow: 0 0 8px rgba(99,102,241,0.15); }
-        50% { box-shadow: 0 0 24px rgba(99,102,241,0.3); }
+        0%, 100% { box-shadow: 0 0 12px rgba(99,102,241,0.15); }
+        50% { box-shadow: 0 0 36px rgba(99,102,241,0.35); }
     }
     @keyframes livePulse {
         0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.4; transform: scale(0.85); }
+        50% { opacity: 0.35; transform: scale(0.8); }
     }
     @keyframes popIn {
-        0% { opacity: 0; transform: scale(0.8); }
-        70% { transform: scale(1.05); }
+        0% { opacity: 0; transform: scale(0.75); }
+        60% { transform: scale(1.06); }
         100% { opacity: 1; transform: scale(1); }
     }
     @keyframes shimmer {
@@ -125,80 +129,134 @@ st.markdown("""
         100% { background-position: 200% 0; }
     }
     @keyframes borderGlow {
-        0%, 100% { border-color: rgba(99,102,241,0.2); }
-        50% { border-color: rgba(99,102,241,0.5); }
+        0%, 100% { border-color: rgba(99,102,241,0.15); }
+        50% { border-color: rgba(99,102,241,0.45); }
     }
     @keyframes scanSlide {
-        from { opacity: 0; transform: translateX(-12px); }
+        from { opacity: 0; transform: translateX(-16px); }
         to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes textReveal {
+        from { opacity: 0; letter-spacing: 8px; filter: blur(4px); }
+        to { opacity: 1; letter-spacing: -1.5px; filter: blur(0); }
+    }
+    @keyframes gradientBorder {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    @keyframes breathe {
+        0%, 100% { opacity: 0.04; }
+        50% { opacity: 0.08; }
+    }
+    @keyframes orbFloat {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        25% { transform: translate(30px, -20px) scale(1.1); }
+        50% { transform: translate(-10px, 15px) scale(0.95); }
+        75% { transform: translate(20px, 10px) scale(1.05); }
+    }
+    @keyframes countUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes lineExpand {
+        from { width: 0; opacity: 0; }
+        to { width: 100%; opacity: 1; }
+    }
+    @keyframes cardEnter {
+        from { opacity: 0; transform: translateY(16px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes ringPulse {
+        0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+        70% { box-shadow: 0 0 0 12px rgba(99,102,241,0); }
+        100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
     }
 
     /* ═══════════════════════════════════════════
-       BASE THEME — Deep Space Terminal
+       BASE THEME — Obsidian Command Center
        ═══════════════════════════════════════════ */
     :root {
-        --bg-base: #07070d;
-        --bg-surface: #0c0c15;
-        --bg-elevated: #10101c;
-        --bg-hover: #161625;
-        --border: #1a1a2e;
-        --border-subtle: #13132a;
-        --border-hover: #2a2a4e;
-        --text-primary: #eeeef0;
-        --text-secondary: #8888a0;
-        --text-muted: #505068;
+        --bg-void: #050508;
+        --bg-base: #08080e;
+        --bg-surface: #0d0d16;
+        --bg-elevated: #12121e;
+        --bg-card: #0f0f1a;
+        --bg-hover: #181830;
+        --border: #1c1c35;
+        --border-subtle: #141428;
+        --border-hover: #2d2d55;
+        --border-accent: rgba(99,102,241,0.25);
+        --text-primary: #f0f0f5;
+        --text-secondary: #9090a8;
+        --text-muted: #555570;
+        --text-dim: #3a3a50;
         --accent: #6366f1;
         --accent-light: #818cf8;
         --accent-dim: #4f46e5;
-        --accent-glow: rgba(99,102,241,0.12);
+        --accent-glow: rgba(99,102,241,0.10);
+        --accent-glow-strong: rgba(99,102,241,0.20);
         --success: #10b981;
-        --success-dim: rgba(16,185,129,0.1);
+        --success-soft: rgba(16,185,129,0.08);
         --danger: #ef4444;
-        --danger-dim: rgba(239,68,68,0.1);
+        --danger-soft: rgba(239,68,68,0.08);
         --warning: #f59e0b;
-        --warning-dim: rgba(245,158,11,0.1);
+        --warning-soft: rgba(245,158,11,0.08);
         --info: #3b82f6;
+        --purple: #a855f7;
+        --purple-soft: rgba(168,85,247,0.08);
+        --cyan: #06b6d4;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --radius-xl: 20px;
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+        --shadow-md: 0 4px 24px rgba(0,0,0,0.4);
+        --shadow-lg: 0 8px 48px rgba(0,0,0,0.5);
+        --shadow-glow: 0 0 32px rgba(99,102,241,0.12);
     }
 
     .stApp {
-        background: var(--bg-base);
+        background: var(--bg-void);
         color: var(--text-secondary);
         font-family: 'DM Sans', -apple-system, sans-serif;
     }
 
-    /* Subtle dot grid background */
+    /* Subtle animated dot grid */
     .stApp::before {
         content: '';
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        background-image: radial-gradient(circle, rgba(99,102,241,0.03) 1px, transparent 1px);
-        background-size: 32px 32px;
+        background-image: radial-gradient(circle, rgba(99,102,241,0.025) 1px, transparent 1px);
+        background-size: 28px 28px;
         pointer-events: none;
         z-index: 0;
+        animation: breathe 8s ease-in-out infinite;
     }
 
-    /* Ambient glow */
+    /* Ambient orb glow — top left */
     .stApp::after {
         content: '';
         position: fixed;
-        top: -30%; left: -10%;
-        width: 50%; height: 50%;
-        background: radial-gradient(ellipse, rgba(99,102,241,0.04) 0%, transparent 70%);
+        top: -20%; left: -15%;
+        width: 600px; height: 600px;
+        background: radial-gradient(ellipse, rgba(99,102,241,0.04) 0%, rgba(168,85,247,0.02) 40%, transparent 70%);
         pointer-events: none;
         z-index: 0;
+        animation: orbFloat 20s ease-in-out infinite;
     }
 
     /* ── SIDEBAR ── */
     section[data-testid="stSidebar"] {
-        background: var(--bg-base);
-        border-right: 1px solid var(--border);
+        background: linear-gradient(180deg, var(--bg-base) 0%, var(--bg-void) 100%);
+        border-right: 1px solid var(--border-subtle);
     }
     section[data-testid="stSidebar"]::before {
         content: '';
         position: absolute;
         top: 0; left: 0; right: 0;
-        height: 120px;
-        background: linear-gradient(180deg, rgba(99,102,241,0.06) 0%, transparent 100%);
+        height: 160px;
+        background: linear-gradient(180deg, rgba(99,102,241,0.05) 0%, transparent 100%);
         pointer-events: none;
     }
     section[data-testid="stSidebar"] .stMarkdown p,
@@ -208,7 +266,7 @@ st.markdown("""
     }
 
     /* ═══════════════════════════════════════════
-       TYPOGRAPHY
+       TYPOGRAPHY — Refined
        ═══════════════════════════════════════════ */
     h1 {
         font-family: 'Outfit', sans-serif !important;
@@ -223,13 +281,13 @@ st.markdown("""
         font-family: 'Outfit', sans-serif !important;
         font-weight: 600 !important;
         color: var(--text-primary) !important;
-        font-size: 15px !important;
-        letter-spacing: 1.2px !important;
+        font-size: 13px !important;
+        letter-spacing: 1.8px !important;
         text-transform: uppercase !important;
         text-shadow: none !important;
         border: none !important;
-        margin-top: 32px !important;
-        padding-bottom: 10px !important;
+        margin-top: 36px !important;
+        padding-bottom: 12px !important;
         position: relative;
         animation: slideInLeft 0.5s ease-out;
     }
@@ -237,16 +295,17 @@ st.markdown("""
         content: '';
         position: absolute;
         bottom: 0; left: 0;
-        width: 32px; height: 2px;
-        background: linear-gradient(90deg, var(--accent), transparent);
+        width: 40px; height: 2px;
+        background: linear-gradient(90deg, var(--accent), var(--purple), transparent);
         border-radius: 2px;
+        animation: lineExpand 0.8s ease-out;
     }
     h3 {
         font-family: 'Outfit', sans-serif !important;
         font-weight: 500 !important;
         color: var(--text-secondary) !important;
-        font-size: 13px !important;
-        letter-spacing: 0.8px !important;
+        font-size: 12px !important;
+        letter-spacing: 1px !important;
         text-transform: uppercase !important;
         text-shadow: none !important;
         border: none !important;
@@ -254,26 +313,35 @@ st.markdown("""
     p, li, span { font-family: 'DM Sans', sans-serif; }
 
     /* ═══════════════════════════════════════════
-       METRIC CARDS — Glassmorphic
+       METRIC CARDS — Elevated Glass
        ═══════════════════════════════════════════ */
     div[data-testid="stMetric"] {
-        background: var(--bg-surface);
+        background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-card) 100%);
         border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 18px 20px;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        animation: fadeInUp 0.5s ease-out backwards;
+        border-radius: var(--radius-md);
+        padding: 16px 18px;
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: cardEnter 0.5s ease-out backwards;
+        position: relative;
+        overflow: hidden;
+    }
+    div[data-testid="stMetric"]::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 10%, rgba(99,102,241,0.15) 50%, transparent 90%);
     }
     div[data-testid="stMetric"]:hover {
-        border-color: var(--border-hover);
-        background: var(--bg-elevated);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px var(--border-hover);
+        border-color: var(--border-accent);
+        background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md), var(--shadow-glow);
     }
     div[data-testid="stMetric"] label {
         color: var(--text-muted) !important;
-        font-size: 10.5px !important;
-        letter-spacing: 1px;
+        font-size: 10px !important;
+        letter-spacing: 1.2px;
         text-transform: uppercase;
         font-weight: 600 !important;
         font-family: 'Outfit', sans-serif !important;
@@ -281,276 +349,374 @@ st.markdown("""
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
         color: var(--text-primary) !important;
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 19px !important;
-        font-weight: 500 !important;
+        font-size: 17px !important;
+        font-weight: 600 !important;
+        animation: countUp 0.6s ease-out;
     }
     div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 11px !important;
+        font-size: 10.5px !important;
     }
 
     /* Stagger metric animations */
     div[data-testid="column"]:nth-child(1) div[data-testid="stMetric"] { animation-delay: 0.05s; }
-    div[data-testid="column"]:nth-child(2) div[data-testid="stMetric"] { animation-delay: 0.1s; }
+    div[data-testid="column"]:nth-child(2) div[data-testid="stMetric"] { animation-delay: 0.10s; }
     div[data-testid="column"]:nth-child(3) div[data-testid="stMetric"] { animation-delay: 0.15s; }
-    div[data-testid="column"]:nth-child(4) div[data-testid="stMetric"] { animation-delay: 0.2s; }
+    div[data-testid="column"]:nth-child(4) div[data-testid="stMetric"] { animation-delay: 0.20s; }
     div[data-testid="column"]:nth-child(5) div[data-testid="stMetric"] { animation-delay: 0.25s; }
-    div[data-testid="column"]:nth-child(6) div[data-testid="stMetric"] { animation-delay: 0.3s; }
+    div[data-testid="column"]:nth-child(6) div[data-testid="stMetric"] { animation-delay: 0.30s; }
 
     /* ═══════════════════════════════════════════
-       BUTTONS — Accent Gradient
+       BUTTONS — Luminous Accent
        ═══════════════════════════════════════════ */
     .stButton > button {
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+        background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 50%, var(--accent-dim) 100%);
+        background-size: 200% 200%;
         color: #ffffff;
         font-family: 'Outfit', sans-serif;
         font-weight: 600;
-        font-size: 13px;
-        letter-spacing: 0.8px;
-        padding: 12px 24px;
-        border-radius: 10px;
+        font-size: 12.5px;
+        letter-spacing: 1.2px;
+        padding: 13px 28px;
+        border-radius: var(--radius-md);
         border: none;
         width: 100%;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         text-transform: uppercase;
         position: relative;
         overflow: hidden;
+        box-shadow: 0 2px 12px rgba(99,102,241,0.2);
     }
     .stButton > button::before {
         content: '';
         position: absolute;
         top: 0; left: -100%; width: 100%; height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-        transition: left 0.5s;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+        transition: left 0.6s ease;
     }
     .stButton > button:hover {
-        background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 100%);
-        box-shadow: 0 4px 24px rgba(99,102,241,0.3), 0 0 0 1px rgba(99,102,241,0.2);
-        transform: translateY(-1px);
+        background-position: 100% 50%;
+        box-shadow: 0 6px 32px rgba(99,102,241,0.35), 0 0 0 1px rgba(99,102,241,0.3);
+        transform: translateY(-2px);
     }
     .stButton > button:hover::before { left: 100%; }
+    .stButton > button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(99,102,241,0.2);
+    }
 
     /* ═══════════════════════════════════════════
-       CARDS
+       CARDS — Layered Depth System
        ═══════════════════════════════════════════ */
     .card {
-        background: var(--bg-surface);
+        background: linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-card) 100%);
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: var(--radius-lg);
         padding: 24px;
         margin: 8px 0;
-        animation: fadeInUp 0.5s ease-out;
+        animation: cardEnter 0.5s ease-out;
+        position: relative;
+    }
+    .card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 20px; right: 20px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(99,102,241,0.12), transparent);
     }
     .card-accent {
-        background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+        background: linear-gradient(145deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
         border: 1px solid var(--border-hover);
-        border-radius: 16px;
+        border-radius: var(--radius-xl);
         padding: 28px;
-        margin: 12px 0;
-        box-shadow: 0 4px 32px rgba(0,0,0,0.2);
-        animation: fadeInUp 0.6s ease-out;
+        margin: 16px 0;
+        box-shadow: var(--shadow-md);
+        animation: cardEnter 0.6s ease-out;
+        position: relative;
+    }
+    .card-accent::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: 30px; right: 30px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--accent), var(--purple), transparent);
+        border-radius: 2px;
+        opacity: 0.5;
     }
     .card-glow {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 16px;
+        border-radius: var(--radius-xl);
         padding: 28px;
         margin: 12px 0;
         position: relative;
         overflow: hidden;
-        animation: fadeInUp 0.5s ease-out;
+        animation: cardEnter 0.5s ease-out;
     }
     .card-glow::before {
         content: '';
         position: absolute;
         top: -1px; left: -1px; right: -1px; bottom: -1px;
-        border-radius: 17px;
-        background: linear-gradient(135deg, var(--accent), var(--accent-dim), #a855f7, var(--accent));
-        background-size: 300% 300%;
-        animation: gradientRotate 4s ease infinite;
+        border-radius: calc(var(--radius-xl) + 1px);
+        background: linear-gradient(135deg, var(--accent), var(--accent-dim), #a855f7, var(--cyan), var(--accent));
+        background-size: 400% 400%;
+        animation: gradientBorder 6s ease infinite;
         z-index: -1;
-        opacity: 0.5;
+        opacity: 0.45;
     }
     .card-glow::after {
         content: '';
         position: absolute;
         top: 1px; left: 1px; right: 1px; bottom: 1px;
-        border-radius: 15px;
+        border-radius: calc(var(--radius-xl) - 1px);
         background: var(--bg-surface);
         z-index: -1;
+    }
+
+    /* Section Wrapper Card — groups related metrics */
+    .section-wrap {
+        background: linear-gradient(180deg, rgba(12,12,22,0.6) 0%, rgba(8,8,14,0.4) 100%);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px 12px;
+        margin: 12px 0 20px;
+        position: relative;
+        animation: cardEnter 0.5s ease-out;
+    }
+    .section-wrap::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 24px; right: 24px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border), transparent);
+    }
+    .section-wrap-accent {
+        background: linear-gradient(180deg, rgba(99,102,241,0.03) 0%, rgba(8,8,14,0.4) 100%);
+        border: 1px solid rgba(99,102,241,0.12);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px 12px;
+        margin: 12px 0 20px;
+        position: relative;
+        animation: cardEnter 0.6s ease-out;
+    }
+    .section-wrap-accent::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: 20px; right: 20px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        border-radius: 2px;
+        opacity: 0.4;
+    }
+    /* M5 Scalp section — extra highlight */
+    .section-wrap-m5 {
+        background: linear-gradient(180deg, rgba(99,102,241,0.05) 0%, rgba(168,85,247,0.02) 50%, rgba(8,8,14,0.4) 100%);
+        border: 1px solid rgba(99,102,241,0.18);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px 12px;
+        margin: 12px 0 20px;
+        position: relative;
+        animation: cardEnter 0.6s ease-out;
+        box-shadow: 0 4px 24px rgba(99,102,241,0.06);
+    }
+    .section-wrap-m5::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: 16px; right: 16px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--accent), var(--purple), transparent);
+        border-radius: 2px;
+        opacity: 0.5;
+    }
+    /* BC Engine section */
+    .section-wrap-bc {
+        background: linear-gradient(180deg, rgba(239,68,68,0.02) 0%, rgba(8,8,14,0.4) 100%);
+        border: 1px solid rgba(239,68,68,0.08);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px 12px;
+        margin: 12px 0 20px;
+        position: relative;
+        animation: cardEnter 0.5s ease-out;
     }
 
     /* ═══════════════════════════════════════════
        GRADE BADGES — Animated Premium
        ═══════════════════════════════════════════ */
     .grade-s {
-        background: linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(168,85,247,0.04) 100%);
-        border: 1px solid rgba(124,58,237,0.25);
+        background: linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(168,85,247,0.03) 100%);
+        border: 1px solid rgba(124,58,237,0.2);
         color: #c4b5fd;
-        border-radius: 16px; padding: 28px; text-align: center;
-        animation: pulseGlow 3s ease infinite, fadeInUp 0.6s ease-out;
-        position: relative;
-        overflow: hidden;
+        border-radius: var(--radius-xl); padding: 32px; text-align: center;
+        animation: pulseGlow 3s ease infinite, cardEnter 0.6s ease-out;
+        position: relative; overflow: hidden;
     }
     .grade-s::before {
         content: '';
         position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.12) 0%, transparent 60%);
+        background: radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.1) 0%, transparent 60%);
         pointer-events: none;
     }
-    .grade-s .grade-letter { font-size: 56px; font-weight: 800; color: #a78bfa;
-        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(167,139,250,0.3); }
+    .grade-s .grade-letter { font-size: 64px; font-weight: 800; color: #a78bfa;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 60px rgba(167,139,250,0.35);
+        animation: textReveal 0.8s ease-out; }
 
     .grade-app {
-        background: linear-gradient(135deg, rgba(5,150,105,0.08) 0%, rgba(16,185,129,0.04) 100%);
-        border: 1px solid rgba(16,185,129,0.25);
+        background: linear-gradient(135deg, rgba(5,150,105,0.06) 0%, rgba(16,185,129,0.03) 100%);
+        border: 1px solid rgba(16,185,129,0.2);
         color: #6ee7b7;
-        border-radius: 16px; padding: 28px; text-align: center;
-        animation: fadeInUp 0.6s ease-out;
+        border-radius: var(--radius-xl); padding: 32px; text-align: center;
+        animation: cardEnter 0.6s ease-out;
         position: relative; overflow: hidden;
     }
     .grade-app::before {
         content: '';
         position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(16,185,129,0.1) 0%, transparent 60%);
+        background: radial-gradient(ellipse at 50% 0%, rgba(16,185,129,0.08) 0%, transparent 60%);
         pointer-events: none;
     }
-    .grade-app .grade-letter { font-size: 56px; font-weight: 800; color: #34d399;
-        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(52,211,153,0.25); }
+    .grade-app .grade-letter { font-size: 64px; font-weight: 800; color: #34d399;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 50px rgba(52,211,153,0.25);
+        animation: textReveal 0.8s ease-out; }
 
     .grade-ap {
-        background: linear-gradient(135deg, rgba(37,99,235,0.08) 0%, rgba(59,130,246,0.04) 100%);
-        border: 1px solid rgba(59,130,246,0.25);
+        background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(59,130,246,0.03) 100%);
+        border: 1px solid rgba(59,130,246,0.2);
         color: #93c5fd;
-        border-radius: 16px; padding: 28px; text-align: center;
-        animation: fadeInUp 0.6s ease-out;
+        border-radius: var(--radius-xl); padding: 32px; text-align: center;
+        animation: cardEnter 0.6s ease-out;
         position: relative; overflow: hidden;
     }
     .grade-ap::before {
         content: '';
         position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 60%);
+        background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 60%);
         pointer-events: none;
     }
-    .grade-ap .grade-letter { font-size: 56px; font-weight: 800; color: #60a5fa;
-        font-family: 'Outfit', sans-serif; text-shadow: 0 0 40px rgba(96,165,250,0.25); }
+    .grade-ap .grade-letter { font-size: 64px; font-weight: 800; color: #60a5fa;
+        font-family: 'Outfit', sans-serif; text-shadow: 0 0 50px rgba(96,165,250,0.25);
+        animation: textReveal 0.8s ease-out; }
 
     .grade-a {
-        background: linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(34,211,238,0.04) 100%);
-        border: 1px solid rgba(34,211,238,0.2);
+        background: linear-gradient(135deg, rgba(6,182,212,0.06) 0%, rgba(34,211,238,0.03) 100%);
+        border: 1px solid rgba(34,211,238,0.15);
         color: #a5f3fc;
-        border-radius: 16px; padding: 28px; text-align: center;
-        animation: fadeInUp 0.6s ease-out;
+        border-radius: var(--radius-xl); padding: 32px; text-align: center;
+        animation: cardEnter 0.6s ease-out;
         position: relative; overflow: hidden;
     }
     .grade-a::before {
         content: '';
         position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(ellipse at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 60%);
+        background: radial-gradient(ellipse at 50% 0%, rgba(34,211,238,0.06) 0%, transparent 60%);
         pointer-events: none;
     }
-    .grade-a .grade-letter { font-size: 56px; font-weight: 800; color: #67e8f9;
-        font-family: 'Outfit', sans-serif; }
+    .grade-a .grade-letter { font-size: 64px; font-weight: 800; color: #67e8f9;
+        font-family: 'Outfit', sans-serif; animation: textReveal 0.8s ease-out; }
 
     .grade-low {
         background: var(--bg-surface);
         border: 1px solid var(--border);
         color: var(--text-muted);
-        border-radius: 16px; padding: 28px; text-align: center;
-        animation: fadeInUp 0.6s ease-out;
+        border-radius: var(--radius-xl); padding: 32px; text-align: center;
+        animation: cardEnter 0.6s ease-out;
     }
-    .grade-low .grade-letter { font-size: 56px; font-weight: 800; color: var(--text-muted);
+    .grade-low .grade-letter { font-size: 64px; font-weight: 800; color: var(--text-muted);
         font-family: 'Outfit', sans-serif; }
 
     /* ═══════════════════════════════════════════
-       SCORE BAR — Animated Fill
+       SCORE BAR — Animated Fill with Glow
        ═══════════════════════════════════════════ */
     .score-bar-outer {
-        background: rgba(255,255,255,0.04);
-        border-radius: 8px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 10px;
         height: 6px;
-        margin: 10px 0 6px;
+        margin: 12px 0 8px;
         overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.03);
     }
     .score-bar-inner {
         height: 100%;
-        border-radius: 8px;
-        transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
-        animation: fillBar 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 10px;
+        transition: width 1.8s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fillBar 1.8s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
+        box-shadow: 0 0 12px rgba(99,102,241,0.3);
     }
     .score-bar-inner::after {
         content: '';
         position: absolute;
         top: 0; right: 0;
-        width: 24px; height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
-        border-radius: 8px;
+        width: 32px; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35));
+        border-radius: 10px;
     }
 
     /* ═══════════════════════════════════════════
        SIGNAL TAGS — Premium Badges
        ═══════════════════════════════════════════ */
     .tag-long {
-        display: inline-block;
+        display: inline-flex; align-items: center; gap: 5px;
         background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
         color: #34d399;
-        border: 1px solid rgba(16,185,129,0.25);
-        padding: 6px 16px;
-        border-radius: 8px;
+        border: 1px solid rgba(16,185,129,0.3);
+        padding: 7px 18px;
+        border-radius: 10px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
         animation: popIn 0.4s ease-out;
+        box-shadow: 0 0 16px rgba(16,185,129,0.12);
     }
     .tag-short {
-        display: inline-block;
+        display: inline-flex; align-items: center; gap: 5px;
         background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.04));
         color: #f87171;
-        border: 1px solid rgba(239,68,68,0.25);
-        padding: 6px 16px;
-        border-radius: 8px;
+        border: 1px solid rgba(239,68,68,0.3);
+        padding: 7px 18px;
+        border-radius: 10px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
         animation: popIn 0.4s ease-out;
+        box-shadow: 0 0 16px rgba(239,68,68,0.12);
     }
     .tag-blocked {
-        display: inline-block;
-        background: rgba(255,255,255,0.03);
+        display: inline-flex; align-items: center; gap: 5px;
+        background: rgba(255,255,255,0.02);
         color: var(--text-muted);
         border: 1px solid var(--border);
-        padding: 6px 16px;
-        border-radius: 8px;
+        padding: 7px 18px;
+        border-radius: 10px;
         font-size: 12px;
         font-weight: 500;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
     }
     .tag-monitoring {
-        display: inline-block;
+        display: inline-flex; align-items: center; gap: 5px;
         background: linear-gradient(135deg, rgba(245,158,11,0.1), rgba(245,158,11,0.03));
         color: #fbbf24;
         border: 1px solid rgba(245,158,11,0.25);
-        padding: 6px 16px;
-        border-radius: 8px;
+        padding: 7px 18px;
+        border-radius: 10px;
         font-size: 12px;
         font-weight: 500;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
     }
     .tag-scalp {
-        display: inline-block;
-        background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(99,102,241,0.04));
+        display: inline-flex; align-items: center; gap: 4px;
+        background: linear-gradient(135deg, rgba(99,102,241,0.14), rgba(168,85,247,0.06));
         color: var(--accent-light);
-        border: 1px solid rgba(99,102,241,0.25);
-        padding: 3px 10px;
-        border-radius: 6px;
+        border: 1px solid rgba(99,102,241,0.3);
+        padding: 4px 12px;
+        border-radius: 8px;
         font-size: 10px;
-        font-weight: 600;
+        font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.8px;
+        letter-spacing: 1px;
         margin-left: 6px;
+        animation: popIn 0.5s ease-out 0.2s backwards;
     }
 
     /* ═══════════════════════════════════════════
@@ -562,55 +728,58 @@ st.markdown("""
         background: var(--bg-elevated);
         border: 1px solid var(--border);
         color: var(--text-secondary);
-        padding: 7px 14px;
+        padding: 8px 16px;
         border-radius: 24px;
-        font-size: 12px;
+        font-size: 11.5px;
         margin: 4px 4px;
         font-weight: 400;
-        transition: all 0.25s ease;
+        transition: all 0.3s ease;
         animation: popIn 0.4s ease-out backwards;
     }
     .pill:nth-child(1) { animation-delay: 0.05s; }
-    .pill:nth-child(2) { animation-delay: 0.1s; }
-    .pill:nth-child(3) { animation-delay: 0.15s; }
-    .pill:nth-child(4) { animation-delay: 0.2s; }
-    .pill:nth-child(5) { animation-delay: 0.25s; }
-    .pill:nth-child(6) { animation-delay: 0.3s; }
-    .pill:nth-child(7) { animation-delay: 0.35s; }
-    .pill:nth-child(8) { animation-delay: 0.4s; }
-    .pill-green { border-color: rgba(16,185,129,0.2); color: #6ee7b7; background: rgba(16,185,129,0.06); }
-    .pill-green:hover { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); }
-    .pill-red { border-color: rgba(239,68,68,0.2); color: #fca5a5; background: rgba(239,68,68,0.06); }
-    .pill-red:hover { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); }
-    .pill-purple { border-color: rgba(124,58,237,0.2); color: #c4b5fd; background: rgba(124,58,237,0.06); }
-    .pill-blue { border-color: rgba(59,130,246,0.2); color: #93c5fd; background: rgba(59,130,246,0.06); }
+    .pill:nth-child(2) { animation-delay: 0.10s; }
+    .pill:nth-child(3) { animation-delay: 0.12s; }
+    .pill:nth-child(4) { animation-delay: 0.15s; }
+    .pill:nth-child(5) { animation-delay: 0.18s; }
+    .pill:nth-child(6) { animation-delay: 0.21s; }
+    .pill:nth-child(7) { animation-delay: 0.24s; }
+    .pill:nth-child(8) { animation-delay: 0.27s; }
+    .pill:nth-child(9) { animation-delay: 0.30s; }
+    .pill:nth-child(10) { animation-delay: 0.33s; }
+    .pill-green { border-color: rgba(16,185,129,0.2); color: #6ee7b7; background: rgba(16,185,129,0.05); }
+    .pill-green:hover { border-color: rgba(16,185,129,0.45); background: rgba(16,185,129,0.1); transform: translateY(-1px); }
+    .pill-red { border-color: rgba(239,68,68,0.2); color: #fca5a5; background: rgba(239,68,68,0.05); }
+    .pill-red:hover { border-color: rgba(239,68,68,0.45); background: rgba(239,68,68,0.1); transform: translateY(-1px); }
+    .pill-purple { border-color: rgba(124,58,237,0.2); color: #c4b5fd; background: rgba(124,58,237,0.05); }
+    .pill-blue { border-color: rgba(59,130,246,0.2); color: #93c5fd; background: rgba(59,130,246,0.05); }
 
     /* ═══════════════════════════════════════════
        SCANNER ROWS — Animated Slide
        ═══════════════════════════════════════════ */
     .scan-row {
-        background: var(--bg-surface);
+        background: linear-gradient(135deg, var(--bg-surface), var(--bg-card));
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: var(--radius-md);
         padding: 16px 20px;
         margin: 6px 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         animation: scanSlide 0.5s ease-out backwards;
     }
     .scan-row:hover {
         border-color: var(--accent);
-        background: var(--bg-elevated);
-        transform: translateX(4px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2), -2px 0 0 var(--accent);
+        background: linear-gradient(135deg, var(--bg-elevated), var(--bg-surface));
+        transform: translateX(6px);
+        box-shadow: var(--shadow-md), -3px 0 0 var(--accent);
     }
     .scan-rank {
-        color: var(--text-muted);
+        color: var(--text-dim);
         font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
+        font-size: 11px;
         width: 28px;
+        font-weight: 600;
     }
     .scan-name {
         color: var(--text-primary);
@@ -622,34 +791,34 @@ st.markdown("""
     }
     .scan-score {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 20px;
-        font-weight: 600;
+        font-size: 22px;
+        font-weight: 700;
         margin: 0 16px;
     }
     .scan-meta {
         color: var(--text-muted);
-        font-size: 11px;
+        font-size: 10.5px;
         font-family: 'JetBrains Mono', monospace;
     }
 
     /* ═══════════════════════════════════════════
-       TRADE PLAN TABLE
+       TRADE PLAN TABLE — Enhanced
        ═══════════════════════════════════════════ */
     .plan-row {
         display: flex;
         align-items: center;
-        padding: 14px 18px;
+        padding: 14px 20px;
         border-bottom: 1px solid var(--border-subtle);
-        transition: background 0.2s ease;
+        transition: background 0.25s ease;
     }
     .plan-row:last-child { border-bottom: none; }
-    .plan-row:hover { background: rgba(255,255,255,0.015); }
+    .plan-row:hover { background: rgba(99,102,241,0.02); }
     .plan-label {
         color: var(--text-muted);
-        font-size: 10.5px;
+        font-size: 10px;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        width: 80px;
+        letter-spacing: 1.2px;
+        width: 72px;
         font-weight: 600;
         font-family: 'Outfit', sans-serif;
     }
@@ -657,38 +826,38 @@ st.markdown("""
         color: var(--text-primary);
         font-family: 'JetBrains Mono', monospace;
         font-size: 15px;
-        font-weight: 500;
+        font-weight: 600;
         flex: 1;
     }
     .plan-note {
         color: var(--text-muted);
-        font-size: 12px;
+        font-size: 11px;
     }
 
     /* ═══════════════════════════════════════════
-       SECTION HEADER
+       SECTION HEADER — Enhanced
        ═══════════════════════════════════════════ */
     .section-header {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin: 32px 0 14px;
+        gap: 12px;
+        margin: 8px 0 14px;
         animation: slideInLeft 0.5s ease-out;
     }
     .section-icon {
-        width: 32px; height: 32px;
+        width: 30px; height: 30px;
         border-radius: 8px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 14px;
+        font-size: 13px;
         background: var(--accent-glow);
-        border: 1px solid rgba(99,102,241,0.15);
+        border: 1px solid rgba(99,102,241,0.12);
     }
     .section-title {
         font-family: 'Outfit', sans-serif;
         font-weight: 600;
-        font-size: 14px;
-        color: var(--text-primary);
-        letter-spacing: 1px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        letter-spacing: 1.5px;
         text-transform: uppercase;
     }
     .section-line {
@@ -703,7 +872,7 @@ st.markdown("""
     .divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, var(--border), transparent);
-        margin: 24px 0;
+        margin: 28px 0;
         border: none;
     }
 
@@ -716,51 +885,66 @@ st.markdown("""
     .text-xs { font-size: 11px; }
 
     /* ═══════════════════════════════════════════
-       HEADER BAR — Logo + Version
+       HEADER BAR — Animated Logo
        ═══════════════════════════════════════════ */
     .header-bar {
         display: flex;
-        align-items: baseline;
-        gap: 12px;
-        padding: 4px 0 16px;
-        animation: fadeIn 0.8s ease-out;
+        align-items: center;
+        gap: 16px;
+        padding: 8px 0 20px;
+        animation: fadeIn 1s ease-out;
     }
     .header-logo {
         font-family: 'Outfit', sans-serif;
-        font-size: 34px;
+        font-size: 36px;
         font-weight: 800;
-        letter-spacing: -1.5px;
-        background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-light) 100%);
+        letter-spacing: -2px;
+        background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-light) 60%, var(--purple) 100%);
+        background-size: 200% 200%;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
+        animation: textReveal 1s ease-out, gradientRotate 6s ease infinite;
+    }
+    .header-diamond {
+        width: 38px; height: 38px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; color: #fff; font-weight: 800;
+        box-shadow: 0 4px 20px rgba(99,102,241,0.3);
+        animation: ringPulse 3s ease-in-out infinite, fadeIn 0.5s ease-out;
     }
     .header-version {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 11px;
-        color: var(--accent);
-        background: var(--accent-glow);
-        padding: 3px 8px;
-        border-radius: 4px;
-        border: 1px solid rgba(99,102,241,0.15);
-        font-weight: 500;
+        font-size: 10px;
+        color: var(--accent-light);
+        background: rgba(99,102,241,0.08);
+        padding: 4px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(99,102,241,0.18);
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        animation: popIn 0.6s ease-out 0.3s backwards;
     }
     .header-sub {
         font-family: 'DM Sans', sans-serif;
         font-size: 13px;
-        color: var(--text-muted);
+        color: var(--text-dim);
+        animation: fadeIn 1s ease-out 0.4s backwards;
     }
 
     /* ═══════════════════════════════════════════
-       LIVE PULSE INDICATOR
+       LIVE PULSE
        ═══════════════════════════════════════════ */
     .live-dot {
         display: inline-block;
-        width: 6px; height: 6px;
+        width: 7px; height: 7px;
         border-radius: 50%;
         background: var(--success);
         animation: livePulse 2s ease-in-out infinite;
         margin-right: 6px;
+        box-shadow: 0 0 8px rgba(16,185,129,0.4);
     }
 
     /* ═══════════════════════════════════════════
@@ -769,12 +953,12 @@ st.markdown("""
     .sidebar-info {
         margin-top: 16px;
         padding: 16px;
-        background: var(--bg-surface);
+        background: linear-gradient(145deg, var(--bg-surface), var(--bg-card));
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         font-size: 11px;
         color: var(--text-muted);
-        line-height: 1.8;
+        line-height: 1.9;
     }
     .sidebar-info strong {
         color: var(--text-secondary);
@@ -782,7 +966,7 @@ st.markdown("""
     }
 
     /* ═══════════════════════════════════════════
-       TABS — Modern
+       TABS — Modern Underlined
        ═══════════════════════════════════════════ */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
@@ -794,7 +978,7 @@ st.markdown("""
         font-family: 'Outfit', sans-serif;
         font-weight: 500;
         font-size: 13px;
-        padding: 12px 24px;
+        padding: 12px 28px;
         border-bottom: 2px solid transparent;
         transition: all 0.3s ease;
     }
@@ -805,22 +989,33 @@ st.markdown("""
     }
 
     /* ═══════════════════════════════════════════
-       STATUS WIDGET — Enhanced
+       STATUS WIDGET + SELECTBOX + INPUTS
        ═══════════════════════════════════════════ */
     div[data-testid="stStatusWidget"] {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: var(--radius-md);
     }
-
-    /* ═══════════════════════════════════════════
-       SELECTBOX + INPUTS
-       ═══════════════════════════════════════════ */
     div[data-testid="stSelectbox"] > div > div {
         background: var(--bg-surface);
         border-color: var(--border);
-        border-radius: 10px;
+        border-radius: var(--radius-md);
     }
+
+    /* Loading bar custom */
+    .loading-stage {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 16px; margin: 4px 0;
+        border-radius: 8px;
+        font-size: 12px; font-family: 'DM Sans', sans-serif;
+        animation: slideInLeft 0.4s ease-out backwards;
+    }
+    .loading-stage .stage-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        animation: livePulse 1.5s ease-in-out infinite;
+    }
+    .loading-complete { color: var(--success); }
+    .loading-active { color: var(--accent-light); }
 
     /* ═══════════════════════════════════════════
        HIDE STREAMLIT EXTRAS
@@ -828,6 +1023,7 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display: none;}
+    header[data-testid="stHeader"] { background: transparent; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1093,105 +1289,6 @@ class GeneratorModelV20:
     """V20: Modela o gerador com sigma calibrado, direction-aware, multi-window"""
 
     @staticmethod
-    def analyze_gbm(df, profile, sigma_calibrated, ppy):
-        """
-        🔴 FIX #2: VOL_COMPRESS agora sabe a DIREÇÃO (contra movimento recente)
-        🟠 FIX #1: Usa sigma calibrado, não inventado
-        🔴 FIX #1: periods_per_year auto-detectado
-        🟢 PRECISION #1: Multi-window (30, 100, 300)
-        🟡 EDGE #6: Preço teórico vs real
-        """
-        try:
-            log_returns = np.log(df['close'] / df['close'].shift(1)).dropna()
-            sigma_ref = sigma_calibrated if sigma_calibrated else profile.get('sigma_seed', 0.5)
-            results = {}
-
-            # 🟢 MULTI-WINDOW ANALYSIS
-            for label, window in [("SHORT", 30), ("MEDIUM", 100), ("LONG", min(300, len(log_returns)-1))]:
-                if len(log_returns) < window:
-                    results[label] = {"vol_ratio": 1.0, "signal": "NEUTRAL", "confidence": 0}
-                    continue
-                recent = log_returns.tail(window)
-                vol_realized = float(recent.std() * np.sqrt(ppy))
-                ratio = vol_realized / sigma_ref if sigma_ref > 0 else 1.0
-
-                # Chi² test correto
-                expected_var = (sigma_ref / np.sqrt(ppy)) ** 2
-                observed_var = float(recent.var())
-                chi2 = (window - 1) * observed_var / expected_var if expected_var > 0 else window
-                z_chi = (chi2 - (window - 1)) / np.sqrt(2 * (window - 1))
-                p_value = 2 * (1 - norm.cdf(abs(z_chi)))
-
-                if ratio > 1.3:
-                    signal = "VOL_OVEREXTENDED"
-                    confidence = min((ratio - 1.0) / 0.5, 1.0) * 100
-                elif ratio < 1.0 / 1.3:
-                    signal = "VOL_COMPRESSED"
-                    confidence = min((1.0 / ratio - 1.0) / 0.5, 1.0) * 100
-                else:
-                    signal = "VOL_NORMAL"
-                    confidence = 0
-
-                results[label] = {
-                    "vol_ratio": round(ratio, 3), "vol_realized": round(vol_realized, 4),
-                    "signal": signal, "confidence": round(confidence, 1),
-                    "p_value": round(p_value, 4), "z_chi": round(z_chi, 2),
-                }
-
-            # CONSENSUS: multi-window agreement
-            signals = [r['signal'] for r in results.values()]
-            if all(s == "VOL_OVEREXTENDED" for s in signals):
-                consensus = "VOL_OVEREXTENDED"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
-            elif all(s == "VOL_COMPRESSED" for s in signals):
-                consensus = "VOL_COMPRESSED"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values()) / 3 * 1.5, 100)
-            elif signals.count("VOL_OVEREXTENDED") >= 2:
-                consensus = "VOL_OVEREXTENDED"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_OVEREXTENDED") / 2, 100)
-            elif signals.count("VOL_COMPRESSED") >= 2:
-                consensus = "VOL_COMPRESSED"
-                consensus_confidence = min(sum(r['confidence'] for r in results.values() if r['signal']=="VOL_COMPRESSED") / 2, 100)
-            else:
-                consensus = "VOL_NORMAL"
-                consensus_confidence = 0
-
-            # 🔴 BUG FIX #2: DIREÇÃO CONTRA O MOVIMENTO RECENTE
-            lookback = min(100, len(df) - 1)
-            recent_move = float(df['close'].iloc[-1] - df['close'].iloc[-lookback])
-            if consensus == "VOL_OVEREXTENDED":
-                compress_direction = "BEARISH" if recent_move > 0 else "BULLISH"
-            else:
-                compress_direction = "NEUTRAL"
-
-            # 🟡 EDGE #6: PREÇO TEÓRICO VS REAL
-            lookback_price = min(200, len(df) - 1)
-            start_price = float(df['close'].iloc[-lookback_price])
-            current_price = float(df['close'].iloc[-1])
-            t_years = lookback_price / ppy
-            expected_var_price = sigma_ref**2 * t_years
-            actual_log_dev = np.log(current_price / start_price) if start_price > 0 else 0
-            z_price = actual_log_dev / np.sqrt(expected_var_price) if expected_var_price > 0 else 0
-
-            return {
-                "windows": results,
-                "consensus": consensus,
-                "consensus_confidence": round(consensus_confidence, 1),
-                "compress_direction": compress_direction,
-                "recent_move": round(recent_move, 4),
-                "sigma_calibrated": round(sigma_ref, 4),
-                "z_price": round(z_price, 2),
-                "price_deviation_signal": "OVERBOUGHT" if z_price > 2 else "OVERSOLD" if z_price < -2 else "NORMAL",
-                "vol_ratio": results.get("MEDIUM", {}).get("vol_ratio", 1.0),
-                "signal": consensus,
-                "confidence": consensus_confidence,
-            }
-        except:
-            return {"windows": {}, "consensus": "NEUTRAL", "consensus_confidence": 0,
-                    "compress_direction": "NEUTRAL", "sigma_calibrated": 0,
-                    "z_price": 0, "signal": "NEUTRAL", "confidence": 0, "vol_ratio": 1.0}
-
-    @staticmethod
     def analyze_crash_boom(df, profile, ppy):
         """
         🟠 FIX #4: MAD-based spike detection (não std circular)
@@ -1304,82 +1401,7 @@ class GeneratorModelV20:
                     "drift_slope": 0, "last_spike_bars": 999, "spike_phase": "UNKNOWN",
                     "decay_strength": 0, "confidence": 0}
 
-    @staticmethod
-    def analyze_step(df, profile, ppy):
-        """
-        🟠 FIX #3: Escala correta (log-returns, não step_size em candles)
-        """
-        try:
-            window = min(300, len(df) - 1)
-            if window < 50:
-                return {"signal": "NEUTRAL", "deviation_sigma": 0, "runs_test": "NORMAL", "runs_z": 0}
-
-            recent = df.tail(window)
-            log_ret = np.log(recent['close'] / recent['close'].shift(1)).dropna()
-
-            # Deviation: vol realizada recente vs toda a série
-            full_log_ret = np.log(df['close'] / df['close'].shift(1)).dropna()
-            full_std = float(full_log_ret.std())
-            recent_std = float(log_ret.std()) if len(log_ret) > 10 else full_std
-
-            # Preço: quanto desviou em termos de std acumulado
-            price_change = float(recent['close'].iloc[-1] - recent['close'].iloc[0])
-            expected_std_price = full_std * np.sqrt(window) * float(recent['close'].iloc[0])
-            deviation_sigma = price_change / expected_std_price if expected_std_price > 0 else 0
-
-            # Runs test
-            directions = (recent['close'].diff().dropna() > 0).astype(int)
-            runs = 1
-            for i in range(1, len(directions)):
-                if directions.iloc[i] != directions.iloc[i-1]:
-                    runs += 1
-            n1 = int(directions.sum())
-            n0 = len(directions) - n1
-            if n0 > 0 and n1 > 0:
-                expected_runs = (2 * n0 * n1) / (n0 + n1) + 1
-                denom = (n0 + n1)**2 * (n0 + n1 - 1)
-                std_runs = np.sqrt(2*n0*n1*(2*n0*n1-n0-n1) / denom) if denom > 0 else 1
-                z_runs = (runs - expected_runs) / std_runs if std_runs > 0 else 0
-            else:
-                z_runs = 0
-
-            runs_test = "CLUSTERING" if z_runs < -2 else "ALTERNATING" if z_runs > 2 else "NORMAL"
-
-            # Vol ratio
-            vol_ratio = recent_std / full_std if full_std > 0 else 1.0
-
-            # Signal
-            if abs(deviation_sigma) > 2.5:
-                signal = "EXTREME_DEVIATION"
-            elif abs(deviation_sigma) > 1.5:
-                signal = "HIGH_DEVIATION"
-            elif runs_test == "CLUSTERING":
-                signal = "TREND_CLUSTER"
-            elif runs_test == "ALTERNATING":
-                signal = "MEAN_REVERT_PATTERN"
-            elif vol_ratio > 1.4:
-                signal = "VOL_EXPANDING"
-            elif vol_ratio < 0.6:
-                signal = "VOL_COMPRESSING"
-            else:
-                signal = "NEUTRAL"
-
-            return {
-                "signal": signal,
-                "deviation_sigma": round(deviation_sigma, 2),
-                "runs_test": runs_test,
-                "runs_z": round(z_runs, 2),
-                "vol_ratio": round(vol_ratio, 3),
-                "price_change": round(price_change, 4),
-                "confidence": min(abs(deviation_sigma) * 25, 100) if signal != "NEUTRAL" else 0,
-            }
-        except:
-            return {"signal": "NEUTRAL", "deviation_sigma": 0, "runs_test": "NORMAL",
-                    "runs_z": 0, "confidence": 0}
-
-# ==============================================================================
-# 🟡 EDGE #1: VARIANCE RATIO TEST — Detecta se há edge real
-# ==============================================================================
+# [V25] Removed: analyze_gbm, analyze_step (BC-only system)
 
 def variance_ratio_test(series, periods=[2, 5, 10, 20]):
     """Se VR ≠ 1 → NÃO é random walk → há edge explorável.
@@ -1443,36 +1465,7 @@ def autocorrelation_analysis(series, max_lag=5):
 # 🟡 EDGE #3: VOLATILITY CLUSTERING (GARCH EFFECT)
 # ==============================================================================
 
-def volatility_clustering_test(series, window=20):
-    """Autocorrelação de retornos absolutos → vol clusters → edge"""
-    try:
-        log_ret = np.log(series / series.shift(1)).dropna()
-        if len(log_ret) < 50:
-            return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
-        abs_ret = log_ret.abs()
-        acf_abs = float(abs_ret.autocorr(lag=1))
-        sig = 2 / np.sqrt(len(abs_ret))
-        has_clustering = acf_abs > sig
-
-        current_vol = float(abs_ret.tail(window).mean())
-        historical_vol = float(abs_ret.mean())
-        vol_ratio = current_vol / historical_vol if historical_vol > 0 else 1.0
-
-        if has_clustering:
-            if vol_ratio > 1.5:
-                regime = "HIGH_VOL_CLUSTER"
-            elif vol_ratio < 0.6:
-                regime = "LOW_VOL_CLUSTER"
-            else:
-                regime = "NORMAL_CLUSTER"
-        else:
-            regime = "NO_CLUSTER"
-
-        return {"has_clustering": has_clustering, "vol_regime": regime,
-                "acf_abs": round(acf_abs, 4), "vol_ratio": round(vol_ratio, 3),
-                "current_vol": round(current_vol, 6), "historical_vol": round(historical_vol, 6)}
-    except:
-        return {"has_clustering": False, "vol_regime": "NORMAL", "acf_abs": 0}
+# [V25] Removed: volatility_clustering_test (not used for BC synthetics)
 
 # ==============================================================================
 # V21+ ENGINE: ADX SLOPE DETECTION — Early Trend Capture
@@ -1641,43 +1634,7 @@ def multi_tf_trend_coherence(h4, h1, m15, m5=None):
 
 # ==============================================================================
 # V21+ ENGINE: VWAP PROXY — Institutional Entry Zones
-# ==============================================================================
-
-def vwap_proxy_analysis(df, lookback=50):
-    """VWAP proxy using typical price × range as volume proxy.
-    Identifies institutional accumulation/distribution zones."""
-    try:
-        if len(df) < lookback:
-            return {"vwap": 0, "deviation": 0, "zone": "UNKNOWN"}
-        recent = df.tail(lookback)
-        typical_price = (recent['high'] + recent['low'] + recent['close']) / 3
-        vol_proxy = recent['high'] - recent['low']  # range as volume proxy
-        cumulative_tpv = (typical_price * vol_proxy).cumsum()
-        cumulative_vol = vol_proxy.cumsum()
-        vwap = cumulative_tpv / cumulative_vol.replace(0, np.nan)
-        vwap_current = float(vwap.iloc[-1]) if pd.notna(vwap.iloc[-1]) else float(typical_price.iloc[-1])
-        current_price = float(df['close'].iloc[-1])
-        atr = float(df['ATR'].iloc[-1]) if df['ATR'].iloc[-1] > 0 else 1
-        deviation = (current_price - vwap_current) / atr
-        if deviation > 2.0:
-            zone = "FAR_ABOVE_VWAP"
-        elif deviation > 0.5:
-            zone = "ABOVE_VWAP"
-        elif deviation > -0.5:
-            zone = "AT_VWAP"
-        elif deviation > -2.0:
-            zone = "BELOW_VWAP"
-        else:
-            zone = "FAR_BELOW_VWAP"
-        # Entry quality: best entries are near VWAP in trend direction
-        return {
-            "vwap": round(vwap_current, 5),
-            "deviation": round(float(deviation), 2),
-            "zone": zone,
-            "entry_quality": "EXCELLENT" if abs(deviation) < 0.5 else "GOOD" if abs(deviation) < 1.5 else "POOR",
-        }
-    except:
-        return {"vwap": 0, "deviation": 0, "zone": "UNKNOWN", "entry_quality": "UNKNOWN"}
+# [V25] Removed: vwap_proxy_analysis (not used for BC synthetics)
 
 # ==============================================================================
 # V21+ ENGINE: CANDLE STRUCTURE SCORING — Entry Quality
@@ -2064,92 +2021,13 @@ def candle_momentum_engine(df, direction, lookback=10):
         return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
 
 # ==============================================================================
-# V23 ENGINE #4: PULLBACK QUALITY SCORE
+# V23 ENGINE #4: [V25 REMOVED — Forex pullback scoring irrelevant for BC spike+drift]
+# BC drift doesn't "pull back" like forex trends. Drift is continuous until spike.
 # ==============================================================================
 
 def pullback_quality_score(df, direction, atr):
-    """Avalia qualidade do pullback: depth, tempo, volume, rejection."""
-    try:
-        if len(df) < 20 or atr == 0:
-            return {"score": 0, "quality": "NONE", "depth_pct": 0}
-        is_bull = direction == "BULLISH"
-        d = df.tail(30)
-        # Find last impulse (biggest move in direction)
-        if is_bull:
-            impulse_high = d['high'].max()
-            impulse_low = d['low'].iloc[:15].min()
-            impulse_size = impulse_high - impulse_low
-            current = float(d['close'].iloc[-1])
-            retracement = impulse_high - current
-        else:
-            impulse_low = d['low'].min()
-            impulse_high = d['high'].iloc[:15].max()
-            impulse_size = impulse_high - impulse_low
-            current = float(d['close'].iloc[-1])
-            retracement = current - impulse_low
-        if impulse_size == 0: return {"score": 0, "quality": "NONE", "depth_pct": 0}
-        depth_pct = retracement / impulse_size
-        # 1. Depth score (30-62% = excellent, fibonacci zone)
-        if 0.30 <= depth_pct <= 0.62:
-            depth_sc = 30
-        elif 0.20 <= depth_pct <= 0.75:
-            depth_sc = 15
-        elif depth_pct < 0.15:
-            depth_sc = 5   # Too shallow
-        else:
-            depth_sc = 0   # Too deep, trend may be broken
-        # 2. Time (3-8 candles = ideal)
-        # Count candles since the impulse extreme
-        if is_bull:
-            peak_idx = d['high'].idxmax()
-        else:
-            peak_idx = d['low'].idxmin()
-        if peak_idx in d.index:
-            pb_candles = len(d.loc[peak_idx:]) - 1
-        else:
-            pb_candles = 5
-        if 3 <= pb_candles <= 8:
-            time_sc = 25
-        elif 2 <= pb_candles <= 12:
-            time_sc = 15
-        else:
-            time_sc = 5
-        # 3. Candle size decreasing in pullback (volume proxy)
-        last_5 = d.tail(5)
-        ranges = (last_5['high'] - last_5['low']).values
-        if len(ranges) >= 3:
-            decreasing = all(ranges[i] >= ranges[i+1] * 0.8 for i in range(len(ranges)-2, len(ranges)-1))
-            vol_sc = 20 if decreasing else 8
-        else:
-            vol_sc = 10
-        # 4. Rejection candle at end (pin bar, engulfing)
-        last = d.iloc[-1]
-        prev = d.iloc[-2] if len(d) > 1 else last
-        rng = last['high'] - last['low']
-        reject_sc = 0
-        if rng > 0:
-            if is_bull:
-                lower_wick = min(last['open'], last['close']) - last['low']
-                if lower_wick / rng > 0.6 and last['close'] > last['open']:
-                    reject_sc = 25  # Pin bar rejection
-                elif last['close'] > last['open'] and abs(last['close'] - last['open']) > abs(prev['close'] - prev['open']) * 1.3:
-                    reject_sc = 20  # Bullish engulfing
-                elif last['close'] > last['open']:
-                    reject_sc = 10  # Normal bullish
-            else:
-                upper_wick = last['high'] - max(last['open'], last['close'])
-                if upper_wick / rng > 0.6 and last['close'] < last['open']:
-                    reject_sc = 25
-                elif last['close'] < last['open'] and abs(last['close'] - last['open']) > abs(prev['close'] - prev['open']) * 1.3:
-                    reject_sc = 20
-                elif last['close'] < last['open']:
-                    reject_sc = 10
-        total = depth_sc + time_sc + vol_sc + reject_sc
-        quality = "EXCELLENT" if total >= 70 else "GOOD" if total >= 50 else "MODERATE" if total >= 30 else "WEAK"
-        return {"score": round(total, 1), "quality": quality, "depth_pct": round(depth_pct, 3),
-                "pb_candles": pb_candles, "rejection": reject_sc > 15}
-    except:
-        return {"score": 0, "quality": "NONE", "depth_pct": 0}
+    """V25: Stubbed — BC drift doesn't follow forex pullback patterns."""
+    return {"score": 0, "quality": "N/A", "depth_pct": 0, "pb_candles": 0, "rejection": False}
 
 # ==============================================================================
 # V23 ENGINE #5: LIQUIDITY SWEEP DETECTOR
@@ -2233,35 +2111,8 @@ def entry_sync_score(h4, h1, m15, m5, direction):
 # ==============================================================================
 
 def detect_breakout_retest(df, sr_levels, direction, atr):
-    """Detecta quando preço retesta um nível S/R quebrado."""
-    try:
-        if not sr_levels or len(df) < 10 or atr == 0:
-            return {"retest": False, "level": None, "quality": "NONE"}
-        is_bull = direction == "BULLISH"
-        price = float(df['close'].iloc[-1])
-        for sr in sr_levels[:5]:
-            lvl = sr['price']
-            dist = abs(price - lvl) / atr
-            # Price is near the level (within 0.5 ATR)
-            if dist < 0.5:
-                # Check if it was broken recently (price was on other side 5-15 bars ago)
-                lookback_prices = df['close'].iloc[-15:-3]
-                if is_bull:
-                    # For bull retest: price should have been BELOW level, now ABOVE
-                    was_below = (lookback_prices < lvl).any()
-                    now_above = price > lvl
-                    if was_below and now_above:
-                        return {"retest": True, "level": lvl, "quality": "GOOD",
-                                "type": "SUPPORT_RETEST", "distance_atr": round(dist, 2)}
-                else:
-                    was_above = (lookback_prices > lvl).any()
-                    now_below = price < lvl
-                    if was_above and now_below:
-                        return {"retest": True, "level": lvl, "quality": "GOOD",
-                                "type": "RESISTANCE_RETEST", "distance_atr": round(dist, 2)}
-        return {"retest": False, "level": None, "quality": "NONE"}
-    except:
-        return {"retest": False, "level": None, "quality": "NONE"}
+    """V25: Stubbed — Breakout/retest is a forex S/R concept. BC uses spike+drift."""
+    return {"retest": False, "level": None, "quality": "NONE"}
 
 # ==============================================================================
 # V23 ENGINE #8: CONTINUATION PATTERNS (Flag, Pennant)
@@ -4016,106 +3867,19 @@ def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
 # V21 ENGINE #3: SPECTRAL ANALYSIS (FFT) — Ciclos ocultos no CSPRNG
 # ==============================================================================
 
-def spectral_analysis_v21(series, top_n=3, min_period=5, max_period=200):
-    """Encontra ciclos dominantes na serie de precos via FFT."""
-    try:
-        vals = np.array(series.dropna().values, dtype=float)
-        log_ret = np.diff(np.log(vals))
-        n = len(log_ret)
-        if n < 100: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
-        log_ret = log_ret - np.mean(log_ret)
-        fft_v = np.fft.rfft(log_ret)
-        power = np.abs(fft_v) ** 2
-        freqs = np.fft.rfftfreq(n, d=1)
-        valid = []
-        for i in range(1, len(freqs)):
-            if freqs[i] > 0:
-                period = 1.0 / freqs[i]
-                if min_period <= period <= max_period:
-                    valid.append((period, power[i]))
-        if not valid: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
-        valid.sort(key=lambda x: x[1], reverse=True)
-        mean_p = np.mean(power[1:])
-        cycles = []
-        for period, pwr in valid[:top_n]:
-            sig = pwr / mean_p if mean_p > 0 else 0
-            if sig > 3.0:
-                cycles.append({"period": round(period, 1), "significance": round(float(sig), 2)})
-        se = max((c['significance'] for c in cycles), default=0)
-        return {"has_cycle": len(cycles) > 0, "cycles": cycles,
-                "dominant_period": cycles[0]['period'] if cycles else 0,
-                "spectral_edge": round(float(se), 2)}
-    except: return {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+# [V25] Removed: spectral_analysis_v21 (not used for BC synthetics)
 
 # ==============================================================================
 # V21 ENGINE #4: TRANSITION MATRIX (Markov Chain)
 # ==============================================================================
 
-def transition_matrix_v21(series, n_states=3, max_n=500):
-    """Detecta dependencias Markovianas nos retornos."""
-    try:
-        vals = np.array(series.dropna().values[-max_n:], dtype=float)
-        log_ret = np.diff(np.log(vals))
-        n = len(log_ret)
-        if n < 80: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
-                           "p_reversal_up": 0.33, "p_reversal_down": 0.33,
-                           "p_momentum_up": 0.33, "p_momentum_down": 0.33}
-        thr = np.percentile(log_ret, [33.3, 66.7])
-        states = np.digitize(log_ret, thr)
-        mat = np.zeros((n_states, n_states))
-        for i in range(len(states) - 1):
-            mat[states[i], states[i + 1]] += 1
-        row_s = mat.sum(axis=1, keepdims=True); row_s[row_s == 0] = 1
-        prob = mat / row_s
-        exp = np.outer(mat.sum(axis=1), mat.sum(axis=0)) / max(mat.sum(), 1)
-        exp[exp == 0] = 1e-10
-        chi2_val = float(np.sum((mat - exp) ** 2 / exp))
-        df = (n_states - 1) ** 2
-        p_val = 1 - chi2_dist.cdf(chi2_val, df)
-        has_dep = p_val < 0.05
-        labels = ["DOWN", "NEUTRAL", "UP"]
-        max_dev = 0; best_t = ""
-        for i in range(n_states):
-            for j in range(n_states):
-                d = abs(prob[i, j] - 1.0 / n_states)
-                if d > max_dev: max_dev = d; best_t = f"{labels[i]}->{labels[j]}: {prob[i,j]:.2f}"
-        return {"has_dependence": has_dep, "chi2": round(chi2_val, 2),
-                "p_value": round(float(p_val), 4), "transition_edge": round(float(max_dev * 100), 1),
-                "best_transition": best_t,
-                "p_reversal_up": round(float(prob[0, 2]), 3) if n_states > 2 else 0.33,
-                "p_reversal_down": round(float(prob[2, 0]), 3) if n_states > 2 else 0.33,
-                "p_momentum_up": round(float(prob[2, 2]), 3) if n_states > 2 else 0.33,
-                "p_momentum_down": round(float(prob[0, 0]), 3) if n_states > 2 else 0.33,
-                "matrix": {labels[i]: {labels[j]: round(float(prob[i,j]),3) for j in range(n_states)} for i in range(n_states)}}
-    except: return {"has_dependence": False, "transition_edge": 0, "matrix": {},
-                    "p_reversal_up": 0.33, "p_reversal_down": 0.33,
-                    "p_momentum_up": 0.33, "p_momentum_down": 0.33}
+# [V25] Removed: transition_matrix_v21 (not used for BC synthetics)
 
 # ==============================================================================
 # V21 ENGINE #5: COMPOUND PREDICTABILITY INDEX (CPI)
 # ==============================================================================
 
-def compound_predictability_index(series, vr_r=None, acf_r=None):
-    """CPI 0-100. >60=FORTE, 35-60=MODERADO, <35=FRACO (nao operar)."""
-    try:
-        se_val, _ = sample_entropy_v21(series)
-        se_sc = max(0, 25 - se_val * 12.5)
-        pe_val, _ = permutation_entropy_v21(series)
-        pe_sc = max(0, 25 - pe_val * 25)
-        if vr_r is None: vr_r = variance_ratio_test(series)
-        vr_sc = min(25, vr_r.get('n_significant', 0) * 6.25) if vr_r.get('has_edge') else 0
-        if acf_r is None: acf_r = autocorrelation_analysis(series)
-        acf_sc = min(25, len(acf_r.get('significant_lags', [])) * 6.25)
-        cpi = se_sc + pe_sc + vr_sc + acf_sc
-        if cpi >= 60: regime = "HIGHLY_PREDICTABLE"
-        elif cpi >= 45: regime = "PREDICTABLE"
-        elif cpi >= 35: regime = "MODERATE"
-        else: regime = "UNPREDICTABLE"
-        return {"cpi": round(float(cpi), 1), "regime": regime,
-                "components": {"se": round(float(se_sc),1), "pe": round(float(pe_sc),1),
-                               "vr": round(float(vr_sc),1), "acf": round(float(acf_sc),1)},
-                "se_raw": se_val, "pe_raw": pe_val}
-    except: return {"cpi": 0, "regime": "ERROR", "components": {}, "se_raw": 2.0, "pe_raw": 1.0}
+# [V25] Removed: compound_predictability_index (not used for BC synthetics)
 
 # ==============================================================================
 # V21 ENGINE #6: REGIME TRANSITION DETECTION
@@ -4223,7 +3987,7 @@ def enhanced_momentum_v21(h4, h1, m15, direction):
 
 def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
                                  divergence, fib_level, sr_touch, align_type, vol_confirmed):
-    """Conta confluencias INDEPENDENTES (nao correlacionadas)."""
+    """V25: Conta confluencias INDEPENDENTES (cleaned — no forex fib/sr/div)."""
     try:
         groups = {}
         g1 = 0
@@ -4241,16 +4005,12 @@ def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
         if abs(zscore) > 1.5: g4 += 0.5
         if dist.get('percentile', 50) < 15 or dist.get('percentile', 50) > 85: g4 += 0.5
         groups['DISTRIBUTION'] = min(1.0, g4)
-        groups['PATTERNS'] = min(1.0, 0.7 if divergence else 0.0)
-        g6 = 0
-        if fib_level: g6 += 0.4
-        if sr_touch: g6 += 0.3
-        if align_type not in ["NONE", None]: g6 += 0.3
-        groups['STRUCTURE'] = min(1.0, g6)
-        groups['VOLUME'] = 1.0 if vol_confirmed else 0.0
+        # V25: Removed forex PATTERNS group (divergence) and STRUCTURE group (fib/sr)
+        groups['ALIGNMENT'] = 1.0 if align_type not in ["NONE", None] else 0.0
+        groups['VOLUME'] = 0.0  # Synthetics have no real volume
         n_act = sum(1 for v in groups.values() if v >= 0.5)
         tot = sum(groups.values())
-        ql = "ELITE" if n_act >= 5 else "STRONG" if n_act >= 4 else "MODERATE" if n_act >= 3 else "WEAK"
+        ql = "ELITE" if n_act >= 4 else "STRONG" if n_act >= 3 else "MODERATE" if n_act >= 2 else "WEAK"
         return {"n_independent": n_act, "total_strength": round(tot, 1), "groups": groups, "quality": ql}
     except: return {"n_independent": 0, "total_strength": 0, "groups": {}, "quality": "WEAK"}
 
@@ -4261,10 +4021,10 @@ def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
 def optimal_holding_period(acf_result, setup_type):
     """Calcula tempo otimo de trade baseado no edge decay."""
     try:
-        base = {"DAY": 20, "MEAN_REVERSION": 15,
-                "GEN_VOL_COMPRESS": 25, "GEN_SPIKE_DRIFT": 30,
-                "GEN_STEP_REVERT": 12, "GEN_PRICE_DEV": 20,
-                "BREAKOUT": 35, "PERFECT_STORM": 60}
+        base = {
+            "SPIKE_CATCH": 35, "DRIFT_RIDE": 60, "SCALP_DRIFT": 15,
+            "POST_SPIKE": 20, "REVERSAL": 40, "STOCH_SPIKE": 30,
+        }
         mc = base.get(setup_type, 30)
         sig_l = acf_result.get('significant_lags', [])
         if sig_l:
@@ -4278,18 +4038,19 @@ def optimal_holding_period(acf_result, setup_type):
 # ==============================================================================
 
 def conditional_entry_v21(setup_type, direction, price, ema20, ema50, atr, bb_lo, bb_hi):
-    """Calcula preco de entrada ideal em vez de entrar no close."""
+    """Calcula preco de entrada ideal para BC setups."""
     try:
         is_l = "LONG" in str(direction) or "BULLISH" in str(direction)
-        if setup_type == "MEAN_REVERSION":
+        # BC: Drift setups use EMA pullback, spike setups use market
+        if setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
+            # Enter on pullback to EMA20 area
             if is_l:
-                ideal = bb_lo + atr * 0.3
-                return (price, "MARKET_BB_ZONE") if price < ideal + atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
+                ideal = ema20 + atr * 0.2
+                return (price, "MARKET") if price < ideal + atr * 0.5 else (ideal, "LIMIT_EMA_PULLBACK")
             else:
-                ideal = bb_hi - atr * 0.3
-                return (price, "MARKET_BB_ZONE") if price > ideal - atr * 0.5 else (ideal, "LIMIT_BB_REENTRY")
-        elif "BREAKOUT" in str(setup_type):
-            return (price - atr * 0.3, "LIMIT_PULLBACK") if is_l else (price + atr * 0.3, "LIMIT_PULLBACK")
+                ideal = ema20 - atr * 0.2
+                return (price, "MARKET") if price > ideal - atr * 0.5 else (ideal, "LIMIT_EMA_PULLBACK")
+        # Spike/fade setups: market entry (time-sensitive)
         return price, "MARKET"
     except: return price, "MARKET"
 
@@ -4401,7 +4162,7 @@ class ScalingEngine:
         levels = []
         rm = profile.get('risk_mult', 1.0)
         if grade == "S" and score >= 140:
-            for mult, rp, off, trig in [(1.5, risk_pct*1.5, 0, "STORM ENTRY"),
+            for mult, rp, off, trig in [(1.5, risk_pct*1.5, 0, "MAX CONVICTION"),
                                          (1.0, risk_pct, 0.5, "+0.5 ATR → add (SL→BE)"),
                                          (0.5, risk_pct*0.5, 1.5, "+1.5 ATR → add")]:
                 e = entry + atr*off*(1 if entry>sl else -1) if off else entry
@@ -4573,157 +4334,29 @@ def find_pivot_lows(data, order=5):
     return np.array(pivots)
 
 def detect_divergence(df, indicator='RSI', order=5):
-    try:
-        if len(df) < (order*2+5) or indicator not in df.columns: return None, 0, ""
-        ph=find_pivot_highs(df['high'],order); pl=find_pivot_lows(df['low'],order)
-        ih=find_pivot_highs(df[indicator],order); il=find_pivot_lows(df[indicator],order)
-        if len(ph)>=2 and len(ih)>=2:
-            ph1,ph2=ph[-2],ph[-1]; ih1=ih[np.argmin(np.abs(ih-ph1))]; ih2=ih[np.argmin(np.abs(ih-ph2))]
-            if abs(ih1-ph1)<=3 and abs(ih2-ph2)<=3:
-                if df['high'].iloc[ph2]>df['high'].iloc[ph1] and df[indicator].iloc[ih2]<df[indicator].iloc[ih1]:
-                    s=min((df['high'].iloc[ph2]-df['high'].iloc[ph1])/df['high'].iloc[ph1]*100+(df[indicator].iloc[ih1]-df[indicator].iloc[ih2])/max(df[indicator].iloc[ih1],1)*100,10)
-                    if s>1: return "BEARISH_DIVERGENCE",-int(min(s*3,20)),f"Preço HH vs {indicator} LH"
-        if len(pl)>=2 and len(il)>=2:
-            pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
-            if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
-                if df['low'].iloc[pl2]<df['low'].iloc[pl1] and df[indicator].iloc[il2]>df[indicator].iloc[il1]:
-                    s=min((df['low'].iloc[pl1]-df['low'].iloc[pl2])/df['low'].iloc[pl1]*100+(df[indicator].iloc[il2]-df[indicator].iloc[il1])/max(abs(df[indicator].iloc[il1]),1)*100,10)
-                    if s>1: return "BULLISH_DIVERGENCE",int(min(s*3,20)),f"Preço LL vs {indicator} HL"
-        if len(pl)>=2 and len(il)>=2:
-            pl1,pl2=pl[-2],pl[-1]; il1=il[np.argmin(np.abs(il-pl1))]; il2=il[np.argmin(np.abs(il-pl2))]
-            if abs(il1-pl1)<=3 and abs(il2-pl2)<=3:
-                if df['low'].iloc[pl2]>df['low'].iloc[pl1] and df[indicator].iloc[il2]<df[indicator].iloc[il1]:
-                    return "HIDDEN_BULLISH",15,"Hidden: HL vs LL"
-        if len(ph)>=2 and len(ih)>=2:
-            ph1,ph2=ph[-2],ph[-1]; ih1=ih[np.argmin(np.abs(ih-ph1))]; ih2=ih[np.argmin(np.abs(ih-ph2))]
-            if abs(ih1-ph1)<=3 and abs(ih2-ph2)<=3:
-                if df['high'].iloc[ph2]<df['high'].iloc[ph1] and df[indicator].iloc[ih2]>df[indicator].iloc[ih1]:
-                    return "HIDDEN_BEARISH",-15,"Hidden: LH vs HH"
-        return None, 0, ""
-    except: return None, 0, ""
+    """V25: Removed — RSI/MACD divergence measures drift reversal,
+    which is NORMAL BC behavior. Divergence adds false signals for synthetics."""
+    return None, 0, ""
 
 def detect_sr_clustered(df, window=100, min_touches=3):
-    try:
-        if len(df)<window or 'ATR' not in df.columns: return []
-        recent=df.tail(window); atr=recent['ATR'].iloc[-1]
-        if pd.isna(atr) or atr==0: return []
-        tolerance=atr*0.3
-        hp=find_pivot_highs(recent['high'],3); lp=find_pivot_lows(recent['low'],3)
-        prices=sorted([recent['high'].iloc[i] for i in hp]+[recent['low'].iloc[i] for i in lp])
-        if not prices: return []
-        clusters,current=[],[prices[0]]
-        for i in range(1,len(prices)):
-            if prices[i]-current[-1]<=tolerance: current.append(prices[i])
-            else:
-                if len(current)>=min_touches: clusters.append(current)
-                current=[prices[i]]
-        if len(current)>=min_touches: clusters.append(current)
-        cp=df['close'].iloc[-1]
-        levels=[{'price':round(np.mean(c),4),'touches':len(c),'type':'RESISTANCE' if np.mean(c)>cp else 'SUPPORT',
-                'strength':len(c)+(1 if max(c)-min(c)<tolerance*0.5 else 0),
-                'zone_high':round(max(c),4),'zone_low':round(min(c),4)} for c in clusters]
-        levels.sort(key=lambda x:x['strength'],reverse=True); return levels[:6]
-    except: return []
+    """V25: Removed — Traditional S/R clusters are forex concepts.
+    BC price is stochastic (spike+drift). Use BC Supply/Demand zones instead."""
+    return []
 
 def calculate_fibonacci(df, lookback=100):
-    try:
-        if len(df)<lookback: return {},None,None
-        recent=df.tail(lookback); hp=find_pivot_highs(recent['high'],7); lp=find_pivot_lows(recent['low'],7)
-        if len(hp)==0 or len(lp)==0: return {},None,None
-        sh=recent['high'].iloc[hp[-1]]; sl_v=recent['low'].iloc[lp[-1]]
-        if pd.isna(sh) or pd.isna(sl_v) or sh==sl_v: return {},None,None
-        diff=sh-sl_v
-        if hp[-1]>lp[-1]:
-            d="UPTREND"; fibs={'23.6%':sh-diff*0.236,'38.2%':sh-diff*0.382,'50.0%':sh-diff*0.50,'61.8%':sh-diff*0.618,'78.6%':sh-diff*0.786}
-        else:
-            d="DOWNTREND"; fibs={'23.6%':sl_v+diff*0.236,'38.2%':sl_v+diff*0.382,'50.0%':sl_v+diff*0.50,'61.8%':sl_v+diff*0.618,'78.6%':sl_v+diff*0.786}
-        return fibs,d,{'high':sh,'low':sl_v}
-    except: return {},None,None
+    """V25: Removed — Fibonacci retracement levels are forex TA.
+    BC synthetic indices are stochastic processes that do NOT respect Fib levels."""
+    return {}, None, None
 
 def check_fib_confluence(price, fibs, atr):
-    try:
-        if not fibs or pd.isna(price) or pd.isna(atr) or atr==0: return None,0
-        for name,lvl in fibs.items():
-            if pd.notna(lvl) and abs(price-lvl)<atr*0.4:
-                return name,(15 if '61.8' in name else 10 if '50.0' in name or '38.2' in name else 5)
-        return None,0
-    except: return None,0
+    """V25: Removed — See calculate_fibonacci."""
+    return None, 0
 
-def detect_bb_cycle(df, profile, lookback=30):
-    try:
-        if len(df)<lookback: return "UNKNOWN",0,0
-        recent=df.tail(lookback); bw=recent['BB_width']; avg=bw.mean(); cur=bw.iloc[-1]
-        if avg==0: return "UNKNOWN",0,0
-        ratio=cur/avg; threshold=profile.get('bb_squeeze_threshold',0.6)
-        sc=sum(bw<avg*threshold)
-        if ratio<threshold: return "SQUEEZE",ratio,sc
-        elif ratio>1.5: return "EXPANSION",ratio,0
-        return "NORMAL",ratio,0
-    except: return "UNKNOWN",0,0
-
-def count_consecutive(df, lookback=20):
-    try:
-        recent=df.tail(lookback); dirs=(recent['close']>recent['open']).astype(int)
-        cd=dirs.iloc[-1]; streak=0
-        for i in range(len(dirs)-1,-1,-1):
-            if dirs.iloc[i]==cd: streak+=1
-            else: break
-        return streak, "BULLISH" if cd==1 else "BEARISH"
-    except: return 0, "UNKNOWN"
-
-def detect_roc_extreme(df, profile, periods=[5,10,20]):
-    try:
-        results={}; threshold=profile.get('roc_extreme_pct',1.0)
-        for p in periods:
-            if len(df)<p+1: continue
-            roc=((df['close'].iloc[-1]-df['close'].iloc[-p-1])/df['close'].iloc[-p-1])*100
-            if abs(roc)>threshold*2: status="EXTREME"
-            elif abs(roc)>threshold: status="ELEVATED"
-            else: status="NORMAL"
-            results[f"ROC_{p}"]={'value':round(roc,3),'status':status,'direction':"UP" if roc>0 else "DOWN"}
-        overall="NORMAL"
-        for r in results.values():
-            if r['status']=="EXTREME": overall="EXTREME"; break
-            elif r['status']=="ELEVATED": overall="ELEVATED"
-        return overall,results
-    except: return "NORMAL",{}
-
-# 🟡 EDGE #8: TRIGGER CANDLE CONFIRMATION
-def trigger_candle_confirmed(df, direction):
-    """Verifica se último candle confirma a entrada"""
-    try:
-        if len(df) < 3: return False, "NO_DATA"
-        last = df.iloc[-1]; prev = df.iloc[-2]
-        body = abs(last['close']-last['open']); rng = last['high']-last['low']
-        body_pct = body/rng if rng > 0 else 0
-        if direction == "BULLISH":
-            bullish = last['close'] > last['open']
-            above_prev = last['close'] > prev['close']
-            strong = body_pct > 0.5
-            if bullish and above_prev and strong: return True, "STRONG_TRIGGER"
-            elif bullish and above_prev: return True, "WEAK_TRIGGER"
-            return False, "NO_TRIGGER"
-        else:
-            bearish = last['close'] < last['open']
-            below_prev = last['close'] < prev['close']
-            strong = body_pct > 0.5
-            if bearish and below_prev and strong: return True, "STRONG_TRIGGER"
-            elif bearish and below_prev: return True, "WEAK_TRIGGER"
-            return False, "NO_TRIGGER"
-    except: return False, "ERROR"
-
-# 🟢 PRECISION #3: SMART TP COM S/R AWARENESS
-def smart_tp(entry, direction, risk, base_r1, base_r2, sr_levels):
-    """Ajusta TP se S/R forte no caminho"""
+def smart_tp(entry, direction, risk, base_r1, base_r2, sr_levels=None):
+    """V25: ATR-based TPs only. BC does not use forex S/R levels.
+    sr_levels parameter kept for API compatibility but ignored."""
     raw_tp1 = entry + base_r1 * risk if direction=="LONG" else entry - base_r1 * risk
     raw_tp2 = entry + base_r2 * risk if direction=="LONG" else entry - base_r2 * risk
-    for sr in (sr_levels or []):
-        if sr.get('strength',0) < 4: continue
-        sp = sr['price']
-        if direction == "LONG":
-            if entry < sp < raw_tp1: raw_tp1 = sp - risk * 0.1; break
-        else:
-            if raw_tp1 < sp < entry: raw_tp1 = sp + risk * 0.1; break
     return round(raw_tp1, 5), round(raw_tp2, 5)
 
 def detect_micro_pullback(df, direction, atr):
@@ -4826,12 +4459,7 @@ def analyze_tick_volume(df, lookback=20):
         return "LOW",proxy
     except: return "NORMAL",1.0
 
-def confirm_breakout_volume(df):
-    try:
-        if len(df)<20: return False,0
-        ranges=df['high']-df['low']; ratio=ranges.iloc[-1]/ranges.iloc[-20:-1].mean() if ranges.iloc[-20:-1].mean()>0 else 1
-        return ratio>1.3, ratio
-    except: return False,0
+# [V25] Removed: confirm_breakout_volume (not used for BC synthetics)
 
 def indicators(df):
     df['EMA_20']=df['close'].ewm(span=20,adjust=False).mean()
@@ -4986,64 +4614,25 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                     elif not is_boom and rsi_val > 75 and drift_count >= 5:
                         sig = "SELL"; setup = "BC_SPIKE"
 
-            # LEGACY SETUP 1: TREND (FIX #3: Converted from SWING to DAY)
-            if not sig and row['ADX'] > max(profile.get('adx_strong', 25), 22):
-                if bias == "BULLISH" and row['close'] > row['EMA_200'] and row['RSI'] < 60:
-                    sig = "BUY"; setup = "DAY"
-                elif bias == "BEARISH" and row['close'] < row['EMA_200'] and row['RSI'] > 40:
-                    sig = "SELL"; setup = "DAY"
-
-            # LEGACY SETUP 2: MEAN REVERSION
-            if not sig and 'ZSCORE' in df.columns:
-                z = row['ZSCORE']
-                if pd.notna(z) and abs(z) > profile.get('zscore_extreme', 2.0) * 0.7:
-                    if z < -1.5:
-                        sig = "BUY"; setup = "MEAN_REVERSION"
-                    elif z > 1.5:
-                        sig = "SELL"; setup = "MEAN_REVERSION"
-
-            # LEGACY SETUP 3: VOL COMPRESS
-            if not sig and fold_vr.get('has_edge') and fold_vr.get('dominant_type') == 'MEAN_REVERT':
-                z = row.get('ZSCORE', 0)
-                if pd.notna(z) and z < -1.0:
-                    sig = "BUY"; setup = "VOL_COMPRESS"
-                elif pd.notna(z) and z > 1.0:
-                    sig = "SELL"; setup = "VOL_COMPRESS"
-
-            # LEGACY SETUP 4: ACF MOMENTUM
-            if not sig and fold_acf.get('has_pattern') and fold_acf.get('dominant_type') == 'MOMENTUM':
-                if i >= 2:
-                    prev_ret = df['close'].iloc[i] - df['close'].iloc[i-1]
-                    if prev_ret > atr * 0.3:
-                        sig = "BUY"; setup = "ACF_MOMENTUM"
-                    elif prev_ret < -atr * 0.3:
-                        sig = "SELL"; setup = "ACF_MOMENTUM"
-
+            # V25: BC-ONLY — No legacy forex setups in backtest
             if not sig:
                 continue
 
-            # FIX #4: Variable slippage by setup type (realistic)
-            # BC_DRIFT: 0.15×ATR (calm market), BC_FADE: 0.8×ATR (post-spike vol),
-            # BC_SPIKE: 1.5×ATR (spike = massive requote), legacy: 0.3×ATR
-            slippage_map = {"BC_DRIFT": 0.15, "BC_FADE": 0.8, "BC_SPIKE": 1.5,
-                            "DAY": 0.3, "MEAN_REVERSION": 0.2, "VOL_COMPRESS": 0.25,
-                            "ACF_MOMENTUM": 0.25}
+            # V25: BC-specific slippage (realistic for synthetics)
+            slippage_map = {"BC_DRIFT": 0.15, "BC_FADE": 0.8, "BC_SPIKE": 1.5}
             slippage = atr * slippage_map.get(setup, 0.3)
             entry = row['close'] + (spread + slippage if sig == "BUY" else -(spread + slippage))
 
             # V23 FIX: SL sem look-ahead
             past_data = df.iloc[max(0,i-20):i+1]
 
-            # V24 M5: Regime-aware SL for BC setups
-            if setup.startswith("BC_"):
-                if setup == "BC_DRIFT":
-                    sl_m = profile.get('sl_scalp_mult', 1.0) * 0.8  # Tight for drift
-                elif setup == "BC_FADE":
-                    sl_m = profile.get('sl_scalp_mult', 1.0) * 1.2  # Wider post-spike
-                elif setup == "BC_SPIKE":
-                    sl_m = profile.get('sl_atr_mult', 1.5) * 1.3  # Widest for spike catch
-                else:
-                    sl_m = sl_mult
+            # V25: BC regime-aware SL
+            if setup == "BC_DRIFT":
+                sl_m = profile.get('sl_scalp_mult', 1.0) * 0.8  # Tight for drift
+            elif setup == "BC_FADE":
+                sl_m = profile.get('sl_scalp_mult', 1.0) * 1.2  # Wider post-spike
+            elif setup == "BC_SPIKE":
+                sl_m = profile.get('sl_atr_mult', 1.5) * 1.3  # Widest for spike catch
             else:
                 sl_m = sl_mult
 
@@ -5057,15 +4646,11 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             risk = abs(entry - sl)
             if risk == 0: risk = atr
 
-            # V24: Setup-specific TP/trailing
+            # V25: BC-only TP configs
             tp_configs = {
                 "BC_DRIFT": (1.5, 2.5, 1.0),   # Tight TP, tight trail
                 "BC_FADE": (1.2, 2.0, 1.2),     # Conservative fade
                 "BC_SPIKE": (3.0, 6.0, 2.5),    # Wide TP for spike catch
-                "DAY": (2.0, 3.5, 2.0),
-                "MEAN_REVERSION": (2.0, 3.0, 1.2),
-                "VOL_COMPRESS": (2.0, 3.5, 1.5),
-                "ACF_MOMENTUM": (2.0, 3.5, 2.0),
             }
             tp1_r, tp2_r, trail_mult = tp_configs.get(setup, (3.0, 5.0, 2.0))
             tp1 = entry + tp1_r * risk if sig == "BUY" else entry - tp1_r * risk
@@ -5192,12 +4777,12 @@ def monte_carlo_bootstrap(results, n_sim=1000, n_trades=50):
 class SetupScore:
     trend_strength:float; momentum_align:float; patterns:float
     value_zone:float; historical:float; base_total:float
-    divergence_bonus:float; fib_bonus:float; sr_bonus:float
-    alignment_bonus:float; storm_bonus:float; regime_bonus:float
+    bc_score_bonus:float; m5_precision_bonus:float; drift_quality_bonus:float
+    alignment_bonus:float; spike_timing_bonus:float; regime_bonus:float
     volume_bonus:float; hurst_bonus:float; zscore_bonus:float
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
-    cpi_bonus:float; markov_bonus:float; spectral_bonus:float
+    markov_bonus:float; spectral_bonus:float
     adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
     candle_bonus:float; mom_accel_bonus:float
     bonus_total:float; total:float; grade:str
@@ -5211,28 +4796,27 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     hs=min((win_rate*0.15)+(profit_factor*5),25)
     base=ts+mp+pattern_score+vs+hs
 
-    # V23: BONUS GROUPS com caps por categoria (anti-inflação)
+    # V25: BONUS GROUPS — BC-ONLY (removed forex: fib, sr, divergence, storm, cpi)
     grp_trend = min(20, bonuses.get('ribbon_bonus',0) + bonuses.get('coherence_bonus',0) +
                     bonuses.get('alignment_bonus',0) + bonuses.get('adx_slope_bonus',0))
     grp_stat = min(20, bonuses.get('vr_bonus',0) + bonuses.get('acf_bonus',0) +
-                   bonuses.get('hurst_bonus',0) + bonuses.get('cpi_bonus',0))
-    grp_struct = min(18, bonuses.get('fib_bonus',0) + bonuses.get('sr_bonus',0) +
-                     bonuses.get('divergence_bonus',0))
+                   bonuses.get('hurst_bonus',0))
+    # V25: BC-SPECIFIC GROUP — replaces forex struct + storm (max 28)
+    grp_bc = min(28, bonuses.get('bc_score_bonus',0) + bonuses.get('m5_precision_bonus',0) +
+                  bonuses.get('drift_quality_bonus',0) + bonuses.get('spike_timing_bonus',0))
     grp_gen = min(12, bonuses.get('generator_bonus',0))
     grp_mom = min(18, bonuses.get('mom_accel_bonus',0) + bonuses.get('candle_bonus',0) +
                   bonuses.get('volume_bonus',0) + bonuses.get('zscore_bonus',0) +
                   bonuses.get('consecutive_bonus',0))
     grp_dist = min(10, bonuses.get('distribution_bonus',0))
-    grp_market = min(8, bonuses.get('regime_bonus',0) + bonuses.get('markov_bonus',0) +
+    grp_market = min(10, bonuses.get('regime_bonus',0) + bonuses.get('markov_bonus',0) +
                      bonuses.get('spectral_bonus',0))
-    grp_storm = min(25, bonuses.get('storm_bonus',0))
-    # V23 new bonuses
-    grp_v23 = min(20, bonuses.get('market_structure_bonus',0) + bonuses.get('pullback_bonus',0) +
+    # V25: cleaned v23 group (removed pullback_bonus and retest_bonus — forex concepts)
+    grp_v23 = min(20, bonuses.get('market_structure_bonus',0) +
                   bonuses.get('sweep_bonus',0) + bonuses.get('entry_sync_bonus',0) +
-                  bonuses.get('continuation_bonus',0) + bonuses.get('candle_mom_bonus',0) +
-                  bonuses.get('retest_bonus',0))
+                  bonuses.get('continuation_bonus',0) + bonuses.get('candle_mom_bonus',0))
 
-    bonus = grp_trend + grp_stat + grp_struct + grp_gen + grp_mom + grp_dist + grp_market + grp_storm + grp_v23
+    bonus = grp_trend + grp_stat + grp_bc + grp_gen + grp_mom + grp_dist + grp_market + grp_v23
     total=base+bonus
     if total>=190: g="S"
     elif total>=155: g="A++"
@@ -5242,52 +4826,30 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     elif total>=45: g="C"
     else: g="D"
 
-    all_keys=['divergence_bonus','fib_bonus','sr_bonus','alignment_bonus','storm_bonus',
-          'regime_bonus','volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
+    all_keys=['bc_score_bonus','m5_precision_bonus','drift_quality_bonus',
+          'alignment_bonus','spike_timing_bonus','regime_bonus',
+          'volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
-          'cpi_bonus','markov_bonus','spectral_bonus',
+          'markov_bonus','spectral_bonus',
           'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in all_keys],bonus,total,g)
 
 # ==============================================================================
-# STORM DETECTOR V20
-# ==============================================================================
+# [V25] STORM DETECTOR REMOVED (forex)
+# ═══════════════════════════════════════════
 
 def calculate_storm_bonus(sd):
-    met, lst = 0, []
-    checks = [
-        (sd.get('adx',0)>30,"ADX>30"),(sd.get('momentum_score',0)==3,"Mom 3/3"),
-        (sd.get('pattern_score',0)>=10,"Padrões"),(sd.get('divergence') is not None,"Div"),
-        (sd.get('fib'),"Fib"),(sd.get('sr_touch'),"S/R"),(sd.get('alignment'),"Align"),
-        (sd.get('bb_squeeze'),"BB Squeeze"),(sd.get('trending'),"Trending"),
-        (sd.get('volume'),"Volume"),(sd.get('hurst_trending'),"Hurst"),
-        (sd.get('zscore'),"Z-Score"),(sd.get('gen_signal'),"Generator"),
-        (sd.get('dist'),"Distrib"),(sd.get('vr_edge'),"VR Edge"),(sd.get('acf_edge'),"ACF Edge"),
-        # V21+ new checks
-        (sd.get('ribbon_quality') in ["EXCELLENT","GOOD"],"EMA Ribbon"),
-        (sd.get('coherence') in ["PERFECT","STRONG"],"TF Coherence"),
-        (sd.get('candle_quality') in ["EXCELLENT","GOOD"],"Candle Struct"),
-        (sd.get('mom_accel'),"Mom Accel"),
-        # V23 new checks
-        (sd.get('mkt_struct'),"Mkt Structure"),
-        (sd.get('candle_mom'),"Candle Mom"),
-        (sd.get('pullback'),"Pullback Q"),
-        (sd.get('entry_sync'),"Entry Sync"),
-    ]
-    for c,l in checks:
-        if c: met+=1; lst.append(l)
-    if met>=15: return "PERFECT_STORM",25,lst
-    elif met>=12: return "STRONG_CONFLUENCE",20,lst
-    elif met>=9: return "GOOD_CONFLUENCE",15,lst
-    elif met>=6: return "MODERATE",10,lst
-    return None,0,lst
+    """V25: Removed — Storm detector is a forex confluence counter.
+    BC setups use BC Score + M5 engines for confluence, not forex indicators."""
+    return None, 0, []
 
 # ==============================================================================
 # CHART V20
 # ==============================================================================
 
 def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=None, fib_levels=None):
+    """V25: sr_levels and fib_levels parameters kept for API compat but ignored."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3.5, 1],
                                      facecolor='#09090b', gridspec_kw={'hspace': 0.08})
     ax1.set_facecolor('#09090b')
@@ -5309,18 +4871,7 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     # BB — very subtle fill
     ax1.fill_between(df.index, df['BB_upper'], df['BB_lower'], alpha=0.02, color='#a1a1aa')
 
-    # S/R — clean zones
-    if sr_levels:
-        for sr in sr_levels[:3]:
-            c = '#ef4444' if sr['type'] == 'RESISTANCE' else '#22c55e'
-            ax1.axhspan(sr['zone_low'], sr['zone_high'], alpha=0.04, color=c, linewidth=0)
-            ax1.axhline(y=sr['price'], color=c, ls='-', alpha=0.15, lw=0.5)
-
-    # Fib — dotted, faint
-    if fib_levels:
-        for n, p in fib_levels.items():
-            if pd.notna(p):
-                ax1.axhline(y=p, color='#a1a1aa', ls=':', alpha=0.12, lw=0.5)
+    # V25: Removed S/R zones and Fib levels from charts (forex concepts)
 
     # Trade levels — clean, minimal
     if entry:
@@ -5431,12 +4982,12 @@ def trim_data_for_ai(data):
         "SHARPE", "SORTINO", "WF_STABLE", "TOTAL_TRADES",
         "MC_MEDIAN", "MC_P5", "MC_P95", "MC_POSITIVE",
         "ENTRY", "SL", "TP1", "TP2", "ATR",
-        "CPI_VAL", "REGIME_TRANSITION", "BIAS_CONFIDENCE", "BIAS_SCORE",
+        "REGIME_TRANSITION", "BIAS_CONFIDENCE", "BIAS_SCORE",
         "HOLDING_PERIOD", "SCORE_BREAKDOWN",
         "ADX_SLOPE", "EMA_RIBBON", "TREND_COHERENCE", "CANDLE_STRUCTURE",
         "MOM_ACCELERATION", "ATR_CHANNEL", "VWAP_ZONE",
         # V23 sniper data
-        "MKT_STRUCTURE", "CANDLE_MOMENTUM", "PULLBACK_QUALITY",
+        "MKT_STRUCTURE", "CANDLE_MOMENTUM",
         "LIQ_SWEEP", "ENTRY_SYNC", "CONT_PATTERN",
         "EARLY_REVERSAL", "REVERSAL_DIR", "RW_PENALTY",
         "ENTRY_AGGRESSIVE", "ENTRY_IDEAL", "ENTRY_SNIPER",
@@ -5673,6 +5224,72 @@ Ser AGRESSIVO mas PRECISO — entrar com convicção.}
 """
 
 # ==============================================================================
+# EDGE DETECTION UTILITIES (restored — removed accidentally during V25 cleanup)
+# ==============================================================================
+
+def detect_bb_cycle(df, profile, lookback=30):
+    try:
+        if len(df)<lookback: return "UNKNOWN",0,0
+        recent=df.tail(lookback); bw=recent['BB_width']; avg=bw.mean(); cur=bw.iloc[-1]
+        if avg==0: return "UNKNOWN",0,0
+        ratio=cur/avg; threshold=profile.get('bb_squeeze_threshold',0.6)
+        sc=sum(bw<avg*threshold)
+        if ratio<threshold: return "SQUEEZE",ratio,sc
+        elif ratio>1.5: return "EXPANSION",ratio,0
+        return "NORMAL",ratio,0
+    except: return "UNKNOWN",0,0
+
+def count_consecutive(df, lookback=20):
+    try:
+        recent=df.tail(lookback); dirs=(recent['close']>recent['open']).astype(int)
+        cd=dirs.iloc[-1]; streak=0
+        for i in range(len(dirs)-1,-1,-1):
+            if dirs.iloc[i]==cd: streak+=1
+            else: break
+        return streak, "BULLISH" if cd==1 else "BEARISH"
+    except: return 0, "UNKNOWN"
+
+def detect_roc_extreme(df, profile, periods=[5,10,20]):
+    try:
+        results={}; threshold=profile.get('roc_extreme_pct',1.0)
+        for p in periods:
+            if len(df)<p+1: continue
+            roc=((df['close'].iloc[-1]-df['close'].iloc[-p-1])/df['close'].iloc[-p-1])*100
+            if abs(roc)>threshold*2: status="EXTREME"
+            elif abs(roc)>threshold: status="ELEVATED"
+            else: status="NORMAL"
+            results[f"ROC_{p}"]={'value':round(roc,3),'status':status,'direction':"UP" if roc>0 else "DOWN"}
+        overall="NORMAL"
+        for r in results.values():
+            if r['status']=="EXTREME": overall="EXTREME"; break
+            elif r['status']=="ELEVATED": overall="ELEVATED"
+        return overall,results
+    except: return "NORMAL",{}
+
+def trigger_candle_confirmed(df, direction):
+    """Verifica se último candle confirma a entrada."""
+    try:
+        if len(df) < 3: return False, "NO_DATA"
+        last = df.iloc[-1]; prev = df.iloc[-2]
+        body = abs(last['close']-last['open']); rng = last['high']-last['low']
+        body_pct = body/rng if rng > 0 else 0
+        if direction == "BULLISH":
+            bullish = last['close'] > last['open']
+            above_prev = last['close'] > prev['close']
+            strong = body_pct > 0.5
+            if bullish and above_prev and strong: return True, "STRONG_TRIGGER"
+            elif bullish and above_prev: return True, "WEAK_TRIGGER"
+            return False, "NO_TRIGGER"
+        else:
+            bearish = last['close'] < last['open']
+            below_prev = last['close'] < prev['close']
+            strong = body_pct > 0.5
+            if bearish and below_prev and strong: return True, "STRONG_TRIGGER"
+            elif bearish and below_prev: return True, "WEAK_TRIGGER"
+            return False, "NO_TRIGGER"
+    except: return False, "ERROR"
+
+# ==============================================================================
 # SNIPER CORE V20.0 — STATISTICAL EDGE ENGINE
 # ==============================================================================
 
@@ -5723,40 +5340,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # 🟠 FIX #1: CALIBRAR SIGMA REAL
     sigma_calibrated = calibrate_sigma(h1, ppy)
 
-    # ═══ GENERATOR ANALYSIS ═══
-    if gen_type == "GBM":
-        gen = GeneratorModelV20.analyze_gbm(h1, profile, sigma_calibrated, ppy)
-    elif gen_type in ["BOOM", "CRASH"]:
-        gen = GeneratorModelV20.analyze_crash_boom(h1, profile, ppy)
-    elif gen_type == "STEP":
-        gen = GeneratorModelV20.analyze_step(h1, profile, ppy)
-    else:
-        gen = {"signal": "NEUTRAL", "confidence": 0}
+    # ═══ GENERATOR ANALYSIS — BC ONLY ═══
+    gen = GeneratorModelV20.analyze_crash_boom(h1, profile, ppy)
 
-    # ═══ EDGE TESTS V20 ═══
-    # V24-F PHASE 1: For BC assets, neutralize expensive statistical tests
-    # that add near-zero value (entropy O(n²), FFT, Markov) — they measure
-    # properties of spike+drift process, not useful trading info
-    is_bc_asset = gen_type in ["BOOM", "CRASH"]
+    # ═══ EDGE TESTS V20 — BC OPTIMIZED ═══
+    # BC assets: neutralize expensive tests that add near-zero value
+    is_bc_asset = True  # System is 100% Boom/Crash
 
     vr = variance_ratio_test(h1['close'])
     acf = autocorrelation_analysis(h1['close'])
 
-    if is_bc_asset:
-        # Neutralize: return cheap defaults instead of expensive computation
-        vol_cluster = {"has_clustering": False, "garch_significant": False}
-        dist = DistributionAnalyzer.analyze(h1)  # Keep: kurtosis useful for BC
-        cpi = {"cpi": 50, "regime": "MODERATE"}  # Neutral CPI — won't block BC
-        spectral = {"has_cycle": False, "cycles": [], "spectral_edge": 0}
-        markov = {"has_dependence": False, "transition_edge": 0, "matrix": {},
-                  "p_reversal_up": 0.33, "p_reversal_down": 0.33,
-                  "p_momentum_up": 0.33, "p_momentum_down": 0.33}
-    else:
-        vol_cluster = volatility_clustering_test(h1['close'])
-        dist = DistributionAnalyzer.analyze(h1)
-        cpi = compound_predictability_index(h1['close'], vr, acf)
-        spectral = spectral_analysis_v21(h1['close'])
-        markov = transition_matrix_v21(h1['close'])
+    # Neutral defaults — spike+drift process makes these unreliable
+    vol_cluster = {"has_clustering": False, "garch_significant": False}
+    dist = DistributionAnalyzer.analyze(h1)  # Keep: kurtosis useful for BC
+    # V25: CPI removed entirely (forex predictability index)
+    spectral = {"has_cycle": False, "cycles": [], "spectral_edge": 0}
+    markov = {"has_dependence": False, "transition_edge": 0, "matrix": {},
+              "p_reversal_up": 0.33, "p_reversal_down": 0.33,
+              "p_momentum_up": 0.33, "p_momentum_down": 0.33}
     regime_transition, rt_mult, rt_detail = detect_regime_transition(h1)
 
     # ═══ CLASSIC STATS ═══
@@ -5766,14 +5367,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     consec_count, consec_dir = count_consecutive(m15)
     roc_status, roc_details = detect_roc_extreme(m15, profile)
 
-    # ═══ V21+ PRECISION ENGINES ═══
-    adx_slope = adx_slope_analysis(h1)
-    ema_ribbon = ema_ribbon_analysis(h1)  # Keep: EMA stack useful for BC drift
-    trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)
-    if is_bc_asset:
-        vwap_data = {"entry_quality": "UNKNOWN", "vwap": 0}  # No real volume in BC
-    else:
-        vwap_data = vwap_proxy_analysis(h1)
+    # ═══ V21+ PRECISION ENGINES — BC ADAPTED ═══
+    adx_slope = adx_slope_analysis(h1)  # Keep: ADX still measures drift strength
+    ema_ribbon = ema_ribbon_analysis(h1)  # Keep: EMA alignment useful for drift
+    trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)  # Keep: TF alignment
+    vwap_data = {"entry_quality": "UNKNOWN", "vwap": 0, "zone": "N/A", "deviation": 0}  # No real volume in synthetics
     candle_struct = candle_structure_score(m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
@@ -5822,42 +5420,24 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bc_m5_struct = bc_m5_micro_structure(m5, profile, lookback=20)
     bc_m5_wicks = bc_m5_wicks_analysis(m5, profile, lookback=10)
 
-    # Divergências
-    rsi_div, rsi_db, rsi_dd = detect_divergence(m15, 'RSI', 4)
-    macd_div, macd_db, macd_dd = detect_divergence(m15, 'MACD', 4)
-    divergence = rsi_div or macd_div
-    div_bonus = max(rsi_db, macd_db); div_detail = rsi_dd or macd_dd
-
-    # S/R, Fib
-    sr_levels = detect_sr_clustered(h1)
-    sr_bonus, sr_touch, closest_sr = 0, False, None
-    if sr_levels:
-        closest_sr = min(sr_levels, key=lambda x: abs(x['price']-c1['close']))
-        if abs(closest_sr['price']-c1['close']) < c1['ATR']*0.5:
-            sr_bonus = min(closest_sr['strength']*3, 15); sr_touch = True
-    fibs, fib_dir, _ = calculate_fibonacci(h1)
-    fib_level, fib_bonus = check_fib_confluence(c1['close'], fibs, c1['ATR'])
+    # V25: Removed forex divergence/SR/Fib — replaced by BC-specific engines
+    # (detect_divergence, detect_sr_clustered, calculate_fibonacci are now stubs)
+    divergence = None; div_bonus = 0; div_detail = ""
+    sr_levels = []; sr_bonus = 0; sr_touch = False; closest_sr = None
+    fib_level = None; fib_bonus = 0
 
     align_type, align_bonus = detect_alignment(c4, c1, cm, bias)
     vol_st, vol_proxy = analyze_tick_volume(m15)
-    vol_confirmed = vol_proxy > 1.3; vol_bonus = 5 if vol_confirmed else 0
+    vol_confirmed = False  # Synthetics have no real volume — always neutral
+    vol_bonus = 0
     regime_bonus = 5 if "TRENDING" in regime else 0
     pat_score = min(cm.get('pattern_score', 0), 15)
     bb_compression = bb_cycle == "SQUEEZE"
 
-    # BONUSES V20
+    # ═══ V25: BC GENERATOR BONUS ═══
     gen_bonus = 0; gen_signal = gen.get('signal', 'NEUTRAL')
-    if gen_type == "GBM":
-        if gen.get('consensus') in ["VOL_OVEREXTENDED","VOL_COMPRESSED"] and gen.get('consensus_confidence',0) > 30:
-            gen_bonus = min(int(gen['consensus_confidence'] / 8), 12)
-        if abs(gen.get('z_price',0)) > 2:
-            gen_bonus += 5
-    elif gen_type in ["BOOM","CRASH"]:
-        if gen.get('spike_phase') in ["DRIFT_STRONG","DRIFT_NORMAL"]:
-            gen_bonus = min(int(gen.get('decay_strength',0)*8), 12)
-    elif gen_type == "STEP":
-        if gen.get('signal') in ["EXTREME_DEVIATION","HIGH_DEVIATION"]:
-            gen_bonus = min(int(gen.get('confidence',0)/8), 12)
+    if gen.get('spike_phase') in ["DRIFT_STRONG", "DRIFT_NORMAL"]:
+        gen_bonus = min(int(gen.get('decay_strength', 0) * 8), 12)
 
     hurst_bonus = 0; hurst_trending = False
     if hurst_r2 >= 0.7:
@@ -5883,13 +5463,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     vr_bonus = 0
     if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
 
-    # V21: CPI bonus (cpi_val extracted from cpi dict computed above)
-    cpi_val = cpi.get('cpi', 0)
-    cpi_regime = cpi.get('regime', 'ERROR')
-    cpi_bonus = 0
-    if cpi_val >= 60: cpi_bonus = 12
-    elif cpi_val >= 45: cpi_bonus = 8
-    elif cpi_val >= 35: cpi_bonus = 4
+    # V25: REMOVED CPI bonus — CPI is a forex concept (hardcoded to 50, dead code)
+    cpi_val = 0; cpi_regime = "N/A"; cpi_bonus = 0
 
     # V21: Markov bonus
     markov_bonus = 0
@@ -5901,34 +5476,65 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     acf_bonus = 0
     if acf.get('has_pattern'): acf_bonus = min(len(acf.get('significant_lags',[]))*3, 10)
 
+    # ═══ V25: BC-SPECIFIC BONUSES (replace forex fib/sr/div/storm/cpi) ═══
+    # BC Score bonus: regime quality + kurtosis + recovery + stack health
+    bc_score_bonus = 0
+    if bc_regime.get('regime') in ['DRIFT_SMOOTH']:
+        bc_score_bonus += 5  # Best regime for trading
+    elif bc_regime.get('regime') in ['PRE_SPIKE']:
+        bc_score_bonus += 3  # Good for spike catch
+    if bc_kurt.get('regime') in ['SPIKE_PRONE', 'EXTREME_SPIKE']:
+        bc_score_bonus += 2  # Fat tails = spike opportunity
+    if bc_ema_stack.get('stack_quality') in ['PERFECT', 'GOOD']:
+        bc_score_bonus += 3  # EMA alignment healthy
+    if bc_recovery.get('fade_safe'):
+        bc_score_bonus += 2  # Safe to trade after spike
+
+    # M5 Precision bonus: M5 pulse + structure + wicks alignment
+    m5_precision_bonus = 0
+    if bc_m5_pulse.get('optimal_entry'):
+        m5_precision_bonus += 5
+    elif bc_m5_pulse.get('pulse_active'):
+        m5_precision_bonus += 2
+    if bc_m5_struct.get('entry_window'):
+        m5_precision_bonus += 4
+    if bc_m5_wicks.get('signal') in ['STRONG_REJECTION', 'MODERATE_REJECTION']:
+        m5_precision_bonus += 3
+    elif bc_m5_wicks.get('signal') in ['EXHAUSTION', 'WEAK_EXHAUSTION']:
+        m5_precision_bonus -= 4  # Penalty: drift exhausted
+
+    # Drift Quality bonus: drift strength + quality + gradient alignment
+    drift_quality_bonus = 0
+    if bc_drift.get('drift_active'):
+        drift_str = bc_drift.get('strength', 0)
+        drift_q = bc_drift.get('quality', 'CHOPPY')
+        if drift_str >= 70 and drift_q == 'SMOOTH': drift_quality_bonus = 10
+        elif drift_str >= 50 and drift_q in ['SMOOTH', 'MODERATE']: drift_quality_bonus = 7
+        elif drift_str >= 30: drift_quality_bonus = 4
+        # Gradient amplifier
+        if bc_gradient.get('phase') == 'ACCELERATING': drift_quality_bonus += 3
+        elif bc_gradient.get('phase') == 'DYING': drift_quality_bonus -= 3
+        drift_quality_bonus = max(0, drift_quality_bonus)
+
+    # Spike Timing bonus: spike probability + consecutive count + Weibull
+    spike_timing_bonus = 0
+    if bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= 60:
+        spike_timing_bonus = 8
+    elif bc_spike.get('probability', 0) >= 40:
+        spike_timing_bonus = 4
+    # Consecutive count risk (overdue for spike = risky for drift, good for spike catch)
+    if bc_consec.get('zone') == 'DANGER':
+        spike_timing_bonus += 3  # Good for spike catch
+    elif bc_consec.get('zone') == 'EXTENDED':
+        spike_timing_bonus += 1
+
     # ═══ V21+ PRECISION BONUSES ═══
-    # ADX Slope: early trend detection bonus
-    adx_slope_bonus = 0
-    if adx_slope.get('phase') == "TREND_FORMING" and adx_slope.get('confidence', 0) > 40:
-        adx_slope_bonus = min(int(adx_slope['confidence'] / 10), 8)
-    elif adx_slope.get('phase') == "TREND_ESTABLISHED":
-        adx_slope_bonus = 5
-
-    # EMA Ribbon: trend quality bonus
-    ribbon_bonus = 0
-    if ema_ribbon.get('quality') == "EXCELLENT":
-        ribbon_bonus = 10
-    elif ema_ribbon.get('quality') == "GOOD":
-        ribbon_bonus = 6
-    elif ema_ribbon.get('quality') == "MODERATE":
-        ribbon_bonus = 3
-    # Extra for direction alignment
-    if ema_ribbon.get('direction') == bias and ribbon_bonus > 0:
-        ribbon_bonus += 3
-
-    # Trend Coherence: multi-TF agreement bonus
-    coherence_bonus = 0
-    if trend_coherence.get('coherence') == "PERFECT" and trend_coherence.get('coherent_direction') == bias:
-        coherence_bonus = 12
-    elif trend_coherence.get('coherence') == "STRONG" and trend_coherence.get('coherent_direction') == bias:
-        coherence_bonus = 8
-    elif trend_coherence.get('coherence') == "STRONG":
-        coherence_bonus = 4
+    # ═══ LEGACY TREND BONUSES — NEUTRALIZED FOR BC ═══
+    # BC has superior dedicated tools: bc_ema_stack, bc_gradient, bc_consecutive
+    # These forex-oriented tools add noise, not signal, for spike+drift process
+    adx_slope_bonus = 0   # → replaced by bc_drift_momentum_gradient
+    ribbon_bonus = 0      # → replaced by bc_ema_drift_stack
+    coherence_bonus = 0   # → replaced by cross-validation + bc_conflicts
 
     # Candle Structure: entry quality bonus
     candle_bonus = 0
@@ -5967,11 +5573,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if candle_mom.get('conviction') == "STRONG": candle_mom_bonus = 8
     elif candle_mom.get('conviction') == "MODERATE": candle_mom_bonus = 4
 
-    # Pullback Quality bonus
+    # V25: Pullback bonus removed (forex concept — BC uses drift, not pullbacks)
     pullback_bonus = 0
-    if pb_quality.get('quality') == "EXCELLENT": pullback_bonus = 8
-    elif pb_quality.get('quality') == "GOOD": pullback_bonus = 5
-    elif pb_quality.get('quality') == "MODERATE": pullback_bonus = 2
 
     # Liquidity Sweep bonus
     sweep_bonus = 0
@@ -5993,19 +5596,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Breakout Retest bonus (calculated after SR levels)
     retest_bonus = 0
 
-    # V23: RANDOM WALK PENALTY
+    # V25: RANDOM WALK PENALTY (kept — valid for all stochastic processes)
     random_walk_penalty = 0
     if 0.47 <= hurst_val <= 0.53 and hurst_r2 >= 0.7:
         random_walk_penalty = -20  # Honest: no edge in random walk
 
-    # V23: CPI GATE ADAPTATIVO por asset class
-    vol_class = profile.get('vol_class', 'MEDIUM')
-    cpi_min_map = {
-        'ULTRA_LOW': 20, 'LOW': 18, 'MEDIUM': 16,
-        'HIGH': 14, 'EXTREME': 12,
-        'BOOM': 10, 'CRASH': 10, 'STEP': 8
-    }
-    cpi_gate_min = cpi_min_map.get(vol_class, 18)
+    # V25: REMOVED CPI gate — CPI is a forex predictability index, irrelevant for synthetics
+    # BC synthetic indices have inherent spike+drift structure (non-random by design)
+    cpi_gate_min = 0  # No CPI gate for BC
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
@@ -6016,10 +5614,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # 🔴 FIX #6: Monte Carlo REAL
     mc = monte_carlo_bootstrap(sim.get('RESULTS', []))
 
-    # ═══ V21: CPI GATE — Nao operar se imprevisivel ═══
-    # (cpi_val and cpi_regime already extracted above)
-
-    # ═══ SETUP DETECTION V21 — PREDICTABILITY-GATED ═══
+    # ═══ SETUP DETECTION V25 — BC-ONLY ═══
     sig = "MONITORING"; entry = float(c1['close']); sl_val = float(c1['close'])
     entry_type = "Wait"; sl_reason = "Pivot"; trade_style = None; setup_type = None
     vc = profile['vol_class']
@@ -6176,123 +5771,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
 
-        # ═══ SURGERY 3: FOR BC — STOP HERE. NO LEGACY SETUPS. ═══
-        # If no BC setup triggered, return without signal.
-        # This prevents contradictory signals from forex-style setups.
-        if is_bc:
-            return  # sig remains "MONITORING" — this is correct and honest
-
-        # ═══ NON-BC LEGACY SETUPS (only for non-BC assets) ═══
-        # Divergence block only applies to legacy setups
-        div_block = divergence and (("BEARISH" in str(divergence) and is_long and "HIDDEN" not in str(divergence)) or
-                                     ("BULLISH" in str(divergence) and not is_long and "HIDDEN" not in str(divergence)))
-        if div_block:
-            sig = f"BLOCKED (DIV: {div_detail})"; return
-
-        # O4: GBM/STEP setups removed — V24-BC is Boom/Crash only
-        # (Legacy code removed: GEN_VOL_COMPRESS, GEN_PRICE_DEV, GEN_STEP_REVERT)
-
-        # 🔴 FIX #3: Crash/Boom — drift direction real
-        if gen_type in ["BOOM","CRASH"]:
-            phase = gen.get('spike_phase','')
-            drift_dir = gen.get('drift_direction','')
-            if phase in ["DRIFT_STRONG","DRIFT_NORMAL"]:
-                if (drift_dir=="UP" and is_long) or (drift_dir=="DOWN" and not is_long):
-                    d = "LONG" if is_long else "SHORT"
-                    sig = f"{d} (SPIKE DRIFT {phase})"
-                    # FIX #2: Clean ATR for BC assets
-                    _sl_atr = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-                    sl_val = entry - adapted_profile['sl_atr_mult']*_sl_atr if is_long else entry + adapted_profile['sl_atr_mult']*_sl_atr
-                    entry_type = f"Drift {drift_dir} ({gen.get('last_spike_bars',0)} bars)"
-                    trade_style = "DAY"; setup_type = "GEN_SPIKE_DRIFT"
-                    return
-
-        # O4: STEP setup removed — V24-BC is Boom/Crash only
-
-        # 2. REGIME-SPECIFIC CLASSIC SETUPS — FIX #3: SWING eliminated, converted to DAY
-        if "TRENDING" in regime and adx > adapted_profile.get('adx_strong',25):
-            if (is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5) or \
-               (not is_long and abs(c1['close']-c1['EMA_50'])<c1['ATR']*1.5):
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (DAY TREND)"
-                _sl_atr_dt = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-                sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult'])
-                entry_type = f"Day Trend — {mp_type}"
-                trade_style = "DAY"; setup_type = "DAY"
-                if mp_price and mp_type != "MARKET": entry = mp_price
-                return
-
-        if "RANGING" in regime or hurst_val < 0.48:
-            if abs(z_current) > profile.get('zscore_extreme',2)*0.6:
-                if (z_current < 0 and is_long) or (z_current > 0 and not is_long):
-                    d = "LONG" if is_long else "SHORT"
-                    sig = f"{d} (MEAN REVERSION)"
-                    # FIX #2: Clean ATR for BC assets
-                    _sl_atr_mr = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-                    sl_val = entry - adapted_profile['sl_atr_mult']*_sl_atr_mr if is_long else entry + adapted_profile['sl_atr_mult']*_sl_atr_mr
-                    entry_type = f"MR Z={z_current:.1f}"
-                    trade_style = "REVERSAL"; setup_type = "MEAN_REVERSION"
-                    return
-
-        # 3. DAY
-        # V21 FIX-C: DAY requires ADX >= 22 (not catch-all)
-        if adx > max(adapted_profile.get('adx_trend_min',15), 22):
-            d = "LONG" if is_long else "SHORT"
-            sig = f"{d} (DAY)"
-            sl_val = detect_swing_level(h1, "BUY" if is_long else "SELL", adapted_profile['sl_atr_mult']*0.8)
-            entry_type = f"Day — {mp_type}"
-            trade_style = "DAY"; setup_type = "DAY"
-            if mp_price and mp_type != "MARKET": entry = mp_price
-            return
-
-        # 4. BREAKOUT
-        # V21 PREC #5: Breakout needs close ABOVE/BELOW SR (not just near)
-        if sr_touch and closest_sr:
-            bk_ok, bk_r = confirm_breakout_volume(m15)
-            broke_through = (is_long and c1['close'] > closest_sr['price'] + c1['ATR']*0.1) or \
-                            (not is_long and c1['close'] < closest_sr['price'] - c1['ATR']*0.1)
-            if bk_ok and broke_through:
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (BREAKOUT)"
-                sl_val = closest_sr['price'] - c1['ATR'] if is_long else closest_sr['price'] + c1['ATR']
-                entry_type = f"Breakout S/R (×{bk_r:.1f})"
-                trade_style = "BREAKOUT"; setup_type = "BREAKOUT"
-                return
-
-        # 5. V23: BREAKOUT RETEST — SKIP for BC (bc_supply_demand covers this)
-        if not is_bc:
-            br_retest = detect_breakout_retest(h1, sr_levels, direction, c1['ATR'])
-            if br_retest.get('retest') and pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (RETEST)"
-                if is_long:
-                    sl_val = br_retest['level'] - c1['ATR'] * 1.2
-                else:
-                    sl_val = br_retest['level'] + c1['ATR'] * 1.2
-                entry_type = f"S/R Retest ({br_retest.get('type','')}) PB:{pb_quality['quality']}"
-                trade_style = "RETEST"; setup_type = "BREAKOUT_RETEST"
-                return
-
-        # 6. V23: SCALP (M15 momentum + M5 trigger — rápido, tight)
-        if entry_sync.get('ready') == "READY" and candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
-            if c1['ADX'] > 18:
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (SCALP)"
-                _sl_atr_sc = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-                sl_val = entry - _sl_atr_sc * 1.2 if is_long else entry + _sl_atr_sc * 1.2
-                entry_type = f"Scalp — Sync:{entry_sync['score']} Mom:{candle_mom['conviction']}"
-                trade_style = "SCALP"; setup_type = "SCALP"
-                return
-
-        # 7. CONTINUATION — SKIP for BC (drift_analyzer + gradient covers this)
-        if not is_bc:
-            if cont_pattern.get('pattern') != "NONE" and cont_pattern.get('confidence', 0) > 50:
-                d = "LONG" if is_long else "SHORT"
-                sig = f"{d} (CONTINUATION)"
-                sl_val = entry - c1['ATR'] * adapted_profile['sl_atr_mult'] if is_long else entry + c1['ATR'] * adapted_profile['sl_atr_mult']
-                entry_type = f"{cont_pattern['pattern']} (conf:{cont_pattern['confidence']}%)"
-                trade_style = "DAY"; setup_type = "CONTINUATION"
-                return
+        # ═══ V25: BC-ONLY — NO LEGACY FOREX SETUPS ═══
+        # All BC setups handled above (POST_SPIKE, SPIKE_CATCH, SCALP_DRIFT,
+        # DRIFT_RIDE, STOCH_SPIKE, REVERSAL). If none triggered → MONITORING.
+        return  # sig remains "MONITORING" — honest and correct
 
     # V24 FIX #5: For Crash/Boom: try BOTH drift and spike directions
     # V24-F COHERENCE FIX: Use PROFILE directions (source of truth), not generator
@@ -6319,117 +5801,70 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     conflict_penalty = bc_conflicts.get('conflict_penalty', 0) if gen_type in ["BOOM", "CRASH"] else 0
 
     # ═══ V21+ ENTRY REFINEMENT ═══
-    # Use ATR channel and VWAP for more precise entry when setup detected
+    # ═══ V25: BC ENTRY REFINEMENT ═══
     if "LONG" in sig or "SHORT" in sig:
-        # V24-F: For BC, use BC-specific entry refinement (channel position + gradient)
-        if gen_type in ["BOOM", "CRASH"]:
-            # BC entry refinement: use price channel position for better timing
-            ch_pos = bc_channel.get('position_pct', 50)
-            if setup_type == "DRIFT_RIDE":
-                entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
-            elif setup_type == "SPIKE_CATCH":
-                entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
-            elif setup_type == "POST_SPIKE":
-                entry_type = f"{entry_type} | Rec:{bc_recovery.get('recovery_phase','?')}"
-        else:
-            # Non-BC: Use forex-oriented entry refinement
-            br_rt = detect_breakout_retest(h1, sr_levels, bias, c1['ATR'])
-            if br_rt.get('retest'): retest_bonus = 6
-
-            ch_quality = atr_channel.get('quality', 'UNKNOWN')
-            ch_entry = atr_channel.get('channel_entry')
-            if ch_quality in ['OPTIMAL', 'GOOD'] and ch_entry is not None:
-                if "LONG" in sig and ch_entry < entry:
-                    entry = ch_entry
-                    entry_type = f"{entry_type} → ATR-CH {ch_quality}"
-                elif "SHORT" in sig and ch_entry > entry:
-                    entry = ch_entry
-                    entry_type = f"{entry_type} → ATR-CH {ch_quality}"
-            vwap_qual = vwap_data.get('entry_quality', 'UNKNOWN')
-            if vwap_qual == 'EXCELLENT':
-                entry_type = f"{entry_type} (VWAP✓)"
+        # BC entry refinement: use price channel position for better timing
+        ch_pos = bc_channel.get('position_pct', 50)
+        if setup_type == "DRIFT_RIDE":
+            entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
+        elif setup_type == "SPIKE_CATCH":
+            entry_type = f"{entry_type} | Ch:{bc_channel.get('position','?')}({ch_pos:.0f}%)"
+        elif setup_type == "POST_SPIKE":
+            entry_type = f"{entry_type} | Rec:{bc_recovery.get('recovery_phase','?')}"
+        elif setup_type == "SCALP_DRIFT":
+            entry_type = f"{entry_type} | Pulse:{bc_m5_pulse.get('pulse_phase','?')}"
 
     # Spread
     if "LONG" in sig: entry += profile['spread']
     elif "SHORT" in sig: entry -= profile['spread']
 
-    # Clamp SL — FIX #2: Use clean ATR for BC to prevent spike-inflated ATR widening SL
-    _clamp_atr = bc_atr_clean if gen_type in ["BOOM","CRASH"] else c1['ATR']
-    if "LONG" in sig and (entry - sl_val) > adapted_profile['sl_atr_mult'] * _clamp_atr:
-        sl_val = entry - adapted_profile['sl_atr_mult'] * _clamp_atr
-    elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * _clamp_atr:
-        sl_val = entry + adapted_profile['sl_atr_mult'] * _clamp_atr
+    # Clamp SL — Always use clean ATR (spike-filtered) for BC synthetics
+    if "LONG" in sig and (entry - sl_val) > adapted_profile['sl_atr_mult'] * bc_atr_clean:
+        sl_val = entry - adapted_profile['sl_atr_mult'] * bc_atr_clean
+    elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * bc_atr_clean:
+        sl_val = entry + adapted_profile['sl_atr_mult'] * bc_atr_clean
 
-    # Storm — V23: Added new checks
-    storm_data = {'adx':adx,'momentum_score':momentum,'pattern_score':pat_score,
-        'divergence':divergence,'fib':fib_level is not None,'sr_touch':sr_touch,
-        'alignment':align_type=="PERFECT",'bb_squeeze':bb_compression,
-        'trending':"TRENDING" in regime,'volume':vol_confirmed,'hurst_trending':hurst_trending,
-        'zscore':zscore_favorable,'gen_signal':gen_bonus>0,'dist':dist_favorable,
-        'vr_edge':vr.get('has_edge',False),'acf_edge':acf.get('has_pattern',False),
-        # V21+ storm checks
-        'ribbon_quality':ema_ribbon.get('quality'),
-        'coherence':trend_coherence.get('coherence'),
-        'candle_quality':candle_struct.get('quality'),
-        'mom_accel':mom_accel_bonus > 0,
-        # V23 storm checks
-        'mkt_struct': mkt_struct.get('bos') or mkt_struct.get('choch'),
-        'candle_mom': candle_mom.get('conviction') in ['STRONG', 'MODERATE'],
-        'pullback': pb_quality.get('quality') in ['EXCELLENT', 'GOOD'],
-        'entry_sync': entry_sync.get('ready') == 'READY',
-        }
-    storm_level, storm_bonus, storm_criteria = calculate_storm_bonus(storm_data)
+    # V25: Storm removed — forex confluence counting is irrelevant for BC
 
-    # V24-F: Neutralize storm for BC — the 20 forex criteria are irrelevant
-    # BC decisions come from BC Score, not from forex confluence counting
-    if is_bc_asset:
-        storm_bonus = 0
-        storm_level = None
-
-    if storm_level == "PERFECT_STORM" and "BLOCKED" not in sig and sig != "MONITORING":
-        sig = sig.replace("LONG","LONG ⭐STORM⭐").replace("SHORT","SHORT ⭐STORM⭐")
-        setup_type = "PERFECT_STORM"
-
-    # V21: Independent Edge Correlation
+    # V25: Independent Edge Correlation (cleaned of forex references)
     indep_edges = calculate_independent_edges(
         vr, acf, hurst_val, gen_bonus, dist, z_current,
         divergence, fib_level, sr_touch, align_type, vol_confirmed)
-
-    final_db = 0
-    if divergence and (("LONG" in sig and "BULLISH" in str(divergence)) or ("SHORT" in sig and "BEARISH" in str(divergence))):
-        final_db = abs(div_bonus)
 
     score = calculate_score(
         adx=adx, momentum_score=momentum, pattern_score=pat_score,
         dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
         win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
-        divergence_bonus=final_db, fib_bonus=fib_bonus, sr_bonus=sr_bonus,
-        alignment_bonus=align_bonus, storm_bonus=storm_bonus,
+        # V25: BC-specific bonuses (replaced forex fib/sr/div/storm/cpi)
+        bc_score_bonus=bc_score_bonus, m5_precision_bonus=m5_precision_bonus,
+        drift_quality_bonus=drift_quality_bonus, spike_timing_bonus=spike_timing_bonus,
+        alignment_bonus=align_bonus,
         regime_bonus=regime_bonus, volume_bonus=vol_bonus,
         hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
         consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
         distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
-        cpi_bonus=cpi_bonus, markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
+        markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
         adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
         coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
         mom_accel_bonus=mom_accel_bonus,
-        # V23 bonuses
+        # V23 bonuses (cleaned: removed pullback, retest — forex concepts)
         market_structure_bonus=market_structure_bonus,
-        candle_mom_bonus=candle_mom_bonus, pullback_bonus=pullback_bonus,
+        candle_mom_bonus=candle_mom_bonus,
         sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
-        continuation_bonus=continuation_bonus, retest_bonus=retest_bonus)
+        continuation_bonus=continuation_bonus)
 
     # Filters — V24-F: BC Score as PRIMARY gate for BC setups
-    configs = {"PERFECT_STORM":(80,1.2),"BREAKOUT":(50,1.2),"MEAN_REVERSION":(35,1.0),
-               "GEN_VOL_COMPRESS":(35,0.9),"GEN_SPIKE_DRIFT":(30,0.8),"GEN_STEP_REVERT":(30,0.8),
-               "GEN_PRICE_DEV":(35,1.0),"DAY":(40,1.1),
-               # BC-specific — more aggressive thresholds
-               "SPIKE_CATCH":(30,0.8),"DRIFT_RIDE":(25,0.8),"POST_SPIKE":(20,0.7),
-               "REVERSAL":(40,1.0),"SCALP_DRIFT":(20,0.7),
-               "SCALP":(25,0.9),"BREAKOUT_RETEST":(40,1.1),"CONTINUATION":(35,1.0)}
-    ms, mpf = configs.get(setup_type, (60, 1.3))
-    is_gen_setup = setup_type and "GEN" in str(setup_type)
-    is_bc_setup = setup_type in ["SPIKE_CATCH", "DRIFT_RIDE", "POST_SPIKE", "REVERSAL", "SCALP_DRIFT"]
+    # ═══ V25: BC-ONLY FILTER CONFIGS (threshold, min_pf) ═══
+    configs = {
+        "SPIKE_CATCH": (30, 0.8),    # Aggressive — time-sensitive
+        "DRIFT_RIDE": (25, 0.8),     # Moderate — steady drift
+        "SCALP_DRIFT": (20, 0.7),    # Loose — tight SL compensates
+        "POST_SPIKE": (20, 0.7),     # Loose — high R:R fade
+        "REVERSAL": (40, 1.0),       # Strict — structural change
+        "STOCH_SPIKE": (30, 0.8),    # Moderate — timer signal
+    }
+    ms, mpf = configs.get(setup_type, (30, 0.8))
+    is_bc_setup = setup_type in configs
 
     # FIX #8: Calculate BC Score for BC setups
     bc_score_data = {"score": 0, "grade": "D", "status": "FAIL"}
@@ -6444,13 +5879,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             bc_m5_pulse=bc_m5_pulse, bc_m5_struct=bc_m5_struct,
             bc_m5_wicks=bc_m5_wicks)
 
-    # V23: Score override — reduce minimums with ultra-high confluence
+    # Score override — BC uses TF coherence + ribbon for quality boost
     if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
         ms = int(ms * 0.80)
     if sim['WR'] > 65 and sim['PF'] > 1.8:
         ms = int(ms * 0.85)
-    if storm_level in ["PERFECT_STORM", "STRONG_CONFLUENCE"]:
-        ms = int(ms * 0.75)
 
     # V24 FIX #11: Floor
     ms = max(ms, 15)
@@ -6461,10 +5894,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         sig = f"BLOCKED ({meltdown['reason']})"
     elif meltdown.get('score_boost', 0) > 0:
         ms = int(ms * (1 + meltdown['score_boost'] / 100))
-
-    # V24 A3: Expectancy stress test
-    if sim.get('HIGH_RISK', False) and not is_gen_setup:
-        pass  # Flag only, don't block
 
     # V24-F: Gradient DYING blocks drift ride AND scalp drift
     if is_bc_setup and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
@@ -6518,27 +5947,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                         fails.append(f"SYNC={entry_sync.get('score',0)}<40")
             # SPIKE_CATCH, POST_SPIKE, SCALP_DRIFT: NO entry sync check
 
-            # COHERENCE FIX C: NO legacy score check for BC
-            # (removed: was blocking valid BC trades because legacy score
-            # used forex-oriented criteria that don't apply to BC)
-
-        else:
-            # Non-BC setups: original filter logic
-            effective_score = score.total + random_walk_penalty - conflict_penalty
-            if effective_score < ms: fails.append(f"SCORE={effective_score:.0f}<{ms}")
-            if cpi_val < cpi_gate_min and not is_gen_setup: fails.append(f"CPI={cpi_val:.0f}<{cpi_gate_min}")
-            if sim['NET'] <= 0 and not is_gen_setup: fails.append("NET≤0")
-            pf_min = max(mpf, 1.1) if not is_gen_setup else mpf
-            if sim['PF'] < pf_min and not is_gen_setup: fails.append(f"PF={sim['PF']:.1f}<{pf_min:.1f}")
-            if entry_sync.get('ready') == "WAIT" and setup_type not in ["MEAN_REVERSION", "GEN_VOL_COMPRESS", "GEN_PRICE_DEV"]:
-                fails.append(f"SYNC={entry_sync.get('score',0)}<60")
-
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
-    # ═══ V24-F COHERENCE FIX E: CROSS-VALIDATION ═══
+    # ═══ V25 CROSS-VALIDATION: DIRECTION SANITY CHECK ═══
     # Verify signal direction is LOGICALLY POSSIBLE for this BC asset
-    # This catches any remaining contradiction from upstream logic
-    if gen_type in ["BOOM", "CRASH"] and "BLOCKED" not in sig and sig != "MONITORING":
+    if "BLOCKED" not in sig and sig != "MONITORING":
         is_boom = gen_type == "BOOM"
         sig_is_long = "LONG" in sig
 
@@ -6568,86 +5981,67 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         if not valid:
             sig = f"BLOCKED (INCOERÊNCIA: {reason})"
 
-    # Targets — V23: Adaptive TP (S/R aware + regime aware)
+    # ═══ V25: BC-ONLY TP CONFIGS ═══
     risk = abs(entry - sl_val)
     if risk == 0: risk = float(c1['ATR'])
-    tc = {"PERFECT_STORM":(5,10),"BREAKOUT":(adapted_profile['tp1_r'],adapted_profile['tp2_r']+2),
-          "MEAN_REVERSION":(2,3),"GEN_VOL_COMPRESS":(2.5,4),"GEN_SPIKE_DRIFT":(2,5),
-          "GEN_STEP_REVERT":(1.5,2.5),"GEN_PRICE_DEV":(2,3.5),"DAY":(2,3),
-          # BC-specific TP (scalp = tighter, spike catch = wider)
-          "SPIKE_CATCH":(3.0,6.0),"DRIFT_RIDE":(1.5,2.5),"POST_SPIKE":(1.2,2.0),
-          "REVERSAL":(2.5,4.0),"SCALP_DRIFT":(1.0,1.8),
-          "SCALP":(1.5,2.5),"BREAKOUT_RETEST":(2.5,4),"CONTINUATION":(2,3.5)}
+    tc = {
+        # BC setup types only
+        "SPIKE_CATCH": (3.0, 6.0),    # Wide — catching a spike
+        "DRIFT_RIDE": (1.5, 2.5),     # Medium — riding steady drift
+        "SCALP_DRIFT": (1.0, 1.8),    # Tight — M5 micro-drift
+        "POST_SPIKE": (1.2, 2.0),     # Medium — fade after spike
+        "REVERSAL": (2.5, 4.0),       # Wide — structural change
+        "STOCH_SPIKE": (2.0, 3.5),    # Medium-wide — timer signal
+    }
     r1, r2 = tc.get(setup_type, (adapted_profile['tp1_r'], adapted_profile['tp2_r']))
 
-    # V23: Regime-adaptive TP
-    if "TRENDING" in regime and adx > 30:
-        r1 *= 1.3; r2 *= 1.3
-    elif "RANGING" in regime:
-        r1 = min(r1, 2.0); r2 = min(r2, 3.0)
+    # V25: BC Regime-Aware TP (matches SL regime multiplier)
+    regime_tp_mults = {
+        "DRIFT_SMOOTH": 0.9,   # Tight TP — predictable
+        "CHOPPY": 0.8,         # Very tight — unreliable
+        "PRE_SPIKE": 1.2,      # Wider — spike coming
+        "POST_SPIKE": 1.3,     # Wider — high vol recovery
+        "SPIKE_CLUSTER": 1.5,  # Widest — big moves
+    }
+    bc_regime_name = bc_regime.get('regime', 'UNKNOWN')
+    regime_tp_mult = regime_tp_mults.get(bc_regime_name, 1.0)
+    r1 *= regime_tp_mult
+    r2 *= regime_tp_mult
 
-    # FIX #11: BC Regime-Aware TP (matches SL regime multiplier)
-    if gen_type in ["BOOM", "CRASH"] and is_bc_setup:
-        regime_tp_mults = {
-            "DRIFT_SMOOTH": 0.9,   # Tight TP — predictable
-            "CHOPPY": 0.8,         # Very tight — unreliable
-            "PRE_SPIKE": 1.2,      # Wider — spike coming
-            "POST_SPIKE": 1.3,     # Wider — high vol recovery
-            "SPIKE_CLUSTER": 1.5,  # Widest — big moves
-        }
-        bc_regime_name = bc_regime.get('regime', 'UNKNOWN')
-        regime_tp_mult = regime_tp_mults.get(bc_regime_name, 1.0)
-        r1 *= regime_tp_mult
-        r2 *= regime_tp_mult
+    # V24-F: Gradient-aware TP adjustment for DRIFT_RIDE
+    if setup_type == "DRIFT_RIDE":
+        grad_phase = bc_gradient.get('phase', 'STABLE')
+        if grad_phase == "ACCELERATING":
+            r1 *= 1.15; r2 *= 1.2  # Drift strong → wider TP
+        elif grad_phase == "DECELERATING":
+            r1 *= 0.85; r2 *= 0.8  # Drift weakening → tighter TP
 
-        # V24-F: Gradient-aware TP adjustment for DRIFT_RIDE
-        if setup_type == "DRIFT_RIDE":
-            grad_phase = bc_gradient.get('phase', 'STABLE')
-            if grad_phase == "ACCELERATING":
-                r1 *= 1.15; r2 *= 1.2  # Drift strong → wider TP
-            elif grad_phase == "DECELERATING":
-                r1 *= 0.85; r2 *= 0.8  # Drift weakening → tighter TP
+    # V25-SCALP: TP adjustment for SCALP_DRIFT based on M5 pulse + drift quality
+    if setup_type == "SCALP_DRIFT":
+        # Drift quality bonus
+        if bc_drift.get('quality') == 'SMOOTH':
+            r1 *= 1.15; r2 *= 1.2
+        # M5 pulse strength bonus
+        pulse_str = bc_m5_pulse.get('pulse_strength', 0)
+        if pulse_str > 70:
+            r1 *= 1.1; r2 *= 1.15  # Strong pulse → wider TP
+        # Gradient bonus
+        grad_phase = bc_gradient.get('phase', 'STABLE')
+        if grad_phase == "ACCELERATING":
+            r1 *= 1.1; r2 *= 1.15
 
-        # V25-SCALP: TP adjustment for SCALP_DRIFT based on M5 pulse + drift quality
-        if setup_type == "SCALP_DRIFT":
-            # Drift quality bonus
-            if bc_drift.get('quality') == 'SMOOTH':
-                r1 *= 1.15; r2 *= 1.2
-            # M5 pulse strength bonus
-            pulse_str = bc_m5_pulse.get('pulse_strength', 0)
-            if pulse_str > 70:
-                r1 *= 1.1; r2 *= 1.15  # Strong pulse → wider TP
-            # Gradient bonus
-            grad_phase = bc_gradient.get('phase', 'STABLE')
-            if grad_phase == "ACCELERATING":
-                r1 *= 1.1; r2 *= 1.15
-
-        # V24-F: Consecutive-aware TP for SPIKE_CATCH
-        if setup_type == "SPIKE_CATCH":
-            consec_count = bc_consec.get('count', 0)
-            if consec_count >= 10:
-                r1 *= 1.3; r2 *= 1.4  # Very overdue → expect bigger spike
-            elif consec_count >= 7:
-                r1 *= 1.15; r2 *= 1.2  # Moderately overdue
+    # V24-F: Consecutive-aware TP for SPIKE_CATCH
+    if setup_type == "SPIKE_CATCH":
+        consec_count = bc_consec.get('count', 0)
+        if consec_count >= 10:
+            r1 *= 1.3; r2 *= 1.4  # Very overdue → expect bigger spike
+        elif consec_count >= 7:
+            r1 *= 1.15; r2 *= 1.2  # Moderately overdue
 
     direction = "LONG" if "LONG" in sig else "SHORT"
-    tp1, tp2 = smart_tp(entry, direction, risk, r1, r2, sr_levels)
+    tp1, tp2 = smart_tp(entry, direction, risk, r1, r2)
 
-    # V23: Cap TP at nearest opposing S/R
-    if sr_levels and ("LONG" in sig or "SHORT" in sig):
-        for sr in sr_levels[:5]:
-            if "LONG" in sig and sr['type'] == 'RESISTANCE' and sr['price'] > entry:
-                sr_tp_cap = sr['price'] - c1['ATR'] * 0.2
-                if tp2 > sr_tp_cap and sr_tp_cap > entry:
-                    tp2 = sr_tp_cap
-                    if tp1 > tp2: tp1 = entry + (tp2 - entry) * 0.6
-                break
-            elif "SHORT" in sig and sr['type'] == 'SUPPORT' and sr['price'] < entry:
-                sr_tp_cap = sr['price'] + c1['ATR'] * 0.2
-                if tp2 < sr_tp_cap and sr_tp_cap < entry:
-                    tp2 = sr_tp_cap
-                    if tp1 < tp2: tp1 = entry - (entry - tp2) * 0.6
-                break
+    # V25: Removed S/R TP capping (forex concept — BC uses ATR-based TPs)
 
     # V23: Multi-entry levels
     entry_ideal = entry  # Current close
@@ -6667,11 +6061,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Pyramid
     pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
-    show = any(x in sig for x in ["DAY","BREAKOUT","STORM","REVERSION","COMPRESS","DRIFT","SPIKE","STEP","DEVIATION","PRICE","SCALP","RETEST","CONTINUATION","FADE","REVERSAL"])
+    show = any(x in sig for x in ["DRIFT","SPIKE","SCALP","FADE","REVERSAL","STOCH"])
 
     imgs = [
-        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels if show else None),
-        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, sr_levels, fibs if show else None),
+        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
+        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
         plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
     ]
 
@@ -6679,7 +6073,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     hold = optimal_holding_period(acf, setup_type)
 
     confs = []
-    if cpi_val >= 45: confs.append(f"\U0001f9e0 CPI: {cpi_val:.0f} ({cpi_regime})")
     if markov.get('has_dependence'): confs.append(f"\U0001f52e Markov: {markov['best_transition']}")
     if spectral.get('has_cycle'): confs.append(f"\U0001f4c8 Cycle: {spectral['dominant_period']:.0f} bars")
     if rt_detail: confs.append(f"\U0001f504 {regime_transition}: {rt_detail}")
@@ -6688,15 +6081,17 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if acf.get('has_pattern'): confs.append(f"📊 ACF: {acf['dominant_type']} (lag-1={acf.get('acf_1',0):.3f})")
     if vol_cluster.get('has_clustering'): confs.append(f"🔥 VolCluster: {vol_cluster['vol_regime']}")
     if dist_favorable: confs.append(f"📊 Dist P{dist['percentile']:.0f}")
-    if divergence: confs.append(f"🔍 {divergence}")
-    if fib_level: confs.append(f"📐 Fib {fib_level}")
-    if sr_touch: confs.append(f"🎯 S/R")
     if align_type!="NONE": confs.append(f"⭐ Align {align_type}")
-    if storm_level: confs.append(f"🌟 {storm_level} ({len(storm_criteria)}/20)")
+    # Confluences — BC-specific
     if hurst_trending: confs.append(f"🧬 Hurst {hurst_val}")
     if zscore_favorable: confs.append(f"📊 Z {z_current:.1f}")
     if bb_compression: confs.append("💥 BB Squeeze")
     if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
+    # V25: BC-specific confluences
+    if drift_quality_bonus >= 7: confs.append(f"🌊 Drift Q: {bc_drift.get('quality','?')} ({bc_drift.get('strength',0)}%)")
+    if spike_timing_bonus >= 4: confs.append(f"⚡ Spike Timing (prob:{bc_spike.get('probability',0)}%)")
+    if m5_precision_bonus >= 5: confs.append(f"🎯 M5 Precision ({bc_m5_pulse.get('pulse_phase','?')})")
+    if bc_score_bonus >= 8: confs.append(f"🏆 BC Health ({bc_regime.get('regime','?')})")
     # V21+ precision confluences
     if ema_ribbon.get('quality') in ['EXCELLENT','GOOD']:
         confs.append(f"🌈 Ribbon {ema_ribbon['quality']} ({ema_ribbon.get('direction','?')})")
@@ -6706,10 +6101,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🔥 Candle {candle_struct['quality']} ({candle_struct.get('pattern_type','?')})")
     if mom_accel_bonus > 0:
         confs.append(f"🚀 Mom Accel {mom_accel.get('phase','?')}")
-    if vwap_data.get('entry_quality') == 'EXCELLENT':
-        confs.append(f"🏦 VWAP Zone ({vwap_data.get('zone','?')})")
-    if adx_slope.get('phase') == 'TREND_FORMING':
-        confs.append(f"📈 ADX Forming (slope={adx_slope.get('slope',0):.2f})")
     # V23 confluences
     if mkt_struct.get('bos'):
         confs.append(f"🔥 BOS ({mkt_struct.get('last_event','?')})")
@@ -6717,8 +6108,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"⚡ CHoCH ({mkt_struct.get('last_event','?')})")
     if candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
         confs.append(f"💪 CandleMom {candle_mom['conviction']} ({candle_mom.get('score',0):.0f})")
-    if pb_quality.get('quality') in ['EXCELLENT', 'GOOD']:
-        confs.append(f"🎯 Pullback {pb_quality['quality']} ({pb_quality.get('depth_pct',0):.0%})")
+    # V25: Pullback removed (forex concept)
     if liq_sweep.get('sweep'):
         confs.append(f"💧 {liq_sweep['type']}")
     if entry_sync.get('ready') == 'READY':
@@ -6727,7 +6117,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🚩 {cont_pattern['pattern']} ({cont_pattern.get('confidence',0)}%)")
     if early_reversal:
         confs.append(f"⚡ EARLY REVERSAL → {reversal_dir}")
-    if retest_bonus > 0:
+    if False:  # V25: Removed retest (forex concept)
         confs.append("🔄 Breakout Retest")
     # V24-F: Boom/Crash specific confluences (ENHANCED)
     # FIX #8: BC Score display
@@ -6781,28 +6171,20 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"💪 M5 Wicks: {bc_m5_wicks['signal']} ({bc_m5_wicks['rejection_wicks']}/{bc_m5_wicks.get('total_significant',0)})")
 
     risks = []
-    # V24-F: Skip irrelevant CPI/VR risks for BC
-    if not is_bc_asset:
-        if cpi_val < 35: risks.append(f"\u26a0\ufe0f CPI LOW: {cpi_val:.0f} (unpredictable)")
-    if regime_transition == "EXHAUSTION": risks.append("\u26a0\ufe0f Regime EXHAUSTION")
-    if not is_bc_asset and indep_edges['quality'] == "WEAK":
-        risks.append(f"\u26a0\ufe0f Edges WEAK ({indep_edges['n_independent']} indep)")
+    # V25: BC-relevant risks only (removed CPI, edges, ADX dying)
+    if regime_transition == "EXHAUSTION": risks.append("⚠️ Regime EXHAUSTION")
     if "RANGING" in regime: risks.append("⚠️ RANGING")
     if not sim['WF_STABLE']: risks.append("⚠️ WF instável")
     if mc.get('positive_pct',0)<55: risks.append(f"⚠️ MC {mc['positive_pct']}%")
     if roc_status=="EXTREME": risks.append("⚠️ ROC EXTREMO")
     if hurst_regime=="RANDOM_WALK": risks.append("⚠️ Random Walk")
     if hurst_regime=="UNRELIABLE": risks.append(f"⚠️ Hurst unreliable R²={hurst_r2}")
-    if not vr.get('has_edge'): risks.append("⚠️ VR: sem edge estatístico")
     if gen.get('spike_phase')=="SPIKE_IMMINENT": risks.append("💥 SPIKE IMINENTE")
     if not trigger_ok and c5 is not None: risks.append(f"⚠️ M5 sem trigger ({trigger_type})")
     if candle_struct.get('quality') == 'WEAK': risks.append("⚠️ Candle structure WEAK")
-    if adx_slope.get('phase') == 'TREND_DYING': risks.append("⚠️ ADX trend dying")
     if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
-    if mom_accel_bonus < 0: risks.append(f"⚠️ Momentum decelerating ({mom_accel.get('phase','?')})")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
     if random_walk_penalty < 0: risks.append(f"🚫 RANDOM WALK (H:{hurst_val:.2f} R²:{hurst_r2:.2f}) — No statistical edge")
-    if entry_sync.get('ready') == 'WAIT': risks.append(f"⏳ TF Sync LOW ({entry_sync.get('score',0)}/100)")
     if candle_mom.get('conviction') == 'NONE': risks.append("⚠️ Candle momentum NONE")
     if mkt_struct.get('choch') and mkt_struct.get('trend') != bias:
         risks.append(f"⚡ CHoCH AGAINST bias ({mkt_struct.get('last_event','?')})")
@@ -6890,7 +6272,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "TP1": float(round(tp1,5)), "TP2": float(round(tp2,5)),
         "PYRAMID": convert_np(pyramid), "ADAPTED_PROFILE": convert_np({k:v for k,v in adapted_profile.items() if k in ['risk_mult','sl_atr_mult','tp2_r']}),
         "IMAGES": imgs, "ATR": float(c1['ATR']),
-        "CPI": convert_np(cpi), "CPI_VAL": cpi_val,
+        # V25: CPI removed (forex concept)
         "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
         "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
         "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
@@ -6900,12 +6282,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "SCORE_BREAKDOWN": convert_np({
             "ADX":score.trend_strength,"MOM":score.momentum_align,"PAT":score.patterns,
             "VAL":score.value_zone,"HIST":score.historical,
-            "DIV":score.divergence_bonus,"FIB":score.fib_bonus,"SR":score.sr_bonus,
-            "ALIGN":score.alignment_bonus,"STORM":score.storm_bonus,"REGIME":score.regime_bonus,
+            "BC_SCORE":score.bc_score_bonus,"M5_PREC":score.m5_precision_bonus,"DRIFT_Q":score.drift_quality_bonus,
+            "ALIGN":score.alignment_bonus,"SPIKE_T":score.spike_timing_bonus,"REGIME":score.regime_bonus,
             "VOL":score.volume_bonus,"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
             "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
             "VR":score.vr_bonus,"ACF":score.acf_bonus,
-            "CPI":score.cpi_bonus,"MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
+            "MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
             "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
             "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
             "MOM_ACCEL":score.mom_accel_bonus
@@ -6921,14 +6303,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         # V23 precision data
         "MKT_STRUCTURE": convert_np(mkt_struct),
         "CANDLE_MOMENTUM": convert_np(candle_mom),
-        "PULLBACK_QUALITY": convert_np(pb_quality),
+        # V25: PULLBACK_QUALITY removed (forex concept)
         "LIQ_SWEEP": convert_np(liq_sweep),
         "ENTRY_SYNC": convert_np(entry_sync),
         "CONT_PATTERN": convert_np(cont_pattern),
         "EARLY_REVERSAL": early_reversal,
         "REVERSAL_DIR": reversal_dir,
         "RW_PENALTY": random_walk_penalty,
-        "CPI_GATE_MIN": cpi_gate_min,
+        # V25: CPI_GATE_MIN removed (forex concept)
         # V23: Multi-entry levels
         "ENTRY_AGGRESSIVE": float(round(entry_aggressive, 5)),
         "ENTRY_IDEAL": float(round(entry_ideal, 5)),
@@ -6982,6 +6364,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 # ==============================================================================
 
 async def quick_scan(code, name):
+    """V25: BC-only scanner — scores based on spike/drift dynamics"""
     try:
         raw = await fetch_single(code, 3600, 300)
         if not raw: return None
@@ -6991,35 +6374,39 @@ async def quick_scan(code, name):
         hurst_val, _, hr2 = calculate_hurst_exponent(df['close'])
         z = float(c['ZSCORE']) if pd.notna(c.get('ZSCORE')) else 0
         vr = variance_ratio_test(df['close'])
-        gt = profile.get('gen_type','GBM')
-        if gt == 'GBM':
-            sig_cal = calibrate_sigma(df, ppy)
-            gen = GeneratorModelV20.analyze_gbm(df, profile, sig_cal, ppy)
-        elif gt in ['BOOM','CRASH']:
-            gen = GeneratorModelV20.analyze_crash_boom(df, profile, ppy)
-        elif gt == 'STEP':
-            gen = GeneratorModelV20.analyze_step(df, profile, ppy)
-        else: gen = {}
+
+        # V25: Always BC generator
+        gen = GeneratorModelV20.analyze_crash_boom(df, profile, ppy)
         regime, _ = classify_regime(df)
+
+        # V25: BC-specific scoring
         qs = 0
-        if c['ADX'] > profile.get('adx_strong',25): qs += 25
-        elif c['ADX'] > profile.get('adx_trend_min',15): qs += 12
-        if abs(z) > profile.get('zscore_extreme',2)*0.6: qs += 18
-        if hurst_val > profile.get('hurst_trend_min',0.53) or hurst_val < 0.45: qs += 12
-        if gen.get('signal','NEUTRAL') not in ['NEUTRAL','VOL_NORMAL']: qs += 20
-        if vr.get('has_edge'): qs += 15
-        if "TRENDING" in regime: qs += 8
-        # V21: CPI in scanner
-        cpi_r = compound_predictability_index(df['close'], vr)
-        cpi_v = cpi_r.get('cpi', 0)
-        if cpi_v >= 50: qs += 15
-        elif cpi_v >= 35: qs += 8
+        # Spike phase scoring (most important for BC)
+        phase = gen.get('spike_phase', 'UNKNOWN')
+        if phase in ["DRIFT_STRONG", "DRIFT_NORMAL"]: qs += 25
+        elif phase == "SPIKE_IMMINENT": qs += 20
+        elif phase == "DRIFT_WEAKENING": qs += 10
+        # Drift strength
+        drift_str = gen.get('drift_strength', 0)
+        if drift_str > 2: qs += 15
+        elif drift_str > 0.5: qs += 8
+        # ADX (still useful for drift momentum)
+        if c['ADX'] > profile.get('adx_strong', 25): qs += 12
+        elif c['ADX'] > profile.get('adx_trend_min', 15): qs += 6
+        # Statistical edge
+        if hurst_val > profile.get('hurst_trend_min', 0.53) or hurst_val < 0.45: qs += 10
+        if vr.get('has_edge'): qs += 10
+        if "TRENDING" in regime: qs += 5
+        # Z-score extremes
+        if abs(z) > profile.get('zscore_extreme', 2) * 0.6: qs += 8
+
         bias = "BULLISH" if c['close'] > c['EMA_200'] else "BEARISH"
-        return {"name":name,"code":code,"score":qs,"bias":bias,"adx":round(c['ADX'],1),
-                "hurst":round(hurst_val,3),"zscore":round(z,2),"regime":regime,
-                "gen_signal":gen.get('signal','N/A'),"vr_edge":vr.get('has_edge',False),
-                "cpi":round(cpi_v,1),
-                "vr_type":vr.get('dominant_type','?'),"cpi_regime":cpi_r.get('regime','?'),"profile":profile['vol_class']}
+        return {"name": name, "code": code, "score": qs, "bias": bias,
+                "adx": round(c['ADX'], 1), "hurst": round(hurst_val, 3),
+                "zscore": round(z, 2), "regime": regime,
+                "gen_signal": gen.get('signal', 'N/A'), "vr_edge": vr.get('has_edge', False),
+                "spike_phase": phase, "drift_str": round(drift_str, 2),
+                "profile": profile['vol_class']}
     except: return None
 
 # ==============================================================================
@@ -7100,9 +6487,10 @@ with st.sidebar:
 
 # ── HEADER ──
 st.markdown("""<div class='header-bar'>
+    <div class='header-diamond'>◆</div>
     <span class='header-logo'>APATECO</span>
-    <span class='header-version'>V25</span>
-    <span class='header-sub'>Boom/Crash · Zero-Illusion · M5 Scalp Precision</span>
+    <span class='header-version'>V25 · SCALP</span>
+    <span class='header-sub'>Boom/Crash · Zero-Illusion · M5 Precision Engine</span>
 </div>""", unsafe_allow_html=True)
 
 with st.spinner("Loading assets..."): assets = get_assets()
@@ -7136,15 +6524,31 @@ if mode == "Analysis":
             if not api: st.error("API key required"); st.stop()
 
             status = st.status("◆ Analyzing...", expanded=True)
-            status.write("📡 Connecting to Deriv — fetching multi-timeframe data...")
+            status.markdown("""<div class='loading-stage'>
+                <div class='stage-dot loading-active' style='background:#6366f1;'></div>
+                <span style='color:#818cf8;font-size:12px;'>Connecting to Deriv — fetching H4 · H1 · M15 · M5 data...</span>
+            </div>""", unsafe_allow_html=True)
             h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
             if err: status.update(state='error'); st.error(err); st.stop()
-            status.write("🧮 Running 15 BC engines + 3 M5 scalp engines...")
+            status.markdown("""<div class='loading-stage'>
+                <div class='stage-dot' style='background:#10b981;'></div>
+                <span style='color:#6ee7b7;font-size:12px;'>Data loaded ✓</span>
+            </div><div class='loading-stage'>
+                <div class='stage-dot loading-active' style='background:#6366f1;'></div>
+                <span style='color:#818cf8;font-size:12px;'>Running 15 BC engines + 3 M5 scalp engines + statistical validation...</span>
+            </div>""", unsafe_allow_html=True)
             data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
-            status.write("📊 Statistical validation + Monte Carlo simulation...")
+            status.markdown("""<div class='loading-stage'>
+                <div class='stage-dot' style='background:#10b981;'></div>
+                <span style='color:#6ee7b7;font-size:12px;'>Analysis complete · Monte Carlo done ✓</span>
+            </div>""", unsafe_allow_html=True)
             imgs = data.pop("IMAGES")
             
             # ── GEMINI AI COM RETRY + FALLBACK ──
+            status.markdown("""<div class='loading-stage'>
+                <div class='stage-dot loading-active' style='background:#a855f7;'></div>
+                <span style='color:#c4b5fd;font-size:12px;'>Generating AI insight with Gemini...</span>
+            </div>""", unsafe_allow_html=True)
             dc = convert_np(data)
             ai_text, ai_error = call_gemini_with_retry(
                 api_key=api,
@@ -7158,7 +6562,7 @@ if mode == "Analysis":
             
             if ai_text:
                 ai = ai_text
-                status.update(label="✅ Complete", state="complete")
+                status.update(label="◆ Analysis Complete", state="complete")
             else:
                 # Fallback: análise automática SEM IA (dados já calculados)
                 g = data.get('SETUP_GRADE', '?')
@@ -7251,21 +6655,9 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             ga = data.get('GEN_ANALYSIS', {})
             g1, g2, g3, g4 = st.columns(4)
             g1.metric("Type", data['GEN_TYPE'])
-            g2.metric("Signal", data['GEN_SIGNAL'])
-            g3.metric("σ Real", f"{data.get('SIGMA_CALIBRATED',0) or 0:.4f}")
-            g4.metric("Bonus", f"+{data['GEN_BONUS']}")
-
-            if data['GEN_TYPE'] == 'GBM':
-                wins = ga.get('windows', {})
-                w1, w2, w3 = st.columns(3)
-                for col, lbl in [(w1,"SHORT"),(w2,"MEDIUM"),(w3,"LONG")]:
-                    w = wins.get(lbl, {})
-                    sig = w.get('signal', '—')
-                    delta_color = "normal" if sig == "VOL_NORMAL" else ("inverse" if sig == "VOL_COMPRESS" else "normal")
-                    col.metric(f"Vol {lbl}", f"{w.get('vol_ratio',1):.3f}", sig, delta_color=delta_color)
-                pc, pz = st.columns(2)
-                pc.metric("Direction", ga.get('compress_direction', '—'))
-                pz.metric("Price Z", f"{ga.get('z_price',0):.2f}")
+            g2.metric("Spike Phase", ga.get('spike_phase', '?'))
+            g3.metric("Decay Strength", f"{ga.get('decay_strength',0):.2f}")
+            g4.metric("Last Spike", f"{ga.get('last_spike_bars',0)} bars")
 
             # ── STATISTICAL EDGE ──
             st.markdown("""<div class='section-header'>
@@ -7289,22 +6681,26 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                        f"R² = {data.get('HURST_R2',0):.2f}")
 
             # ── DISTRIBUTION ──
-            # ═══ V21: PREDICTABILITY INDEX ═══
+            # ═══ V25: BC PREDICTABILITY (replaced forex CPI) ═══
             st.markdown("""<div class='section-header'>
                 <div class='section-icon'>🔮</div>
-                <span class='section-title'>Predictability</span>
+                <span class='section-title'>BC Predictability</span>
                 <div class='section-line'></div>
             </div>""", unsafe_allow_html=True)
-            cpi_data = data.get('CPI', {})
-            cpi_v = cpi_data.get('cpi', 0)
-            cpi_reg = cpi_data.get('regime', '?')
-            comps = cpi_data.get('components', {})
+            # BC-specific predictability: regime, kurtosis, spike frequency, drift pattern
+            bc_regime_d = data.get('BC_REGIME', {})
+            bc_kurt_d = data.get('BC_KURTOSIS', {})
+            bc_freq_d = data.get('BC_FREQUENCY', {})
             pc1, pc2, pc3, pc4 = st.columns(4)
-            cpi_color = '#22c55e' if cpi_v >= 60 else '#f59e0b' if cpi_v >= 35 else '#ef4444'
-            pc1.metric("CPI", f"{cpi_v:.0f}/100", cpi_reg)
-            pc2.metric("SampleEn", f"{comps.get('se',0):.0f}/25")
-            pc3.metric("PermEn", f"{comps.get('pe',0):.0f}/25")
-            pc4.metric("VR+ACF", f"{comps.get('vr',0)+comps.get('acf',0):.0f}/50")
+            regime_name = bc_regime_d.get('regime', '?')
+            regime_color = "🟢" if regime_name in ['DRIFT_SMOOTH'] else "🟡" if regime_name in ['POST_SPIKE','PRE_SPIKE'] else "🔴" if regime_name in ['SPIKE_CLUSTER','CHOPPY'] else "⚪"
+            pc1.metric(f"BC Regime {regime_color}", regime_name, f"conf={bc_regime_d.get('confidence',0):.0f}%")
+            pc2.metric("Kurtosis", f"{bc_kurt_d.get('kurtosis',0):.1f}", bc_kurt_d.get('regime','?'))
+            pc3.metric("Spike Freq", f"{bc_freq_d.get('avg_gap',0):.0f} M15", f"recent={bc_freq_d.get('recent_gap',0):.0f}")
+            vr_d = data.get('VR', {})
+            acf_d = data.get('ACF', {})
+            pc4.metric("VR+ACF", f"{'Edge' if vr_d.get('has_edge') else 'No'} | {'Pat' if acf_d.get('has_pattern') else 'No'}",
+                      f"VR:{vr_d.get('n_significant',0)} ACF:lag1={acf_d.get('acf_1',0):.3f}")
 
             mrkv = data.get('MARKOV', {})
             spec = data.get('SPECTRAL', {})
@@ -7328,10 +6724,15 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             atr_ch = data.get('ATR_CHANNEL', {})
 
             ep1, ep2, ep3, ep4 = st.columns(4)
-            ep1.metric("ADX Slope", adx_sl.get('phase', '?'), f"slope={adx_sl.get('slope',0):.2f}")
+            ep1.metric("ADX Phase", adx_sl.get('phase', '?'), f"slope={adx_sl.get('slope',0):.2f}")
             ep2.metric("EMA Ribbon", ribbon.get('quality', '?'), ribbon.get('direction', '?'))
             ep3.metric("TF Coherence", coherence.get('coherence', '?'), f"{coherence.get('score',0):.0f}%")
-            ep4.metric("VWAP Zone", vwap.get('zone', '?'), vwap.get('entry_quality', '?'))
+            # Clean ATR (BC-specific: spike-filtered ATR for accurate SL)
+            clean_atr_v = data.get('BC_CLEAN_ATR', 0)
+            raw_atr_v = data.get('RAW_ATR', 0)
+            atr_ratio = clean_atr_v / raw_atr_v if raw_atr_v > 0 else 1.0
+            atr_c = "🟢" if atr_ratio > 0.85 else "🟡" if atr_ratio > 0.7 else "🔴"
+            ep4.metric(f"Clean ATR {atr_c}", f"{clean_atr_v:.2f}", f"ratio={atr_ratio:.0%} vs raw")
 
             ep5, ep6, ep7 = st.columns(3)
             ep5.metric("Candle Struct", candle.get('quality', '?'), candle.get('pattern_type', '?'))
@@ -7346,7 +6747,6 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             </div>""", unsafe_allow_html=True)
             ms_data = data.get('MKT_STRUCTURE', {})
             cm_data = data.get('CANDLE_MOMENTUM', {})
-            pb_data = data.get('PULLBACK_QUALITY', {})
             sw_data = data.get('LIQ_SWEEP', {})
             es_data = data.get('ENTRY_SYNC', {})
             cp_data = data.get('CONT_PATTERN', {})
@@ -7357,7 +6757,11 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             ms_color = "🟢" if ms_event.startswith("BOS_BULL") or ms_event.startswith("CHOCH_BULL") else "🔴" if ms_event.startswith("BOS_BEAR") or ms_event.startswith("CHOCH_BEAR") else "⚪"
             s1.metric(f"Mkt Structure {ms_color}", ms_trend, ms_event)
             s2.metric("Candle Mom", cm_data.get('conviction', '?'), f"score={cm_data.get('score',0):.0f}")
-            s3.metric("Pullback Q", pb_data.get('quality', '?'), f"depth={pb_data.get('depth_pct',0):.0%}")
+            # V25: Replaced Pullback Q (forex) with Spike Probability (BC-specific)
+            bc_sp = data.get('BC_SPIKE', {})
+            sp_prob = bc_sp.get('probability', 0)
+            sp_c = "🟢" if sp_prob >= 60 else "🟡" if sp_prob >= 35 else "⚪"
+            s3.metric(f"Spike Prob {sp_c}", f"{sp_prob}%", bc_sp.get('imminence', '?'))
             s4.metric("Entry Sync", f"{es_data.get('score', 0)}/100", es_data.get('ready', '?'))
 
             s5, s6, s7 = st.columns(3)
@@ -7605,8 +7009,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
 
             # ── TRADE PLAN ──
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-            is_active = any(x in d for x in ["DAY","BREAKOUT","STORM","REVERSION",
-                                               "COMPRESS","DRIFT","STEP","DEVIATION","PRICE"])
+            is_active = any(x in d for x in ["DRIFT","SPIKE","SCALP","FADE","REVERSAL","STOCH"])
             if is_active:
                 st.markdown("""<div class='section-header'>
                     <div class='section-icon' style='background:rgba(16,185,129,0.1);'>🎯</div>
@@ -7630,7 +7033,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                     <div class='plan-row'>
                         <span class='plan-label'>TP 1</span>
                         <span class='plan-value' style='color:#22c55e;'>{data['TP1']}</span>
-                        <span class='plan-note'>Smart TP (S/R aware)</span>
+                        <span class='plan-note'>ATR-Based TP</span>
                     </div>
                     <div class='plan-row'>
                         <span class='plan-label'>TP 2</span>
@@ -7747,7 +7150,7 @@ elif mode == "Scanner":
                         {vr_tag}
                     </div>
                     <span class='scan-meta' style='min-width:260px;text-align:right;'>
-                        ADX {r['adx']} · H {r['hurst']} · Z {r['zscore']} · {r['regime'][:8]} · {r['gen_signal'][:12]}
+                        ADX {r['adx']} · H {r['hurst']} · Z {r['zscore']} · {r.get('spike_phase','?')[:12]} · D:{r.get('drift_str',0)}
                     </span>
                 </div>""", unsafe_allow_html=True)
         else:
