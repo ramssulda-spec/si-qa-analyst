@@ -67,7 +67,7 @@ warnings.filterwarnings('ignore')
 #   O5  Anti-Meltdown Kill-Switch
 #
 # ==============================================================================# 🟢 PRECISION #2: Trailing Stop por regime/tipo
-# 🟢 PRECISION #3: Dynamic TP com S/R awareness
+# 🟢 PRECISION #3: Dynamic ATR-based TP
 # 🟢 PRECISION #4: Scanner para TODOS gen types
 # 🟢 PRECISION #5: Adaptive Kelly Criterion (não if/elif)
 # 🟢 PRECISION #6: M5 entry timing
@@ -1633,8 +1633,7 @@ def multi_tf_trend_coherence(h4, h1, m15, m5=None):
         return {"score": 0, "coherence": "WEAK", "coherent_direction": "MIXED", "details": []}
 
 # ==============================================================================
-# V21+ ENGINE: VWAP PROXY — Institutional Entry Zones
-# [V25] Removed: vwap_proxy_analysis (not used for BC synthetics)
+
 
 # ==============================================================================
 # V21+ ENGINE: CANDLE STRUCTURE SCORING — Entry Quality
@@ -2020,14 +2019,6 @@ def candle_momentum_engine(df, direction, lookback=10):
     except:
         return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
 
-# ==============================================================================
-# V23 ENGINE #4: [V25 REMOVED — Forex pullback scoring irrelevant for BC spike+drift]
-# BC drift doesn't "pull back" like forex trends. Drift is continuous until spike.
-# ==============================================================================
-
-def pullback_quality_score(df, direction, atr):
-    """V25: Stubbed — BC drift doesn't follow forex pullback patterns."""
-    return {"score": 0, "quality": "N/A", "depth_pct": 0, "pb_candles": 0, "rejection": False}
 
 # ==============================================================================
 # V23 ENGINE #5: LIQUIDITY SWEEP DETECTOR
@@ -2106,13 +2097,6 @@ def entry_sync_score(h4, h1, m15, m5, direction):
     except:
         return {"score": 0, "ready": "WAIT"}
 
-# ==============================================================================
-# V23 ENGINE #7: BREAKOUT RETEST DETECTOR
-# ==============================================================================
-
-def detect_breakout_retest(df, sr_levels, direction, atr):
-    """V25: Stubbed — Breakout/retest is a forex S/R concept. BC uses spike+drift."""
-    return {"retest": False, "level": None, "quality": "NONE"}
 
 # ==============================================================================
 # V23 ENGINE #8: CONTINUATION PATTERNS (Flag, Pennant)
@@ -3803,65 +3787,10 @@ def bc_m5_wicks_analysis(m5_df, profile, lookback=10):
                 "wick_ratio": 0.5, "signal": "NEUTRAL"}
 
 
-def sample_entropy_v21(series, m=2, r_mult=0.2, max_n=200):
-    """V24: SampEn < 0.5 = altamente previsivel. SampEn > 2.0 = caotico.
-    FIX #14: max_n=200 (was 400) to reduce O(n²) from 160K to 40K iterations."""
-    try:
-        data = np.array(series.dropna().values[-max_n:], dtype=float)
-        n = len(data)
-        if n < 50: return 2.0, "CHAOTIC"
-        r = r_mult * np.std(data)
-        if r == 0: return 0.0, "CONSTANT"
-        # V24: Vectorized distance computation for speed
-        def _count(tl):
-            cnt = 0
-            templates = np.array([data[i:i+tl] for i in range(n - tl)])
-            for i in range(len(templates)):
-                # Vectorized: compute max abs diff against all subsequent templates
-                diffs = np.max(np.abs(templates[i+1:] - templates[i]), axis=1)
-                cnt += np.sum(diffs < r)
-            return cnt
-        B = _count(m)
-        A = _count(m + 1)
-        if B == 0 or A == 0: se = 2.5
-        else: se = -np.log(A / B)
-        if se < 0.4: regime = "HIGHLY_PREDICTABLE"
-        elif se < 0.8: regime = "PREDICTABLE"
-        elif se < 1.5: regime = "MODERATE"
-        else: regime = "CHAOTIC"
-        return round(float(se), 3), regime
-    except: return 2.0, "ERROR"
-
 # ==============================================================================
 # V21 ENGINE #2: PERMUTATION ENTROPY — Determinismo na ordem
 # ==============================================================================
 
-def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
-    """PE=0 deterministic, PE=1 random. PE < 0.85 = padrao detectavel."""
-    try:
-        data = np.array(series.dropna().values[-max_n:], dtype=float)
-        n = len(data)
-        if n < order * delay + 10: return 1.0, "RANDOM"
-        counts = {}
-        total = 0
-        for i in range(n - (order - 1) * delay):
-            pat = tuple(int(x) for x in np.argsort(data[i:i + order * delay:delay]))
-            counts[pat] = counts.get(pat, 0) + 1
-            total += 1
-        if total == 0: return 1.0, "RANDOM"
-        max_e = math_log(factorial(order))
-        if max_e == 0: return 1.0, "RANDOM"
-        entropy = 0.0
-        for c in counts.values():
-            p = c / total
-            if p > 0: entropy -= p * math_log(p)
-        pe = entropy / max_e
-        if pe < 0.75: regime = "DETERMINISTIC"
-        elif pe < 0.85: regime = "STRUCTURED"
-        elif pe < 0.95: regime = "WEAKLY_STRUCTURED"
-        else: regime = "RANDOM"
-        return round(float(pe), 4), regime
-    except: return 1.0, "ERROR"
 
 # ==============================================================================
 # V21 ENGINE #3: SPECTRAL ANALYSIS (FFT) — Ciclos ocultos no CSPRNG
@@ -3876,11 +3805,6 @@ def permutation_entropy_v21(series, order=3, delay=1, max_n=400):
 # [V25] Removed: transition_matrix_v21 (not used for BC synthetics)
 
 # ==============================================================================
-# V21 ENGINE #5: COMPOUND PREDICTABILITY INDEX (CPI)
-# ==============================================================================
-
-# [V25] Removed: compound_predictability_index (not used for BC synthetics)
-
 # ==============================================================================
 # V21 ENGINE #6: REGIME TRANSITION DETECTION
 # ==============================================================================
@@ -3912,35 +3836,6 @@ def detect_regime_transition(df, lb_cur=30, lb_past=80):
 # V21 FIX-B: DYNAMIC BIAS com Score de Confianca
 # ==============================================================================
 
-def calculate_dynamic_bias(h4, h1):
-    """Bias com score -80 a +80. Substitui comparacao binaria."""
-    try:
-        c4 = h4.iloc[-1]; c1 = h1.iloc[-1]
-        sc = 0.0
-        if c4['ATR'] > 0:
-            dist_a = (c4['close'] - c4['EMA_200']) / c4['ATR']
-            sc += max(-20, min(20, dist_a * 4))
-        if len(h4) > 20 and c4['ATR'] > 0:
-            sl = (h4['EMA_200'].iloc[-1] - h4['EMA_200'].iloc[-20]) / (c4['ATR'] * 20)
-            sc += max(-15, min(15, sl * 50))
-        if c4['EMA_20'] > c4['EMA_50'] > c4['EMA_200']: sc += 20
-        elif c4['EMA_20'] < c4['EMA_50'] < c4['EMA_200']: sc -= 20
-        elif c4['EMA_20'] > c4['EMA_50']: sc += 8
-        elif c4['EMA_20'] < c4['EMA_50']: sc -= 8
-        h1_bull = c1['close'] > c1['EMA_200']; h4_bull = c4['close'] > c4['EMA_200']
-        if h1_bull == h4_bull: sc += 15 if h1_bull else -15
-        if len(h4) >= 3:
-            hn = h4['MACD_hist'].iloc[-1]; hp = h4['MACD_hist'].iloc[-2]
-            if hn > hp and hn > 0: sc += 10
-            elif hn < hp and hn < 0: sc -= 10
-            elif hn > hp: sc += 5
-            elif hn < hp: sc -= 5
-        if sc > 15: bias = "BULLISH"
-        elif sc < -15: bias = "BEARISH"
-        else: bias = "NEUTRAL"
-        conf = min(abs(sc), 80) / 80 * 100
-        return bias, round(float(conf), 1), round(float(sc), 1)
-    except: return "NEUTRAL", 0.0, 0.0
 
 # ==============================================================================
 # V21 PREC #1: ENHANCED MOMENTUM (0-100)
@@ -3985,9 +3880,8 @@ def enhanced_momentum_v21(h4, h1, m15, direction):
 # V21 PREC #2: EDGE CORRELATION MATRIX
 # ==============================================================================
 
-def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
-                                 divergence, fib_level, sr_touch, align_type, vol_confirmed):
-    """V25: Conta confluencias INDEPENDENTES (cleaned — no forex fib/sr/div)."""
+def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore, align_type):
+    """V25: BC-ONLY — Conta confluencias estatísticas independentes para spike+drift."""
     try:
         groups = {}
         g1 = 0
@@ -4005,9 +3899,7 @@ def calculate_independent_edges(vr, acf, hurst_val, gen_bonus, dist, zscore,
         if abs(zscore) > 1.5: g4 += 0.5
         if dist.get('percentile', 50) < 15 or dist.get('percentile', 50) > 85: g4 += 0.5
         groups['DISTRIBUTION'] = min(1.0, g4)
-        # V25: Removed forex PATTERNS group (divergence) and STRUCTURE group (fib/sr)
         groups['ALIGNMENT'] = 1.0 if align_type not in ["NONE", None] else 0.0
-        groups['VOLUME'] = 0.0  # Synthetics have no real volume
         n_act = sum(1 for v in groups.values() if v >= 0.5)
         tot = sum(groups.values())
         ql = "ELITE" if n_act >= 4 else "STRONG" if n_act >= 3 else "MODERATE" if n_act >= 2 else "WEAK"
@@ -4037,26 +3929,6 @@ def optimal_holding_period(acf_result, setup_type):
 # V21 PREC #4: CONDITIONAL ENTRY ENGINE
 # ==============================================================================
 
-def conditional_entry_v21(setup_type, direction, price, ema20, ema50, atr, bb_lo, bb_hi):
-    """Calcula preco de entrada ideal para BC setups."""
-    try:
-        is_l = "LONG" in str(direction) or "BULLISH" in str(direction)
-        # BC: Drift setups use EMA pullback, spike setups use market
-        if setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
-            # Enter on pullback to EMA20 area
-            if is_l:
-                ideal = ema20 + atr * 0.2
-                return (price, "MARKET") if price < ideal + atr * 0.5 else (ideal, "LIMIT_EMA_PULLBACK")
-            else:
-                ideal = ema20 - atr * 0.2
-                return (price, "MARKET") if price > ideal - atr * 0.5 else (ideal, "LIMIT_EMA_PULLBACK")
-        # Spike/fade setups: market entry (time-sensitive)
-        return price, "MARKET"
-    except: return price, "MARKET"
-
-
-# DISTRIBUIÇÃO V20 (mantido do V19, corrigido)
-# ==============================================================================
 
 class DistributionAnalyzer:
     @staticmethod
@@ -4319,42 +4191,8 @@ def calculate_hurst_exponent(series, max_lag=100):
     except:
         return 0.5, "ERROR", 0.0
 
-def find_pivot_highs(data, order=5):
-    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
-    for i in range(order, len(values)-order):
-        if np.isnan(values[i]): continue
-        if all(values[i]>values[i-j] and values[i]>values[i+j] for j in range(1,order+1)): pivots.append(i)
-    return np.array(pivots)
-
-def find_pivot_lows(data, order=5):
-    pivots = []; values = data.values if hasattr(data,'values') else np.array(data)
-    for i in range(order, len(values)-order):
-        if np.isnan(values[i]): continue
-        if all(values[i]<values[i-j] and values[i]<values[i+j] for j in range(1,order+1)): pivots.append(i)
-    return np.array(pivots)
-
-def detect_divergence(df, indicator='RSI', order=5):
-    """V25: Removed — RSI/MACD divergence measures drift reversal,
-    which is NORMAL BC behavior. Divergence adds false signals for synthetics."""
-    return None, 0, ""
-
-def detect_sr_clustered(df, window=100, min_touches=3):
-    """V25: Removed — Traditional S/R clusters are forex concepts.
-    BC price is stochastic (spike+drift). Use BC Supply/Demand zones instead."""
-    return []
-
-def calculate_fibonacci(df, lookback=100):
-    """V25: Removed — Fibonacci retracement levels are forex TA.
-    BC synthetic indices are stochastic processes that do NOT respect Fib levels."""
-    return {}, None, None
-
-def check_fib_confluence(price, fibs, atr):
-    """V25: Removed — See calculate_fibonacci."""
-    return None, 0
-
-def smart_tp(entry, direction, risk, base_r1, base_r2, sr_levels=None):
-    """V25: ATR-based TPs only. BC does not use forex S/R levels.
-    sr_levels parameter kept for API compatibility but ignored."""
+def smart_tp(entry, direction, risk, base_r1, base_r2):
+    """V25: ATR-based TPs — BC-specific."""
     raw_tp1 = entry + base_r1 * risk if direction=="LONG" else entry - base_r1 * risk
     raw_tp2 = entry + base_r2 * risk if direction=="LONG" else entry - base_r2 * risk
     return round(raw_tp1, 5), round(raw_tp2, 5)
@@ -4446,21 +4284,6 @@ def classify_regime(df, lookback=50):
         return "TRANSITIONAL",sc
     except: return "UNKNOWN",0
 
-def analyze_tick_volume(df, lookback=20):
-    try:
-        if len(df)<lookback: return "NORMAL",1.0
-        recent=df.tail(lookback); ranges=recent['high']-recent['low']; bodies=abs(recent['close']-recent['open'])
-        rr=ranges.iloc[-1]/ranges.mean() if ranges.mean()>0 else 1
-        br=bodies.iloc[-1]/bodies.mean() if bodies.mean()>0 else 1
-        proxy=(rr+br)/2
-        if proxy>2.0: return "VERY_HIGH",proxy
-        elif proxy>1.5: return "HIGH",proxy
-        elif proxy>0.7: return "NORMAL",proxy
-        return "LOW",proxy
-    except: return "NORMAL",1.0
-
-# [V25] Removed: confirm_breakout_volume (not used for BC synthetics)
-
 def indicators(df):
     df['EMA_20']=df['close'].ewm(span=20,adjust=False).mean()
     df['EMA_50']=df['close'].ewm(span=50,adjust=False).mean()
@@ -4502,13 +4325,6 @@ def check_momentum(h4,h1,m15,d):
         if m15['MACD'].iloc[-1]<0:sc+=1
     return sc
 
-def detect_swing_level(df, direction, atr_mult=1.5):
-    if direction=="BUY":
-        sw=df[df['swing_low']]['low']
-        return (sw.iloc[-1]-df['ATR'].iloc[-1]*atr_mult) if not sw.empty else df['low'].tail(20).min()-df['ATR'].iloc[-1]*atr_mult
-    else:
-        sw=df[df['swing_high']]['high']
-        return (sw.iloc[-1]+df['ATR'].iloc[-1]*atr_mult) if not sw.empty else df['high'].tail(20).max()+df['ATR'].iloc[-1]*atr_mult
 
 # ==============================================================================
 # 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
@@ -4614,7 +4430,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                     elif not is_boom and rsi_val > 75 and drift_count >= 5:
                         sig = "SELL"; setup = "BC_SPIKE"
 
-            # V25: BC-ONLY — No legacy forex setups in backtest
+            # V25: BC-ONLY setups in backtest
             if not sig:
                 continue
 
@@ -4796,12 +4612,12 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     hs=min((win_rate*0.15)+(profit_factor*5),25)
     base=ts+mp+pattern_score+vs+hs
 
-    # V25: BONUS GROUPS — BC-ONLY (removed forex: fib, sr, divergence, storm, cpi)
+    # V25: BONUS GROUPS — BC-ONLY
     grp_trend = min(20, bonuses.get('ribbon_bonus',0) + bonuses.get('coherence_bonus',0) +
                     bonuses.get('alignment_bonus',0) + bonuses.get('adx_slope_bonus',0))
     grp_stat = min(20, bonuses.get('vr_bonus',0) + bonuses.get('acf_bonus',0) +
                    bonuses.get('hurst_bonus',0))
-    # V25: BC-SPECIFIC GROUP — replaces forex struct + storm (max 28)
+    # V25: BC-SPECIFIC GROUP (max 28)
     grp_bc = min(28, bonuses.get('bc_score_bonus',0) + bonuses.get('m5_precision_bonus',0) +
                   bonuses.get('drift_quality_bonus',0) + bonuses.get('spike_timing_bonus',0))
     grp_gen = min(12, bonuses.get('generator_bonus',0))
@@ -4811,7 +4627,7 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     grp_dist = min(10, bonuses.get('distribution_bonus',0))
     grp_market = min(10, bonuses.get('regime_bonus',0) + bonuses.get('markov_bonus',0) +
                      bonuses.get('spectral_bonus',0))
-    # V25: cleaned v23 group (removed pullback_bonus and retest_bonus — forex concepts)
+    # V25: cleaned v23 group
     grp_v23 = min(20, bonuses.get('market_structure_bonus',0) +
                   bonuses.get('sweep_bonus',0) + bonuses.get('entry_sync_bonus',0) +
                   bonuses.get('continuation_bonus',0) + bonuses.get('candle_mom_bonus',0))
@@ -4836,20 +4652,14 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
         *[bonuses.get(k,0) for k in all_keys],bonus,total,g)
 
 # ==============================================================================
-# [V25] STORM DETECTOR REMOVED (forex)
-# ═══════════════════════════════════════════
 
-def calculate_storm_bonus(sd):
-    """V25: Removed — Storm detector is a forex confluence counter.
-    BC setups use BC Score + M5 engines for confluence, not forex indicators."""
-    return None, 0, []
 
 # ==============================================================================
 # CHART V20
 # ==============================================================================
 
-def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=None, fib_levels=None):
-    """V25: sr_levels and fib_levels parameters kept for API compat but ignored."""
+def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None):
+    """V25: BC-specific chart rendering."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3.5, 1],
                                      facecolor='#09090b', gridspec_kw={'hspace': 0.08})
     ax1.set_facecolor('#09090b')
@@ -4871,7 +4681,7 @@ def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, sr_levels=N
     # BB — very subtle fill
     ax1.fill_between(df.index, df['BB_upper'], df['BB_lower'], alpha=0.02, color='#a1a1aa')
 
-    # V25: Removed S/R zones and Fib levels from charts (forex concepts)
+    # V25: BC-only chart rendering
 
     # Trade levels — clean, minimal
     if entry:
@@ -4985,7 +4795,7 @@ def trim_data_for_ai(data):
         "REGIME_TRANSITION", "BIAS_CONFIDENCE", "BIAS_SCORE",
         "HOLDING_PERIOD", "SCORE_BREAKDOWN",
         "ADX_SLOPE", "EMA_RIBBON", "TREND_COHERENCE", "CANDLE_STRUCTURE",
-        "MOM_ACCELERATION", "ATR_CHANNEL", "VWAP_ZONE",
+        "MOM_ACCELERATION", "ATR_CHANNEL",
         # V23 sniper data
         "MKT_STRUCTURE", "CANDLE_MOMENTUM",
         "LIQ_SWEEP", "ENTRY_SYNC", "CONT_PATTERN",
@@ -5353,7 +5163,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Neutral defaults — spike+drift process makes these unreliable
     vol_cluster = {"has_clustering": False, "garch_significant": False}
     dist = DistributionAnalyzer.analyze(h1)  # Keep: kurtosis useful for BC
-    # V25: CPI removed entirely (forex predictability index)
+    # V25: BC Predictability via regime + kurtosis + spike frequency
     spectral = {"has_cycle": False, "cycles": [], "spectral_edge": 0}
     markov = {"has_dependence": False, "transition_edge": 0, "matrix": {},
               "p_reversal_up": 0.33, "p_reversal_down": 0.33,
@@ -5371,7 +5181,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     adx_slope = adx_slope_analysis(h1)  # Keep: ADX still measures drift strength
     ema_ribbon = ema_ribbon_analysis(h1)  # Keep: EMA alignment useful for drift
     trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)  # Keep: TF alignment
-    vwap_data = {"entry_quality": "UNKNOWN", "vwap": 0, "zone": "N/A", "deviation": 0}  # No real volume in synthetics
+
     candle_struct = candle_structure_score(m15, bias)
     mom_accel = momentum_acceleration(h1)
     atr_channel = atr_channel_entry(h1, bias)
@@ -5379,7 +5189,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ V23 SNIPER ENGINES ═══
     mkt_struct = detect_market_structure(h1)
     candle_mom = candle_momentum_engine(m15, bias, lookback=10)
-    pb_quality = pullback_quality_score(m15, bias, c1['ATR'])
+
     liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
     # V24-F: Skip continuation pattern for BC (redundant with drift_analyzer + gradient)
@@ -5420,16 +5230,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     bc_m5_struct = bc_m5_micro_structure(m5, profile, lookback=20)
     bc_m5_wicks = bc_m5_wicks_analysis(m5, profile, lookback=10)
 
-    # V25: Removed forex divergence/SR/Fib — replaced by BC-specific engines
-    # (detect_divergence, detect_sr_clustered, calculate_fibonacci are now stubs)
-    divergence = None; div_bonus = 0; div_detail = ""
-    sr_levels = []; sr_bonus = 0; sr_touch = False; closest_sr = None
-    fib_level = None; fib_bonus = 0
 
     align_type, align_bonus = detect_alignment(c4, c1, cm, bias)
-    vol_st, vol_proxy = analyze_tick_volume(m15)
-    vol_confirmed = False  # Synthetics have no real volume — always neutral
-    vol_bonus = 0
+    vol_bonus = 0  # Synthetics have no real volume
     regime_bonus = 5 if "TRENDING" in regime else 0
     pat_score = min(cm.get('pattern_score', 0), 15)
     bb_compression = bb_cycle == "SQUEEZE"
@@ -5463,8 +5266,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     vr_bonus = 0
     if vr.get('has_edge'): vr_bonus = min(vr.get('n_significant',0)*4, 12)
 
-    # V25: REMOVED CPI bonus — CPI is a forex concept (hardcoded to 50, dead code)
-    cpi_val = 0; cpi_regime = "N/A"; cpi_bonus = 0
 
     # V21: Markov bonus
     markov_bonus = 0
@@ -5476,7 +5277,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     acf_bonus = 0
     if acf.get('has_pattern'): acf_bonus = min(len(acf.get('significant_lags',[]))*3, 10)
 
-    # ═══ V25: BC-SPECIFIC BONUSES (replace forex fib/sr/div/storm/cpi) ═══
+    # ═══ V25: BC-SPECIFIC BONUSES ═══
     # BC Score bonus: regime quality + kurtosis + recovery + stack health
     bc_score_bonus = 0
     if bc_regime.get('regime') in ['DRIFT_SMOOTH']:
@@ -5529,12 +5330,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         spike_timing_bonus += 1
 
     # ═══ V21+ PRECISION BONUSES ═══
-    # ═══ LEGACY TREND BONUSES — NEUTRALIZED FOR BC ═══
-    # BC has superior dedicated tools: bc_ema_stack, bc_gradient, bc_consecutive
-    # These forex-oriented tools add noise, not signal, for spike+drift process
-    adx_slope_bonus = 0   # → replaced by bc_drift_momentum_gradient
-    ribbon_bonus = 0      # → replaced by bc_ema_drift_stack
-    coherence_bonus = 0   # → replaced by cross-validation + bc_conflicts
+    # V25: Trend bonuses use BC engines
+    adx_slope_bonus = 0
+    ribbon_bonus = 0
+    coherence_bonus = 0
 
     # Candle Structure: entry quality bonus
     candle_bonus = 0
@@ -5573,8 +5372,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if candle_mom.get('conviction') == "STRONG": candle_mom_bonus = 8
     elif candle_mom.get('conviction') == "MODERATE": candle_mom_bonus = 4
 
-    # V25: Pullback bonus removed (forex concept — BC uses drift, not pullbacks)
-    pullback_bonus = 0
 
     # Liquidity Sweep bonus
     sweep_bonus = 0
@@ -5593,17 +5390,12 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if cont_pattern.get('pattern') != "NONE":
         continuation_bonus = min(8, cont_pattern.get('confidence', 0) // 10)
 
-    # Breakout Retest bonus (calculated after SR levels)
-    retest_bonus = 0
 
     # V25: RANDOM WALK PENALTY (kept — valid for all stochastic processes)
     random_walk_penalty = 0
     if 0.47 <= hurst_val <= 0.53 and hurst_r2 >= 0.7:
         random_walk_penalty = -20  # Honest: no edge in random walk
 
-    # V25: REMOVED CPI gate — CPI is a forex predictability index, irrelevant for synthetics
-    # BC synthetic indices have inherent spike+drift structure (non-random by design)
-    cpi_gate_min = 0  # No CPI gate for BC
 
     # ═══ 🔴 FIX #5: BACKTEST 1× (não 2×) + V20 multi-setup ═══
     sim = run_walk_forward_v21(h1, bias, profile, n_folds=4)
@@ -5631,9 +5423,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         is_long = direction == "BULLISH"
         is_bc = gen_type in ["BOOM", "CRASH"]
 
-        # ═══ V24-F SURGERY 1: BC PRIORITY SETUPS — NO DIV_BLOCK ═══
-        # BC engines are the authority on BC assets. Generic RSI/MACD divergence
-        # measures drift behavior (normal in BC) and must NOT block BC setups.
+        # ═══ V25: BC PRIORITY SETUPS ═══
+        # BC engines are the sole authority on BC assets.
 
         # V24 M5: Regime-aware SL multiplier
         regime_sl_mult = bc_regime.get('sl_mult', 1.0) if is_bc else 1.0
@@ -5771,7 +5562,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
 
-        # ═══ V25: BC-ONLY — NO LEGACY FOREX SETUPS ═══
+        # ═══ V25: BC-ONLY SETUPS ═══
         # All BC setups handled above (POST_SPIKE, SPIKE_CATCH, SCALP_DRIFT,
         # DRIFT_RIDE, STOCH_SPIKE, REVERSAL). If none triggered → MONITORING.
         return  # sig remains "MONITORING" — honest and correct
@@ -5824,18 +5615,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     elif "SHORT" in sig and (sl_val - entry) > adapted_profile['sl_atr_mult'] * bc_atr_clean:
         sl_val = entry + adapted_profile['sl_atr_mult'] * bc_atr_clean
 
-    # V25: Storm removed — forex confluence counting is irrelevant for BC
-
-    # V25: Independent Edge Correlation (cleaned of forex references)
+    # V25: Independent Edge Correlation
     indep_edges = calculate_independent_edges(
-        vr, acf, hurst_val, gen_bonus, dist, z_current,
-        divergence, fib_level, sr_touch, align_type, vol_confirmed)
+        vr, acf, hurst_val, gen_bonus, dist, z_current, align_type)
 
     score = calculate_score(
         adx=adx, momentum_score=momentum, pattern_score=pat_score,
         dist_ema50=abs(c1['close']-c1['EMA_50']), atr=c1['ATR'],
         win_rate=sim['WR'], profit_factor=sim['PF'], profile=adapted_profile,
-        # V25: BC-specific bonuses (replaced forex fib/sr/div/storm/cpi)
+        # V25: BC-specific bonuses
         bc_score_bonus=bc_score_bonus, m5_precision_bonus=m5_precision_bonus,
         drift_quality_bonus=drift_quality_bonus, spike_timing_bonus=spike_timing_bonus,
         alignment_bonus=align_bonus,
@@ -5847,7 +5635,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
         coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
         mom_accel_bonus=mom_accel_bonus,
-        # V23 bonuses (cleaned: removed pullback, retest — forex concepts)
+        # V23 bonuses (cleaned)
         market_structure_bonus=market_structure_bonus,
         candle_mom_bonus=candle_mom_bonus,
         sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
@@ -6041,8 +5829,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     direction = "LONG" if "LONG" in sig else "SHORT"
     tp1, tp2 = smart_tp(entry, direction, risk, r1, r2)
 
-    # V25: Removed S/R TP capping (forex concept — BC uses ATR-based TPs)
-
     # V23: Multi-entry levels
     entry_ideal = entry  # Current close
     entry_aggressive = entry  # Market
@@ -6108,7 +5894,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"⚡ CHoCH ({mkt_struct.get('last_event','?')})")
     if candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
         confs.append(f"💪 CandleMom {candle_mom['conviction']} ({candle_mom.get('score',0):.0f})")
-    # V25: Pullback removed (forex concept)
+
     if liq_sweep.get('sweep'):
         confs.append(f"💧 {liq_sweep['type']}")
     if entry_sync.get('ready') == 'READY':
@@ -6117,10 +5903,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"🚩 {cont_pattern['pattern']} ({cont_pattern.get('confidence',0)}%)")
     if early_reversal:
         confs.append(f"⚡ EARLY REVERSAL → {reversal_dir}")
-    if False:  # V25: Removed retest (forex concept)
-        confs.append("🔄 Breakout Retest")
-    # V24-F: Boom/Crash specific confluences (ENHANCED)
-    # FIX #8: BC Score display
+
     if bc_score_data.get('score', 0) > 0 and is_bc_setup:
         bc_grade = bc_score_data.get('grade', 'D')
         bc_status = bc_score_data.get('status', 'FAIL')
@@ -6171,7 +5954,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         confs.append(f"💪 M5 Wicks: {bc_m5_wicks['signal']} ({bc_m5_wicks['rejection_wicks']}/{bc_m5_wicks.get('total_significant',0)})")
 
     risks = []
-    # V25: BC-relevant risks only (removed CPI, edges, ADX dying)
+    # V25: BC-relevant risks only
     if regime_transition == "EXHAUSTION": risks.append("⚠️ Regime EXHAUSTION")
     if "RANGING" in regime: risks.append("⚠️ RANGING")
     if not sim['WF_STABLE']: risks.append("⚠️ WF instável")
@@ -6272,7 +6055,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "TP1": float(round(tp1,5)), "TP2": float(round(tp2,5)),
         "PYRAMID": convert_np(pyramid), "ADAPTED_PROFILE": convert_np({k:v for k,v in adapted_profile.items() if k in ['risk_mult','sl_atr_mult','tp2_r']}),
         "IMAGES": imgs, "ATR": float(c1['ATR']),
-        # V25: CPI removed (forex concept)
         "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
         "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
         "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
@@ -6296,21 +6078,18 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "ADX_SLOPE": convert_np(adx_slope),
         "EMA_RIBBON": convert_np(ema_ribbon),
         "TREND_COHERENCE": convert_np(trend_coherence),
-        "VWAP_DATA": convert_np(vwap_data),
         "CANDLE_STRUCT": convert_np(candle_struct),
         "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
         # V23 precision data
         "MKT_STRUCTURE": convert_np(mkt_struct),
         "CANDLE_MOMENTUM": convert_np(candle_mom),
-        # V25: PULLBACK_QUALITY removed (forex concept)
         "LIQ_SWEEP": convert_np(liq_sweep),
         "ENTRY_SYNC": convert_np(entry_sync),
         "CONT_PATTERN": convert_np(cont_pattern),
         "EARLY_REVERSAL": early_reversal,
         "REVERSAL_DIR": reversal_dir,
         "RW_PENALTY": random_walk_penalty,
-        # V25: CPI_GATE_MIN removed (forex concept)
         # V23: Multi-entry levels
         "ENTRY_AGGRESSIVE": float(round(entry_aggressive, 5)),
         "ENTRY_IDEAL": float(round(entry_ideal, 5)),
@@ -6681,7 +6460,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                        f"R² = {data.get('HURST_R2',0):.2f}")
 
             # ── DISTRIBUTION ──
-            # ═══ V25: BC PREDICTABILITY (replaced forex CPI) ═══
+            # ═══ V25: BC PREDICTABILITY ═══
             st.markdown("""<div class='section-header'>
                 <div class='section-icon'>🔮</div>
                 <span class='section-title'>BC Predictability</span>
@@ -6718,7 +6497,6 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             adx_sl = data.get('ADX_SLOPE', {})
             ribbon = data.get('EMA_RIBBON', {})
             coherence = data.get('TREND_COHERENCE', {})
-            vwap = data.get('VWAP_DATA', {})
             candle = data.get('CANDLE_STRUCT', {})
             maccel = data.get('MOM_ACCEL', {})
             atr_ch = data.get('ATR_CHANNEL', {})
@@ -6757,7 +6535,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             ms_color = "🟢" if ms_event.startswith("BOS_BULL") or ms_event.startswith("CHOCH_BULL") else "🔴" if ms_event.startswith("BOS_BEAR") or ms_event.startswith("CHOCH_BEAR") else "⚪"
             s1.metric(f"Mkt Structure {ms_color}", ms_trend, ms_event)
             s2.metric("Candle Mom", cm_data.get('conviction', '?'), f"score={cm_data.get('score',0):.0f}")
-            # V25: Replaced Pullback Q (forex) with Spike Probability (BC-specific)
+            # V25: Spike Probability (BC-specific)
             bc_sp = data.get('BC_SPIKE', {})
             sp_prob = bc_sp.get('probability', 0)
             sp_c = "🟢" if sp_prob >= 60 else "🟡" if sp_prob >= 35 else "⚪"
