@@ -1519,265 +1519,14 @@ def adx_slope_analysis(df, lookback=14):
 # ==============================================================================
 # V21+ ENGINE: EMA RIBBON SPREAD — Trend Strength Measurement
 # ==============================================================================
-
-def ema_ribbon_analysis(df):
-    """Measures EMA ribbon spread and ordering for trend quality.
-    Expanding ribbon = strong trend. Contracting = weakening."""
-    try:
-        if len(df) < 5 or not all(c in df.columns for c in ['EMA_20', 'EMA_50', 'EMA_200']):
-            return {"spread": 0, "expanding": False, "quality": "NONE", "direction": "NEUTRAL"}
-        c = df.iloc[-1]
-        e20, e50, e200 = float(c['EMA_20']), float(c['EMA_50']), float(c['EMA_200'])
-        atr = float(c['ATR']) if c['ATR'] > 0 else 1
-        # Normalized spreads
-        spread_20_50 = (e20 - e50) / atr
-        spread_50_200 = (e50 - e200) / atr
-        total_spread = abs(spread_20_50) + abs(spread_50_200)
-        # Check ordering
-        bull_order = e20 > e50 > e200
-        bear_order = e20 < e50 < e200
-        # Expansion check (compare with 5 bars ago)
-        if len(df) >= 6:
-            p = df.iloc[-6]
-            prev_spread = abs(float(p['EMA_20']) - float(p['EMA_50'])) / atr + abs(float(p['EMA_50']) - float(p['EMA_200'])) / atr
-            expanding = total_spread > prev_spread * 1.05
-            contracting = total_spread < prev_spread * 0.95
-        else:
-            expanding = False
-            contracting = False
-        # Quality
-        if (bull_order or bear_order) and expanding and total_spread > 3:
-            quality = "EXCELLENT"
-        elif (bull_order or bear_order) and total_spread > 2:
-            quality = "GOOD"
-        elif (bull_order or bear_order):
-            quality = "MODERATE"
-        elif abs(spread_20_50) < 0.5 and abs(spread_50_200) < 1:
-            quality = "COMPRESSED"
-        else:
-            quality = "MIXED"
-        direction = "BULLISH" if spread_20_50 > 0 and spread_50_200 > 0 else \
-                    "BEARISH" if spread_20_50 < 0 and spread_50_200 < 0 else "MIXED"
-        return {
-            "spread_20_50": round(spread_20_50, 2),
-            "spread_50_200": round(spread_50_200, 2),
-            "total_spread": round(total_spread, 2),
-            "expanding": expanding, "contracting": contracting,
-            "quality": quality, "direction": direction,
-            "bull_order": bull_order, "bear_order": bear_order,
-        }
-    except:
-        return {"spread": 0, "expanding": False, "quality": "NONE", "direction": "NEUTRAL"}
-
-# ==============================================================================
 # V21+ ENGINE: MULTI-TF TREND COHERENCE SCORING
-# ==============================================================================
-
-def multi_tf_trend_coherence(h4, h1, m15, m5=None):
-    """Scores how coherent the trend is across all timeframes.
-    Perfect coherence = highest confidence entries."""
-    try:
-        score = 0.0; details = []
-        for tf, name, weight in [(h4, "H4", 3.0), (h1, "H1", 2.0), (m15, "M15", 1.5), (m5, "M5", 1.0)]:
-            if tf is None or len(tf) < 20:
-                continue
-            c = tf.iloc[-1]
-            # EMA alignment direction
-            if c['EMA_20'] > c['EMA_50'] > c['EMA_200']:
-                tf_dir = "BULL"
-            elif c['EMA_20'] < c['EMA_50'] < c['EMA_200']:
-                tf_dir = "BEAR"
-            else:
-                tf_dir = "MIXED"
-            # MACD confirmation
-            macd_bull = c['MACD_hist'] > 0
-            # RSI zone
-            rsi = c.get('RSI', 50)
-            rsi_ok = (40 < rsi < 70) if tf_dir == "BULL" else (30 < rsi < 60) if tf_dir == "BEAR" else True
-            # ADX trending
-            adx = c.get('ADX', 0)
-            trending = adx > 20
-            # Score this TF
-            tf_score = 0
-            if tf_dir in ["BULL", "BEAR"]:
-                tf_score += 1.0
-                if (tf_dir == "BULL" and macd_bull) or (tf_dir == "BEAR" and not macd_bull):
-                    tf_score += 0.5
-                if rsi_ok:
-                    tf_score += 0.3
-                if trending:
-                    tf_score += 0.2
-            score += tf_score * weight
-            details.append({"tf": name, "dir": tf_dir, "score": round(tf_score * weight, 1)})
-        max_score = 3.0 * 2.0 + 2.0 * 2.0 + 1.5 * 2.0 + (1.0 * 2.0 if m5 is not None else 0)
-        normalized = score / max_score * 100 if max_score > 0 else 0
-        # Coherence: check if all TFs agree on direction
-        dirs = [d['dir'] for d in details if d['dir'] != "MIXED"]
-        if dirs and all(d == dirs[0] for d in dirs):
-            coherence = "PERFECT"
-            coherent_dir = "BULLISH" if dirs[0] == "BULL" else "BEARISH"
-        elif dirs and dirs.count(dirs[0]) >= len(dirs) * 0.7:
-            coherence = "STRONG"
-            coherent_dir = "BULLISH" if dirs.count("BULL") > dirs.count("BEAR") else "BEARISH"
-        else:
-            coherence = "WEAK"
-            coherent_dir = "MIXED"
-        return {
-            "score": round(normalized, 1),
-            "coherence": coherence,
-            "coherent_direction": coherent_dir,
-            "details": details,
-            "n_timeframes": len(details),
-        }
-    except:
-        return {"score": 0, "coherence": "WEAK", "coherent_direction": "MIXED", "details": []}
-
 # ==============================================================================
 
 
 # ==============================================================================
 # V21+ ENGINE: CANDLE STRUCTURE SCORING — Entry Quality
 # ==============================================================================
-
-def candle_structure_score(df, direction, n_candles=5):
-    """Scores the last N candles' structure quality for entry.
-    Strong bodies, proper wicks, momentum sequence = better entry."""
-    try:
-        if len(df) < n_candles + 1:
-            return {"score": 0, "quality": "UNKNOWN", "pattern_type": "NONE"}
-        recent = df.tail(n_candles)
-        is_long = "BULL" in str(direction) or "LONG" in str(direction)
-        score = 0.0
-        # 1. Body-to-range ratio (strong moves have large bodies)
-        bodies = abs(recent['close'] - recent['open'])
-        ranges = (recent['high'] - recent['low']).replace(0, np.nan)
-        body_ratios = (bodies / ranges).dropna()
-        avg_body_ratio = float(body_ratios.mean()) if len(body_ratios) > 0 else 0.5
-        if avg_body_ratio > 0.6:
-            score += 25  # Strong directional candles
-        elif avg_body_ratio > 0.4:
-            score += 15
-        # 2. Directional consistency
-        if is_long:
-            bullish_candles = sum(recent['close'] > recent['open'])
-        else:
-            bullish_candles = sum(recent['close'] < recent['open'])
-        consistency = bullish_candles / n_candles
-        score += consistency * 25
-        # 3. Wick analysis (favorable wicks)
-        last = df.iloc[-1]
-        body = abs(last['close'] - last['open'])
-        rng = last['high'] - last['low']
-        if rng > 0:
-            if is_long:
-                lower_wick = min(last['open'], last['close']) - last['low']
-                upper_wick = last['high'] - max(last['open'], last['close'])
-                # Long entries: small upper wick (no rejection), lower wick ok
-                if upper_wick / rng < 0.2:
-                    score += 15
-                if lower_wick / rng > 0.3 and last['close'] > last['open']:
-                    score += 10  # Demand wick
-            else:
-                upper_wick = last['high'] - max(last['open'], last['close'])
-                lower_wick = min(last['open'], last['close']) - last['low']
-                if lower_wick / rng < 0.2:
-                    score += 15
-                if upper_wick / rng > 0.3 and last['close'] < last['open']:
-                    score += 10  # Supply wick
-        # 4. Closing position (close near high for longs, near low for shorts)
-        if rng > 0:
-            close_pos = (last['close'] - last['low']) / rng
-            if is_long and close_pos > 0.7:
-                score += 15
-            elif not is_long and close_pos < 0.3:
-                score += 15
-        # 5. Range expansion (last candle bigger than recent average)
-        if len(df) > n_candles + 5:
-            prev_avg_range = float((df['high'] - df['low']).iloc[-(n_candles+5):-n_candles].mean())
-            if prev_avg_range > 0 and rng > prev_avg_range * 1.3:
-                score += 10
-        quality = "EXCELLENT" if score >= 75 else "GOOD" if score >= 55 else "MODERATE" if score >= 35 else "WEAK"
-        # Pattern type
-        if consistency > 0.8 and avg_body_ratio > 0.5:
-            pattern_type = "IMPULSE"
-        elif consistency < 0.4:
-            pattern_type = "CONFLICTED"
-        elif avg_body_ratio < 0.3:
-            pattern_type = "INDECISION"
-        else:
-            pattern_type = "BUILDING"
-        return {"score": round(min(score, 100), 1), "quality": quality, "pattern_type": pattern_type,
-                "body_ratio": round(avg_body_ratio, 2) if len(body_ratios) > 0 else 0,
-                "consistency": round(consistency, 2)}
-    except:
-        return {"score": 0, "quality": "UNKNOWN", "pattern_type": "NONE"}
-
-# ==============================================================================
 # V21+ ENGINE: MOMENTUM ACCELERATION — Optimal Timing
-# ==============================================================================
-
-def momentum_acceleration(df, periods=[3, 7, 14]):
-    """Measures rate of change of momentum itself.
-    Accelerating momentum = ideal entry point.
-    Decelerating = wait or take profit."""
-    try:
-        if len(df) < max(periods) + 5 or 'MACD_hist' not in df.columns:
-            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
-        hist = df['MACD_hist'].tail(max(periods) + 2).dropna()
-        if len(hist) < max(periods):
-            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
-        # Rate of change measurements at different scales
-        rocs = {}
-        for p in periods:
-            if len(hist) > p:
-                roc = float(hist.iloc[-1] - hist.iloc[-p]) / abs(float(hist.iloc[-p])) * 100 if hist.iloc[-p] != 0 else 0
-                rocs[p] = roc
-        if not rocs:
-            return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
-        short_roc = rocs.get(3, 0)
-        med_roc = rocs.get(7, 0)
-        long_roc = rocs.get(14, 0)
-        # Phase detection
-        current_hist = float(hist.iloc[-1])
-        prev_hist = float(hist.iloc[-2])
-        if current_hist > 0 and current_hist > prev_hist and short_roc > 0:
-            phase = "BULL_ACCELERATING"
-            confidence = min(abs(short_roc) * 0.5 + abs(med_roc) * 0.3, 100)
-        elif current_hist > 0 and current_hist < prev_hist:
-            phase = "BULL_DECELERATING"
-            confidence = min(abs(short_roc) * 0.3, 60)
-        elif current_hist < 0 and current_hist < prev_hist and short_roc < 0:
-            phase = "BEAR_ACCELERATING"
-            confidence = min(abs(short_roc) * 0.5 + abs(med_roc) * 0.3, 100)
-        elif current_hist < 0 and current_hist > prev_hist:
-            phase = "BEAR_DECELERATING"
-            confidence = min(abs(short_roc) * 0.3, 60)
-        elif abs(current_hist) < abs(prev_hist) * 0.3:
-            phase = "ZERO_CROSS_IMMINENT"
-            confidence = 70
-        else:
-            phase = "NEUTRAL"
-            confidence = 0
-        # Consecutive accelerating bars
-        accel_bars = 0
-        for i in range(1, min(8, len(hist))):
-            if abs(float(hist.iloc[-i])) > abs(float(hist.iloc[-i-1])) if i < len(hist) - 1 else False:
-                accel_bars += 1
-            else:
-                break
-        return {
-            "acceleration": round(float(short_roc), 2),
-            "phase": phase,
-            "confidence": round(float(confidence), 1),
-            "short_roc": round(float(short_roc), 2),
-            "med_roc": round(float(med_roc), 2),
-            "long_roc": round(float(long_roc), 2),
-            "accel_bars": accel_bars,
-            "current_hist": round(float(current_hist), 6),
-        }
-    except:
-        return {"acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
-
 # ==============================================================================
 # V21+ ENGINE: DYNAMIC ATR CHANNEL — Volatility-Adjusted Entries
 # ==============================================================================
@@ -1969,58 +1718,6 @@ def calculate_multi_speed_bias(h4, h1, m15, m5=None):
 # ==============================================================================
 # V23 ENGINE #3: CANDLE MOMENTUM ENGINE
 # ==============================================================================
-
-def candle_momentum_engine(df, direction, lookback=10):
-    """Analisa qualidade dos candles para confirmação de momentum."""
-    try:
-        if len(df) < lookback + 5:
-            return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
-        d = df.tail(lookback)
-        bodies = abs(d['close'] - d['open'])
-        ranges = d['high'] - d['low']
-        ranges = ranges.replace(0, np.nan)
-        body_ratios = (bodies / ranges).dropna()
-        is_bull = direction == "BULLISH"
-        # 1. Body ratio (conviction candles)
-        avg_br = float(body_ratios.mean()) if len(body_ratios) > 0 else 0.3
-        br_score = min(30, avg_br * 40)
-        # 2. Directional candles (% of candles in our direction)
-        if is_bull:
-            dir_count = (d['close'] > d['open']).sum()
-        else:
-            dir_count = (d['close'] < d['open']).sum()
-        dir_pct = dir_count / len(d)
-        dir_score = min(30, dir_pct * 40)
-        # 3. Candle size trend (increasing = momentum building)
-        if len(bodies) >= 5:
-            recent = bodies.iloc[-3:].mean()
-            older = bodies.iloc[:3].mean()
-            size_ratio = recent / older if older > 0 else 1
-            size_score = min(20, max(0, (size_ratio - 0.8) * 40))
-        else:
-            size_score = 0
-        # 4. Rejection wicks (wicks against direction = confirmation)
-        wick_score = 0
-        for i in range(-3, 0):
-            row = d.iloc[i]
-            rng = row['high'] - row['low']
-            if rng == 0: continue
-            if is_bull:
-                lower_wick = min(row['open'], row['close']) - row['low']
-                if lower_wick / rng > 0.5: wick_score += 7
-            else:
-                upper_wick = row['high'] - max(row['open'], row['close'])
-                if upper_wick / rng > 0.5: wick_score += 7
-        wick_score = min(20, wick_score)
-        total = br_score + dir_score + size_score + wick_score
-        conviction = "STRONG" if total > 65 else "MODERATE" if total > 40 else "WEAK" if total > 20 else "NONE"
-        return {"score": round(total, 1), "conviction": conviction, "avg_body_ratio": round(avg_br, 3),
-                "directional_pct": round(dir_pct, 2), "size_trend": round(size_score, 1)}
-    except:
-        return {"score": 0, "conviction": "NONE", "avg_body_ratio": 0}
-
-
-# ==============================================================================
 # V23 ENGINE #5: LIQUIDITY SWEEP DETECTOR
 # ==============================================================================
 
@@ -2100,49 +1797,6 @@ def entry_sync_score(h4, h1, m15, m5, direction):
 
 # ==============================================================================
 # V23 ENGINE #8: CONTINUATION PATTERNS (Flag, Pennant)
-# ==============================================================================
-
-def detect_continuation_pattern(df, direction, atr):
-    """Detecta flags e pennants — padrões de continuação de alta probabilidade."""
-    try:
-        if len(df) < 20 or atr == 0:
-            return {"pattern": "NONE", "confidence": 0}
-        is_bull = direction == "BULLISH"
-        d = df.tail(25)
-        # Look for impulse followed by consolidation
-        # Impulse: large move in direction (>2 ATR in 3-5 candles)
-        for start in range(0, min(10, len(d)-10)):
-            segment = d.iloc[start:start+5]
-            move = float(segment['close'].iloc[-1] - segment['open'].iloc[0])
-            if is_bull and move > atr * 2:
-                # Found bullish impulse, check for flag after
-                flag = d.iloc[start+5:]
-                if len(flag) >= 3:
-                    flag_range = float(flag['high'].max() - flag['low'].min())
-                    flag_drift = float(flag['close'].iloc[-1] - flag['open'].iloc[0])
-                    # Flag: tight range, slight counter-trend drift
-                    if flag_range < atr * 2 and flag_drift < 0:
-                        return {"pattern": "BULL_FLAG", "confidence": min(80, 50 + int(move/atr * 10)),
-                                "impulse_size": round(move, 5), "flag_range": round(flag_range, 5)}
-                    # Pennant: decreasing range
-                    elif flag_range < atr * 1.5:
-                        return {"pattern": "BULL_PENNANT", "confidence": min(70, 40 + int(move/atr * 10)),
-                                "impulse_size": round(move, 5)}
-            elif not is_bull and move < -atr * 2:
-                flag = d.iloc[start+5:]
-                if len(flag) >= 3:
-                    flag_range = float(flag['high'].max() - flag['low'].min())
-                    flag_drift = float(flag['close'].iloc[-1] - flag['open'].iloc[0])
-                    if flag_range < atr * 2 and flag_drift > 0:
-                        return {"pattern": "BEAR_FLAG", "confidence": min(80, 50 + int(abs(move)/atr * 10)),
-                                "impulse_size": round(abs(move), 5), "flag_range": round(flag_range, 5)}
-                    elif flag_range < atr * 1.5:
-                        return {"pattern": "BEAR_PENNANT", "confidence": min(70, 40 + int(abs(move)/atr * 10)),
-                                "impulse_size": round(abs(move), 5)}
-        return {"pattern": "NONE", "confidence": 0}
-    except:
-        return {"pattern": "NONE", "confidence": 0}
-
 # ==============================================================================
 # BC ENGINE #1: SPIKE DETECTION — Detecta spikes iminentes
 # ==============================================================================
@@ -2616,11 +2270,22 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
         elif total >= 40: status = "MONITOR"
         else: status = "FAIL"
 
+        # V26: Tier confidence — measures agreement between engine tiers
+        tier1_ok = drift_score > 5 or timing_score > 5  # TIER 1 engines agree
+        tier2_ok = (m5_pulse_pts + m5_struct_pts + stack_pts) > 5  # TIER 2 confirms
+        tier3_ok = grad_pts > 0  # TIER 3 refines
+        tier_confidence = (3 if tier1_ok else 0) + (2 if tier2_ok else 0) + (1 if tier3_ok else 0)
+        # Bonus for tier alignment
+        if tier_confidence >= 5:
+            total += 5  # TIER 1+2 agree → bonus
+        elif tier_confidence <= 2:
+            total -= 5  # Only TIER 3+ → penalty
+
         return {"score": total, "grade": grade, "status": status,
-                "breakdown": breakdown, "setup_type": setup_type}
+                "breakdown": breakdown, "setup_type": setup_type, "tier_confidence": tier_confidence}
     except:
         return {"score": 0, "grade": "D", "status": "FAIL",
-                "breakdown": {}, "setup_type": setup_type}
+                "breakdown": {}, "setup_type": setup_type, "tier_confidence": 0}
 
 # ==============================================================================
 # V24-F O5: ANTI-MELTDOWN KILL-SWITCH (FUNCTIONAL)
@@ -2634,12 +2299,12 @@ def bc_meltdown_check(session_state_key='bc_loss_streak'):
         if session_state_key not in st.session_state:
             st.session_state[session_state_key] = 0
         streak = st.session_state.get(session_state_key, 0)
-        if streak >= 5:
+        if streak >= 8:
             return {"blocked": True, "reason": f"KILL-SWITCH: {streak} consecutive losses — manual reset required",
                     "score_boost": 0, "streak": streak}
-        elif streak >= 3:
-            return {"blocked": False, "reason": f"CAUTION: {streak} consecutive losses — score +50%",
-                    "score_boost": 50, "streak": streak}
+        elif streak >= 5:
+            return {"blocked": False, "reason": f"CAUTION: {streak} consecutive losses — score +25%",
+                    "score_boost": 25, "streak": streak}
         return {"blocked": False, "reason": None, "score_boost": 0, "streak": streak}
     except:
         return {"blocked": False, "reason": None, "score_boost": 0, "streak": 0}
@@ -3840,43 +3505,6 @@ def detect_regime_transition(df, lb_cur=30, lb_past=80):
 # ==============================================================================
 # V21 PREC #1: ENHANCED MOMENTUM (0-100)
 # ==============================================================================
-
-def enhanced_momentum_v21(h4, h1, m15, direction):
-    """Multi-dimensional momentum: MACD hist + RSI zone + DI."""
-    try:
-        sc = 0.0; is_b = direction == "BULLISH"
-        for tf, w in [(h4, 15), (h1, 12), (m15, 8)]:
-            if len(tf) >= 3:
-                h = tf['MACD_hist']
-                acc = h.iloc[-1] - h.iloc[-2]
-                if is_b:
-                    if h.iloc[-1] > 0 and acc > 0: sc += w
-                    elif h.iloc[-1] > 0: sc += w * 0.5
-                    elif acc > 0: sc += w * 0.3
-                else:
-                    if h.iloc[-1] < 0 and acc < 0: sc += w
-                    elif h.iloc[-1] < 0: sc += w * 0.5
-                    elif acc < 0: sc += w * 0.3
-        rsi = h1['RSI'].iloc[-1] if pd.notna(h1['RSI'].iloc[-1]) else 50
-        if is_b:
-            if 45 < rsi < 65: sc += 25
-            elif 35 < rsi < 45: sc += 15
-            elif rsi > 70: sc += 5
-        else:
-            if 35 < rsi < 55: sc += 25
-            elif 55 < rsi < 65: sc += 15
-            elif rsi < 30: sc += 5
-        c1 = h1.iloc[-1]
-        dip = c1.get('+DI', 0) if pd.notna(c1.get('+DI', np.nan)) else 0
-        dim = c1.get('-DI', 0) if pd.notna(c1.get('-DI', np.nan)) else 0
-        if dip + dim > 0:
-            ds = abs(dip - dim) / (dip + dim)
-            if is_b and dip > dim: sc += min(20, ds * 40)
-            elif not is_b and dim > dip: sc += min(20, ds * 40)
-        return round(min(100, sc), 1)
-    except: return 0.0
-
-# ==============================================================================
 # V21 PREC #2: EDGE CORRELATION MATRIX
 # ==============================================================================
 
@@ -4341,6 +3969,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
     all_trades = []
     is_bc = profile.get('gen_type', 'GBM') in ["BOOM", "CRASH"]
     is_boom = profile.get('gen_type') == "BOOM"
+    is_crash = profile.get('gen_type') == "CRASH"
 
     # V24: Detect PPY for correct Sharpe annualization
     ppy = detect_periods_per_year(df)
@@ -4385,12 +4014,23 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                         drift_ok = ema_f.iloc[-1] < ema_s.iloc[-1]  # Boom drifts DOWN
                         safe = rsi_val > 35
                         if drift_ok and safe:
-                            sig = "SELL"; setup = "BC_DRIFT"
+                            sig = "SELL"
+                            # V26: Differentiate BC_DRIFT vs BC_SCALP based on BB squeeze
+                            if 'BB_width' in df.columns and pd.notna(row.get('BB_width', None)):
+                                bb_m = df['BB_width'].iloc[max(0,i-20):i].mean() if i > 20 else row['BB_width']
+                                setup = "BC_SCALP" if (bb_m > 0 and row['BB_width'] < bb_m * 0.7) else "BC_DRIFT"
+                            else:
+                                setup = "BC_DRIFT"
                     else:
                         drift_ok = ema_f.iloc[-1] > ema_s.iloc[-1]  # Crash drifts UP
                         safe = rsi_val < 65
                         if drift_ok and safe:
-                            sig = "BUY"; setup = "BC_DRIFT"
+                            sig = "BUY"
+                            if 'BB_width' in df.columns and pd.notna(row.get('BB_width', None)):
+                                bb_m = df['BB_width'].iloc[max(0,i-20):i].mean() if i > 20 else row['BB_width']
+                                setup = "BC_SCALP" if (bb_m > 0 and row['BB_width'] < bb_m * 0.7) else "BC_DRIFT"
+                            else:
+                                setup = "BC_DRIFT"
 
                 # BC-SETUP B: POST_SPIKE_FADE — fade after spike
                 if not sig:
@@ -4435,7 +4075,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
                 continue
 
             # V25: BC-specific slippage (realistic for synthetics)
-            slippage_map = {"BC_DRIFT": 0.15, "BC_FADE": 0.8, "BC_SPIKE": 1.5}
+            slippage_map = {"BC_SCALP": 0.1, "BC_DRIFT": 0.15, "BC_FADE": 0.8, "BC_SPIKE": 1.5}
             slippage = atr * slippage_map.get(setup, 0.3)
             entry = row['close'] + (spread + slippage if sig == "BUY" else -(spread + slippage))
 
@@ -4443,7 +4083,9 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             past_data = df.iloc[max(0,i-20):i+1]
 
             # V25: BC regime-aware SL
-            if setup == "BC_DRIFT":
+            if setup == "BC_SCALP":
+                sl_m = profile.get('sl_scalp_mult', 1.0) * 0.6  # V26: Tightest for scalp
+            elif setup == "BC_DRIFT":
                 sl_m = profile.get('sl_scalp_mult', 1.0) * 0.8  # Tight for drift
             elif setup == "BC_FADE":
                 sl_m = profile.get('sl_scalp_mult', 1.0) * 1.2  # Wider post-spike
@@ -4464,7 +4106,8 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
 
             # V25: BC-only TP configs
             tp_configs = {
-                "BC_DRIFT": (1.5, 2.5, 1.0),   # Tight TP, tight trail
+                "BC_SCALP": (1.0, 1.8, 0.8),    # V26: Tightest — M5 micro-drift
+                "BC_DRIFT": (1.5, 2.5, 1.0),    # Tight TP, tight trail
                 "BC_FADE": (1.2, 2.0, 1.2),     # Conservative fade
                 "BC_SPIKE": (3.0, 6.0, 2.5),    # Wide TP for spike catch
             }
@@ -4473,7 +4116,7 @@ def run_walk_forward_v21(df, bias, profile, n_folds=4):
             tp2 = entry + tp2_r * risk if sig == "BUY" else entry - tp2_r * risk
 
             # V24: Max hold by setup type
-            max_hold = {"BC_DRIFT": 30, "BC_FADE": 15, "BC_SPIKE": 50}.get(
+            max_hold = {"BC_SCALP": 15, "BC_DRIFT": 30, "BC_FADE": 15, "BC_SPIKE": 50}.get(
                 setup, profile.get('max_hold_day', 80))
 
             p1_open, p2_open = True, True
@@ -4595,7 +4238,7 @@ class SetupScore:
     value_zone:float; historical:float; base_total:float
     bc_score_bonus:float; m5_precision_bonus:float; drift_quality_bonus:float
     alignment_bonus:float; spike_timing_bonus:float; regime_bonus:float
-    volume_bonus:float; hurst_bonus:float; zscore_bonus:float
+    hurst_bonus:float; zscore_bonus:float
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
     markov_bonus:float; spectral_bonus:float
@@ -4613,38 +4256,34 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     base=ts+mp+pattern_score+vs+hs
 
     # V25: BONUS GROUPS — BC-ONLY
-    grp_trend = min(20, bonuses.get('ribbon_bonus',0) + bonuses.get('coherence_bonus',0) +
-                    bonuses.get('alignment_bonus',0) + bonuses.get('adx_slope_bonus',0))
+    grp_trend = min(12, bonuses.get('alignment_bonus',0) + bonuses.get('adx_slope_bonus',0))  # V26: only active components
     grp_stat = min(20, bonuses.get('vr_bonus',0) + bonuses.get('acf_bonus',0) +
                    bonuses.get('hurst_bonus',0))
     # V25: BC-SPECIFIC GROUP (max 28)
     grp_bc = min(28, bonuses.get('bc_score_bonus',0) + bonuses.get('m5_precision_bonus',0) +
                   bonuses.get('drift_quality_bonus',0) + bonuses.get('spike_timing_bonus',0))
     grp_gen = min(12, bonuses.get('generator_bonus',0))
-    grp_mom = min(18, bonuses.get('mom_accel_bonus',0) + bonuses.get('candle_bonus',0) +
-                  bonuses.get('volume_bonus',0) + bonuses.get('zscore_bonus',0) +
-                  bonuses.get('consecutive_bonus',0))
+    grp_mom = min(12, bonuses.get('zscore_bonus',0) + bonuses.get('consecutive_bonus',0))  # V26: only BC-useful components
     grp_dist = min(10, bonuses.get('distribution_bonus',0))
     grp_market = min(10, bonuses.get('regime_bonus',0) + bonuses.get('markov_bonus',0) +
                      bonuses.get('spectral_bonus',0))
     # V25: cleaned v23 group
-    grp_v23 = min(20, bonuses.get('market_structure_bonus',0) +
-                  bonuses.get('sweep_bonus',0) + bonuses.get('entry_sync_bonus',0) +
-                  bonuses.get('continuation_bonus',0) + bonuses.get('candle_mom_bonus',0))
+    grp_v23 = min(14, bonuses.get('market_structure_bonus',0) +
+                  bonuses.get('sweep_bonus',0) + bonuses.get('entry_sync_bonus',0))  # V26: only active components
 
     bonus = grp_trend + grp_stat + grp_bc + grp_gen + grp_mom + grp_dist + grp_market + grp_v23
     total=base+bonus
-    if total>=190: g="S"
-    elif total>=155: g="A++"
-    elif total>=125: g="A+"
-    elif total>=95: g="A"
-    elif total>=65: g="B"
-    elif total>=45: g="C"
+    if total>=140: g="S"
+    elif total>=115: g="A++"
+    elif total>=95: g="A+"
+    elif total>=75: g="A"
+    elif total>=55: g="B"
+    elif total>=35: g="C"
     else: g="D"
 
     all_keys=['bc_score_bonus','m5_precision_bonus','drift_quality_bonus',
           'alignment_bonus','spike_timing_bonus','regime_bonus',
-          'volume_bonus','hurst_bonus','zscore_bonus','consecutive_bonus',
+          'hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'markov_bonus','spectral_bonus',
           'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
@@ -5141,7 +4780,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
     momentum_old = check_momentum(h4, h1, m15, bias)
-    momentum_v21 = enhanced_momentum_v21(h4, h1, m15, bias)
+    momentum_v21 = momentum_old  # V26: removed enhanced (MACD-based, redundant with bc_gradient)
     momentum = momentum_old  # keep for scoring compatibility
 
     # 🔴 FIX #1: Auto-detect periods/year
@@ -5179,16 +4818,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ V21+ PRECISION ENGINES — BC ADAPTED ═══
     adx_slope = adx_slope_analysis(h1)  # Keep: ADX still measures drift strength
-    ema_ribbon = ema_ribbon_analysis(h1)  # Keep: EMA alignment useful for drift
-    trend_coherence = multi_tf_trend_coherence(h4, h1, m15, m5)  # Keep: TF alignment
+    ema_ribbon = {'quality': 'N/A', 'direction': 'N/A'}  # V26: removed (redundant with bc_ema_drift_stack)
+    trend_coherence = {'coherence': 'N/A', 'coherent_direction': 'N/A'}  # V26: removed (redundant with bc_ema_stack + alignment)
 
-    candle_struct = candle_structure_score(m15, bias)
-    mom_accel = momentum_acceleration(h1)
+    candle_struct = {'quality': 'N/A', 'pattern_type': 'N/A', 'score': 0}  # V26: removed (generic TA)
+    mom_accel = {'phase': 'N/A', 'confidence': 0}  # V26: removed (redundant with bc_drift_momentum_gradient)
     atr_channel = atr_channel_entry(h1, bias)
 
     # ═══ V23 SNIPER ENGINES ═══
     mkt_struct = detect_market_structure(h1)
-    candle_mom = candle_momentum_engine(m15, bias, lookback=10)
+    candle_mom = {'conviction': 'NONE', 'score': 0}  # V26: removed (redundant with bc_m5_momentum_pulse)
 
     liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
@@ -5196,7 +4835,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if gen_type in ["BOOM", "CRASH"]:
         cont_pattern = {"pattern": "NONE", "confidence": 0}
     else:
-        cont_pattern = detect_continuation_pattern(m15, bias, c1['ATR'])
+        pass  # V26: removed detect_continuation_pattern
 
     # ═══ V24-F BOOM/CRASH ENGINES ═══
     # FIX #2: Use clean ATR for all BC engines
@@ -5232,7 +4871,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
 
     align_type, align_bonus = detect_alignment(c4, c1, cm, bias)
-    vol_bonus = 0  # Synthetics have no real volume
     regime_bonus = 5 if "TRENDING" in regime else 0
     pat_score = min(cm.get('pattern_score', 0), 15)
     bb_compression = bb_cycle == "SQUEEZE"
@@ -5336,24 +4974,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     coherence_bonus = 0
 
     # Candle Structure: entry quality bonus
-    candle_bonus = 0
-    if candle_struct.get('quality') == "EXCELLENT":
-        candle_bonus = 8
-    elif candle_struct.get('quality') == "GOOD":
-        candle_bonus = 5
-    elif candle_struct.get('quality') == "MODERATE":
-        candle_bonus = 2
+    candle_bonus = 0  # V26: removed (generic TA, BC uses M5 micro-structure)
 
-    # Momentum Acceleration: timing precision bonus
-    mom_accel_bonus = 0
-    if bias == "BULLISH" and mom_accel.get('phase') == "BULL_ACCELERATING":
-        mom_accel_bonus = min(int(mom_accel.get('confidence', 0) / 12), 8)
-    elif bias == "BEARISH" and mom_accel.get('phase') == "BEAR_ACCELERATING":
-        mom_accel_bonus = min(int(mom_accel.get('confidence', 0) / 12), 8)
-    # Penalty for decelerating in our direction
-    if (bias == "BULLISH" and mom_accel.get('phase') == "BULL_DECELERATING") or \
-       (bias == "BEARISH" and mom_accel.get('phase') == "BEAR_DECELERATING"):
-        mom_accel_bonus = -3  # Slight penalty
+    # Momentum Acceleration bonus
+    mom_accel_bonus = 0  # V26: removed (redundant with bc_drift_momentum_gradient)
 
     # ═══ V23 SNIPER BONUSES ═══
     # Market Structure bonus
@@ -5368,9 +4992,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         market_structure_bonus = 4
 
     # Candle Momentum bonus
-    candle_mom_bonus = 0
-    if candle_mom.get('conviction') == "STRONG": candle_mom_bonus = 8
-    elif candle_mom.get('conviction') == "MODERATE": candle_mom_bonus = 4
+    candle_mom_bonus = 0  # V26: removed (redundant with bc_m5_momentum_pulse)
 
 
     # Liquidity Sweep bonus
@@ -5386,9 +5008,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     elif entry_sync.get('ready') == "ALMOST": entry_sync_bonus = 3
 
     # Continuation Pattern bonus
-    continuation_bonus = 0
-    if cont_pattern.get('pattern') != "NONE":
-        continuation_bonus = min(8, cont_pattern.get('confidence', 0) // 10)
+    continuation_bonus = 0  # V26: removed (Flag/Pennant not BC-relevant)
 
 
     # V25: RANDOM WALK PENALTY (kept — valid for all stochastic processes)
@@ -5428,6 +5048,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # V24 M5: Regime-aware SL multiplier
         regime_sl_mult = bc_regime.get('sl_mult', 1.0) if is_bc else 1.0
+    # V26: Dynamic SL by regime
+    if is_bc:
+        regime_name_sl = bc_regime.get('regime', 'UNKNOWN')
+        if regime_name_sl == "DRIFT_SMOOTH":
+            regime_sl_mult = min(regime_sl_mult, 1.2)  # Tight SL — drift is predictable
+        elif regime_name_sl == "PRE_SPIKE":
+            regime_sl_mult = max(regime_sl_mult, 1.8)  # Wide SL — high volatility
+        elif regime_name_sl == "SPIKE_CLUSTER":
+            regime_sl_mult = max(regime_sl_mult, 2.0)  # Widest SL — extreme volatility
 
         # BC-0: POST-SPIKE FADE (highest priority — time sensitive)
         if is_bc and bc_fade.get('post_spike') and bc_conflicts.get('allow_fade', True):
@@ -5562,6 +5191,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
 
+        # V26: BB Squeeze boosts spike_catch detection confidence
+        bb_spike_boost = bb_compression and bc_spike.get('probability', 0) > 50
+
         # ═══ V25: BC-ONLY SETUPS ═══
         # All BC setups handled above (POST_SPIKE, SPIKE_CATCH, SCALP_DRIFT,
         # DRIFT_RIDE, STOCH_SPIKE, REVERSAL). If none triggered → MONITORING.
@@ -5627,7 +5259,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         bc_score_bonus=bc_score_bonus, m5_precision_bonus=m5_precision_bonus,
         drift_quality_bonus=drift_quality_bonus, spike_timing_bonus=spike_timing_bonus,
         alignment_bonus=align_bonus,
-        regime_bonus=regime_bonus, volume_bonus=vol_bonus,
+        regime_bonus=regime_bonus,
         hurst_bonus=hurst_bonus, zscore_bonus=zscore_bonus,
         consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
         distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
@@ -5656,6 +5288,14 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # FIX #8: Calculate BC Score for BC setups
     bc_score_data = {"score": 0, "grade": "D", "status": "FAIL"}
+    # V26: BB Squeeze boosts SPIKE_CATCH confidence (+5), adds risk to DRIFT_RIDE (-3)
+    bb_squeeze_adjust = 0
+    if bb_compression:
+        if setup_type == "SPIKE_CATCH":
+            bb_squeeze_adjust = 5  # Squeeze = consolidation = spike more likely
+        elif setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
+            bb_squeeze_adjust = -3  # Squeeze = drift pausing = less safe to ride
+
     if is_bc_setup:
         bc_score_data = calculate_bc_score(
             setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
@@ -5667,9 +5307,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             bc_m5_pulse=bc_m5_pulse, bc_m5_struct=bc_m5_struct,
             bc_m5_wicks=bc_m5_wicks)
 
-    # Score override — BC uses TF coherence + ribbon for quality boost
-    if trend_coherence.get('coherence') == "PERFECT" and ema_ribbon.get('quality') == "EXCELLENT":
-        ms = int(ms * 0.80)
+    # V26: Score quality boost based on backtest performance only
     if sim['WR'] > 65 and sim['PF'] > 1.8:
         ms = int(ms * 0.85)
 
@@ -5681,7 +5319,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if meltdown.get('blocked'):
         sig = f"BLOCKED ({meltdown['reason']})"
     elif meltdown.get('score_boost', 0) > 0:
-        ms = int(ms * (1 + meltdown['score_boost'] / 100))
+        ms = int(ms * (1 + meltdown['score_boost'] / 100))  # V26: 25% boost (was 50%)
 
     # V24-F: Gradient DYING blocks drift ride AND scalp drift
     if is_bc_setup and setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
@@ -5711,21 +5349,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         if is_bc_setup:
             # FIX #9 + COHERENCE FIX C: BC setups filtered ONLY by BC SCORE
-            bc_score_val = bc_score_data.get('score', 0)
+            bc_score_val = bc_score_data.get('score', 0) + bb_squeeze_adjust
             # V25-SCALP: SCALP_DRIFT uses lower threshold (30) — compensated by tight SL
             if setup_type == "SCALP_DRIFT":
                 bc_min = 30
             else:
                 bc_min = 55  # Standard BC minimum
             if meltdown.get('score_boost', 0) > 0:
-                bc_min = int(bc_min * 1.5)  # 50% higher during loss streak
+                bc_min = int(bc_min * 1.25)  # 25% higher during loss streak
 
             if bc_score_val < bc_min:
                 fails.append(f"BC_SCORE={bc_score_val}<{bc_min}")
 
-            # BC: NET relaxed (allow NET down to -5 instead of 0)
-            if sim['NET'] < -5:
-                fails.append(f"NET={sim['NET']:.0f}<-5")
+            # V26: NET relaxed — allow NET down to -10 for BC (spikes cause outlier losses)
+            if sim['NET'] < -10:
+                fails.append(f"NET={sim['NET']:.0f}<-10")
 
             # FIX #10: Entry Sync bypass for SPIKE_CATCH, POST_SPIKE, and SCALP_DRIFT
             # SCALP_DRIFT uses M5 timing instead of TF alignment
@@ -5737,7 +5375,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         if fails: sig = f"BLOCKED ({', '.join(fails)})"
 
-    # ═══ V25 CROSS-VALIDATION: DIRECTION SANITY CHECK ═══
+    # ═══ V26 CROSS-VALIDATION: DIRECTION SANITY CHECK ═══
+    # Pipeline: PROFILE → DRIFT → SETUP → BIAS must all agree
     # Verify signal direction is LOGICALLY POSSIBLE for this BC asset
     if "BLOCKED" not in sig and sig != "MONITORING":
         is_boom = gen_type == "BOOM"
@@ -5796,33 +5435,46 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     r1 *= regime_tp_mult
     r2 *= regime_tp_mult
 
-    # V24-F: Gradient-aware TP adjustment for DRIFT_RIDE
+    # V26: Dynamic TP for DRIFT_RIDE based on gradient VALUE (not just phase)
     if setup_type == "DRIFT_RIDE":
         grad_phase = bc_gradient.get('phase', 'STABLE')
-        if grad_phase == "ACCELERATING":
-            r1 *= 1.15; r2 *= 1.2  # Drift strong → wider TP
+        grad_val = bc_gradient.get('gradient', 0)
+        if grad_phase == "ACCELERATING" and grad_val > 1.2:
+            r1 *= 1.4; r2 *= 1.5  # Strong acceleration → aggressive TP
+        elif grad_phase == "ACCELERATING":
+            r1 *= 1.2; r2 *= 1.25  # Moderate acceleration
+        elif grad_phase == "DECELERATING" and grad_val < 0.3:
+            r1 *= 0.65; r2 *= 0.6  # Dying drift → very tight
         elif grad_phase == "DECELERATING":
-            r1 *= 0.85; r2 *= 0.8  # Drift weakening → tighter TP
+            r1 *= 0.8; r2 *= 0.75  # Slowing drift
 
-    # V25-SCALP: TP adjustment for SCALP_DRIFT based on M5 pulse + drift quality
+    # V26: Dynamic TP for SCALP_DRIFT — pulse + gradient synergy
     if setup_type == "SCALP_DRIFT":
-        # Drift quality bonus
+        # Drift quality base
         if bc_drift.get('quality') == 'SMOOTH':
             r1 *= 1.15; r2 *= 1.2
-        # M5 pulse strength bonus
+        # M5 pulse + gradient combined
         pulse_str = bc_m5_pulse.get('pulse_strength', 0)
-        if pulse_str > 70:
-            r1 *= 1.1; r2 *= 1.15  # Strong pulse → wider TP
-        # Gradient bonus
         grad_phase = bc_gradient.get('phase', 'STABLE')
-        if grad_phase == "ACCELERATING":
-            r1 *= 1.1; r2 *= 1.15
+        if pulse_str > 70 and grad_phase == "ACCELERATING":
+            r1 *= 1.3; r2 *= 1.35  # Strong pulse + acceleration → aggressive
+        elif pulse_str > 70:
+            r1 *= 1.15; r2 *= 1.2  # Strong pulse alone
+        elif grad_phase == "ACCELERATING":
+            r1 *= 1.1; r2 *= 1.15  # Acceleration alone
+        elif grad_phase == "DECELERATING":
+            r1 *= 0.7; r2 *= 0.7  # Dying → tight exit
 
-    # V24-F: Consecutive-aware TP for SPIKE_CATCH
+    # V26: Dynamic TP for SPIKE_CATCH — probability + overdue synergy
     if setup_type == "SPIKE_CATCH":
         consec_count = bc_consec.get('count', 0)
-        if consec_count >= 10:
-            r1 *= 1.3; r2 *= 1.4  # Very overdue → expect bigger spike
+        spike_prob = bc_spike.get('probability', 0)
+        if spike_prob > 70 and consec_count >= 10:
+            r1 *= 1.5; r2 *= 1.6  # High prob + very overdue → max TP
+        elif consec_count >= 10:
+            r1 *= 1.3; r2 *= 1.4  # Very overdue → big spike expected
+        elif spike_prob > 60:
+            r1 *= 1.2; r2 *= 1.25  # High probability
         elif consec_count >= 7:
             r1 *= 1.15; r2 *= 1.2  # Moderately overdue
 
@@ -5871,7 +5523,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # Confluences — BC-specific
     if hurst_trending: confs.append(f"🧬 Hurst {hurst_val}")
     if zscore_favorable: confs.append(f"📊 Z {z_current:.1f}")
-    if bb_compression: confs.append("💥 BB Squeeze")
+    if bb_compression:
+        if setup_type in ["DRIFT_RIDE", "SCALP_DRIFT"]:
+            risks.append("⚠️ BB Squeeze — drift may pause, spike risk")
+        else:
+            confs.append("💥 BB Squeeze — consolidation, spike more likely")
     if trigger_ok and trigger_type!="N/A": confs.append(f"✅ Trigger: {trigger_type}")
     # V25: BC-specific confluences
     if drift_quality_bonus >= 7: confs.append(f"🌊 Drift Q: {bc_drift.get('quality','?')} ({bc_drift.get('strength',0)}%)")
@@ -5879,28 +5535,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if m5_precision_bonus >= 5: confs.append(f"🎯 M5 Precision ({bc_m5_pulse.get('pulse_phase','?')})")
     if bc_score_bonus >= 8: confs.append(f"🏆 BC Health ({bc_regime.get('regime','?')})")
     # V21+ precision confluences
-    if ema_ribbon.get('quality') in ['EXCELLENT','GOOD']:
-        confs.append(f"🌈 Ribbon {ema_ribbon['quality']} ({ema_ribbon.get('direction','?')})")
-    if trend_coherence.get('coherence') in ['PERFECT','STRONG']:
-        confs.append(f"🎯 TF Coherence {trend_coherence['coherence']} ({trend_coherence.get('coherent_direction','?')})")
-    if candle_struct.get('quality') in ['EXCELLENT','GOOD']:
-        confs.append(f"🔥 Candle {candle_struct['quality']} ({candle_struct.get('pattern_type','?')})")
-    if mom_accel_bonus > 0:
-        confs.append(f"🚀 Mom Accel {mom_accel.get('phase','?')}")
+
+
+
     # V23 confluences
     if mkt_struct.get('bos'):
         confs.append(f"🔥 BOS ({mkt_struct.get('last_event','?')})")
     if mkt_struct.get('choch'):
         confs.append(f"⚡ CHoCH ({mkt_struct.get('last_event','?')})")
-    if candle_mom.get('conviction') in ['STRONG', 'MODERATE']:
-        confs.append(f"💪 CandleMom {candle_mom['conviction']} ({candle_mom.get('score',0):.0f})")
+
 
     if liq_sweep.get('sweep'):
         confs.append(f"💧 {liq_sweep['type']}")
     if entry_sync.get('ready') == 'READY':
         confs.append(f"✅ Entry Sync {entry_sync['score']}/100")
-    if cont_pattern.get('pattern') != 'NONE':
-        confs.append(f"🚩 {cont_pattern['pattern']} ({cont_pattern.get('confidence',0)}%)")
+
     if early_reversal:
         confs.append(f"⚡ EARLY REVERSAL → {reversal_dir}")
 
@@ -5964,11 +5613,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if hurst_regime=="UNRELIABLE": risks.append(f"⚠️ Hurst unreliable R²={hurst_r2}")
     if gen.get('spike_phase')=="SPIKE_IMMINENT": risks.append("💥 SPIKE IMINENTE")
     if not trigger_ok and c5 is not None: risks.append(f"⚠️ M5 sem trigger ({trigger_type})")
-    if candle_struct.get('quality') == 'WEAK': risks.append("⚠️ Candle structure WEAK")
-    if trend_coherence.get('coherence') == 'WEAK': risks.append("⚠️ TF coherence WEAK")
     if atr_channel.get('quality') == 'OVEREXTENDED': risks.append("⚠️ Price overextended in ATR channel")
     if random_walk_penalty < 0: risks.append(f"🚫 RANDOM WALK (H:{hurst_val:.2f} R²:{hurst_r2:.2f}) — No statistical edge")
-    if candle_mom.get('conviction') == 'NONE': risks.append("⚠️ Candle momentum NONE")
     if mkt_struct.get('choch') and mkt_struct.get('trend') != bias:
         risks.append(f"⚡ CHoCH AGAINST bias ({mkt_struct.get('last_event','?')})")
     if sim.get('TOTAL_TRADES', 0) < 20: risks.append(f"⚠️ Low trades ({sim.get('TOTAL_TRADES',0)})")
@@ -6010,7 +5656,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         risks.append(f"⚠️ Channel DRIFT_MATURE — preço no limite do canal ({bc_channel.get('position_pct',0):.0f}%)")
     # Kill-switch
     meltdown_data = bc_meltdown_check()
-    if meltdown_data.get('streak', 0) >= 3:
+    if meltdown_data.get('streak', 0) >= 5:
         risks.append(f"🚨 Loss Streak: {meltdown_data['streak']} ({'BLOCKED' if meltdown_data.get('blocked') else 'CAUTION'})")
 
     # V25-SCALP: Max hold time based on setup type
@@ -6066,7 +5712,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "VAL":score.value_zone,"HIST":score.historical,
             "BC_SCORE":score.bc_score_bonus,"M5_PREC":score.m5_precision_bonus,"DRIFT_Q":score.drift_quality_bonus,
             "ALIGN":score.alignment_bonus,"SPIKE_T":score.spike_timing_bonus,"REGIME":score.regime_bonus,
-            "VOL":score.volume_bonus,"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
+"HURST":score.hurst_bonus,"ZSCORE":score.zscore_bonus,
             "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
             "VR":score.vr_bonus,"ACF":score.acf_bonus,
             "MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
@@ -6257,9 +5903,9 @@ with st.sidebar:
         if st.button("🔄 RESET", key="ks_reset", use_container_width=True):
             st.session_state['bc_loss_streak'] = 0
     ks_streak = st.session_state.get('bc_loss_streak', 0)
-    if ks_streak >= 5:
+    if ks_streak >= 8:
         st.error(f"🚫 BLOCKED: {ks_streak} losses consecutivos")
-    elif ks_streak >= 3:
+    elif ks_streak >= 5:
         st.warning(f"⚠️ CAUTION: {ks_streak} losses consecutivos")
     elif ks_streak > 0:
         st.info(f"📊 Streak: {ks_streak} loss(es)")
@@ -6638,7 +6284,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             bc16.metric(f"Expectancy {exp_c}", f"{exp_val:.3f}R",
                        f"Stressed: {exp_stress:.3f}R {'⚠ HIGH RISK' if exp_stress < 0 else '✅'}")
             streak = meltdown_info.get('streak', 0)
-            ks_c = "🔴" if streak >= 5 else "🟡" if streak >= 3 else "🟢"
+            ks_c = "🔴" if streak >= 8 else "🟡" if streak >= 5 else "🟢"
             bc17.metric(f"Kill-Switch {ks_c}", f"{streak} losses",
                        meltdown_info.get('reason', 'OK') or 'OK')
             # Clean ATR
