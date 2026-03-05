@@ -5785,54 +5785,147 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     }
 
 # ==============================================================================
-# SCANNER V20 — 🟢 FIX #4: Todos os gen types
+# SCANNER V26 — BC ENGINE-POWERED (REAL)
 # ==============================================================================
 
 async def quick_scan(code, name):
-    """V25: BC-only scanner — scores based on spike/drift dynamics"""
+    """V26: BC-engine scanner — uses REAL BC engines for scoring.
+    Fetches H1+M15 (not just H1). Calls 12 BC engines. Detects setup type.
+    Score correlates with real BC Score from sniper_core."""
     try:
-        raw = await fetch_single(code, 3600, 300)
-        if not raw: return None
-        df = indicators(prep_df(raw)); profile = get_profile(name)
-        if len(df) < 50: return None
-        c = df.iloc[-1]; ppy = detect_periods_per_year(df)
-        hurst_val, _, hr2 = calculate_hurst_exponent(df['close'])
-        z = float(c['ZSCORE']) if pd.notna(c.get('ZSCORE')) else 0
-        vr = variance_ratio_test(df['close'])
+        # V26: Fetch H1 + M15 (2 TFs instead of 1)
+        raw_h1, raw_m15 = await asyncio.gather(
+            fetch_single(code, 3600, 300),
+            fetch_single(code, 900, 500)
+        )
+        if not raw_h1 or not raw_m15: return None
+        h1 = indicators(prep_df(raw_h1))
+        m15 = indicators(prep_df(raw_m15))
+        profile = get_profile(name)
+        if len(h1) < 50 or len(m15) < 50: return None
+        c1 = h1.iloc[-1]; cm = m15.iloc[-1]
+        gen_type = profile.get('gen_type', 'BOOM')
+        is_boom = gen_type == "BOOM"
 
-        # V25: Always BC generator
-        gen = GeneratorModelV20.analyze_crash_boom(df, profile, ppy)
-        regime, _ = classify_regime(df)
+        # ═══ CORE BC ENGINES (on M15) ═══
+        bc_atr = bc_clean_atr(m15, profile, lookback=50)
+        bc_kurt = bc_returns_kurtosis(m15, lookback=50)
+        bc_spike = bc_spike_detector(m15, profile, lookback=30, bc_kurt_data=bc_kurt)
+        bc_drift = bc_drift_analyzer(m15, profile, lookback=20)
+        bc_freq = bc_spike_frequency(m15, profile, lookback=100)
+        bc_regime = bc_regime_classifier(m15, profile, bc_spike, bc_drift, bc_freq)
+        bc_stoch = bc_stochastic_timer(m15, profile)
+        bc_stack = bc_ema_drift_stack(m15, profile, lookback=20)
+        bc_grad = bc_drift_momentum_gradient(m15, profile, lookback=15)
+        bc_consec = bc_consecutive_drift_counter(m15, profile, lookback=20)
+        bc_channel = bc_price_channel_position(m15, profile, lookback=20)
+        bc_absorb = bc_absorption_detector(m15, "BEARISH" if is_boom else "BULLISH", lookback=10)
 
-        # V25: BC-specific scoring
-        qs = 0
-        # Spike phase scoring (most important for BC)
-        phase = gen.get('spike_phase', 'UNKNOWN')
-        if phase in ["DRIFT_STRONG", "DRIFT_NORMAL"]: qs += 25
-        elif phase == "SPIKE_IMMINENT": qs += 20
-        elif phase == "DRIFT_WEAKENING": qs += 10
-        # Drift strength
-        drift_str = gen.get('drift_strength', 0)
-        if drift_str > 2: qs += 15
-        elif drift_str > 0.5: qs += 8
-        # ADX (still useful for drift momentum)
-        if c['ADX'] > profile.get('adx_strong', 25): qs += 12
-        elif c['ADX'] > profile.get('adx_trend_min', 15): qs += 6
-        # Statistical edge
-        if hurst_val > profile.get('hurst_trend_min', 0.53) or hurst_val < 0.45: qs += 10
-        if vr.get('has_edge'): qs += 10
-        if "TRENDING" in regime: qs += 5
-        # Z-score extremes
-        if abs(z) > profile.get('zscore_extreme', 2) * 0.6: qs += 8
+        # ═══ STATISTICAL CONTEXT (on H1) ═══
+        hurst_val, _, _ = calculate_hurst_exponent(h1['close'])
+        vr = variance_ratio_test(h1['close'])
+        regime_h1, _ = classify_regime(h1)
 
-        bias = "BULLISH" if c['close'] > c['EMA_200'] else "BEARISH"
-        return {"name": name, "code": code, "score": qs, "bias": bias,
-                "adx": round(c['ADX'], 1), "hurst": round(hurst_val, 3),
-                "zscore": round(z, 2), "regime": regime,
-                "gen_signal": gen.get('signal', 'N/A'), "vr_edge": vr.get('has_edge', False),
-                "spike_phase": phase, "drift_str": round(drift_str, 2),
-                "profile": profile['vol_class']}
-    except: return None
+        # ═══ BC SCAN SCORE (mirrors calculate_bc_score logic) ═══
+        scan_score = 0
+
+        # TIER 1: Drift quality (0-25)
+        drift_q = bc_drift.get('quality', 'CHOPPY')
+        drift_str = bc_drift.get('strength', 0)
+        if drift_q == 'SMOOTH' and drift_str >= 40: scan_score += 25
+        elif drift_q == 'SMOOTH': scan_score += 18
+        elif drift_str >= 25: scan_score += 12
+        elif drift_str >= 10: scan_score += 6
+
+        # TIER 1: Spike timing (0-20)
+        spike_prob = bc_spike.get('probability', 0)
+        if spike_prob >= 60: scan_score += 20  # Spike imminent = opportunity
+        elif spike_prob >= 40: scan_score += 12
+        elif spike_prob < 20: scan_score += 8  # Low spike risk = safe drift
+
+        # TIER 1: Regime alignment (0-15)
+        bc_regime_name = bc_regime.get('regime', 'UNKNOWN')
+        if bc_regime_name == 'DRIFT_SMOOTH': scan_score += 15
+        elif bc_regime_name == 'PRE_SPIKE': scan_score += 12
+        elif bc_regime_name == 'POST_SPIKE': scan_score += 10
+        elif bc_regime_name == 'CHOPPY': scan_score += 2
+
+        # TIER 2: EMA stack (0-10)
+        stack_q = bc_stack.get('stack_quality', 'NONE')
+        if stack_q in ['PERFECT', 'STRONG']: scan_score += 10
+        elif stack_q == 'MODERATE': scan_score += 5
+
+        # TIER 2: Gradient (0-10)
+        grad_phase = bc_grad.get('phase', 'STABLE')
+        grad_val = bc_grad.get('gradient', 0)
+        if grad_phase == 'ACCELERATING' and grad_val > 1.0: scan_score += 10
+        elif grad_phase == 'ACCELERATING': scan_score += 6
+        elif grad_phase == 'STABLE': scan_score += 3
+
+        # TIER 3: Stochastic timer (0-8)
+        if bc_stoch.get('ready'): scan_score += 8
+        elif bc_stoch.get('warming'): scan_score += 4
+
+        # TIER 3: Kurtosis fat tails (0-5)
+        kurt_val = bc_kurt.get('kurtosis', 3.0)
+        if kurt_val > 5: scan_score += 5
+        elif kurt_val > 4: scan_score += 3
+
+        # TIER 4: Statistical edge (0-7)
+        if hurst_val > 0.53 or hurst_val < 0.45: scan_score += 4
+        if vr.get('has_edge'): scan_score += 3
+
+        # ═══ SETUP TYPE DETECTION ═══
+        setup = "NONE"
+        drift_active = bc_drift.get('drift_active', False)
+        spike_imminent = bc_spike.get('spike_imminent', False)
+        fade_ok = bc_drift.get('quality') == 'CHOPPY' and spike_prob < 30
+
+        if spike_imminent and spike_prob >= 50:
+            setup = "SPIKE_CATCH"
+        elif drift_active and drift_str >= 40 and grad_phase != 'DECELERATING':
+            setup = "DRIFT_RIDE"
+        elif drift_active and drift_str >= 20:
+            setup = "SCALP_DRIFT"
+        elif bc_regime_name == 'POST_SPIKE':
+            setup = "POST_SPIKE"
+        elif spike_prob >= 60 and bc_stoch.get('ready'):
+            setup = "STOCH_SPIKE"
+
+        # ═══ DIRECTION (BC-correct) ═══
+        if is_boom:
+            direction = "SHORT" if setup in ["DRIFT_RIDE", "SCALP_DRIFT"] else "LONG"
+        else:
+            direction = "LONG" if setup in ["DRIFT_RIDE", "SCALP_DRIFT"] else "SHORT"
+
+        # ═══ GRADE ═══
+        if scan_score >= 80: grade = "S"
+        elif scan_score >= 65: grade = "A+"
+        elif scan_score >= 50: grade = "A"
+        elif scan_score >= 35: grade = "B"
+        elif scan_score >= 20: grade = "C"
+        else: grade = "D"
+
+        # ═══ TIER CONFIDENCE ═══
+        t1 = drift_str >= 20 or spike_prob >= 40
+        t2 = stack_q in ['PERFECT', 'STRONG', 'MODERATE'] or grad_phase == 'ACCELERATING'
+        tier_conf = (3 if t1 else 0) + (2 if t2 else 0)
+
+        return {
+            "name": name, "code": code, "score": scan_score, "grade": grade,
+            "setup": setup, "direction": direction,
+            "spike_prob": round(spike_prob, 0), "drift_quality": drift_q,
+            "drift_str": round(drift_str, 1), "regime": bc_regime_name,
+            "grad_phase": grad_phase, "grad_val": round(grad_val, 2),
+            "stack_quality": stack_q, "stoch_ready": bc_stoch.get('ready', False),
+            "kurtosis": round(kurt_val, 1), "hurst": round(hurst_val, 3),
+            "channel_pos": bc_channel.get('position', '?'),
+            "consec_count": bc_consec.get('count', 0),
+            "tier_conf": tier_conf, "vr_edge": vr.get('has_edge', False),
+            "profile": profile['vol_class']
+        }
+    except Exception as e:
+        return None
 
 # ==============================================================================
 # STREAMLIT UI V20 — MODERN MINIMAL
@@ -6535,47 +6628,85 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             </div>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# SCANNER MODE
+# SCANNER MODE — V26: BC Engine-Powered
 # ==============================================================================
 elif mode == "Scanner":
     st.markdown("""<div class='section-header'>
         <div class='section-icon'>🔍</div>
-        <span class='section-title'>Scanner</span>
+        <span class='section-title'>BC Engine Scanner</span>
         <div class='section-line'></div>
     </div>""", unsafe_allow_html=True)
-    st.markdown("<p class='text-sm' style='color:var(--text-muted);margin-top:-4px;'>Scan all synthetic indices for statistical edge opportunities.</p>",
+    st.markdown("<p class='text-sm' style='color:var(--text-muted);margin-top:-4px;'>Real BC engine analysis — spike/drift/regime detection on H1+M15</p>",
                 unsafe_allow_html=True)
 
     if st.button("Scan All Assets", use_container_width=True):
-        with st.spinner("Scanning..."):
+        with st.spinner("Scanning with BC engines (H1+M15)..."):
             async def run_scan():
                 return await asyncio.gather(*[quick_scan(c, n) for n, c in assets.items()])
             results = asyncio.run(run_scan())
             valid = sorted([r for r in results if r], key=lambda x: x['score'], reverse=True)
 
         if valid:
-            st.markdown(f"""<div style='display:flex;align-items:center;gap:8px;margin:16px 0;'>
+            # Summary bar
+            actionable = [r for r in valid if r.get('setup') != 'NONE' and r.get('score', 0) >= 35]
+            st.markdown(f"""<div style='display:flex;align-items:center;gap:12px;margin:16px 0;'>
                 <span class='live-dot'></span>
-                <span style='font-size:12px;color:var(--text-secondary);'>{len(valid)} assets scanned</span>
+                <span style='font-size:12px;color:var(--text-secondary);'>{len(valid)} scanned</span>
+                <span style='font-size:12px;color:var(--success);font-weight:600;'>{len(actionable)} actionable</span>
             </div>""", unsafe_allow_html=True)
 
             for i, r in enumerate(valid[:12]):
                 score = r['score']
-                sc = "var(--success)" if score >= 50 else "var(--warning)" if score >= 30 else "var(--text-muted)"
-                bias_c = "var(--success)" if r['bias'] == "BULLISH" else "var(--danger)"
-                vr_tag = "<span class='pill pill-green' style='font-size:10px;padding:2px 8px;'>VR Edge</span>" if r.get('vr_edge') else ""
+                grade = r.get('grade', 'D')
+                setup = r.get('setup', 'NONE')
+                direction = r.get('direction', '?')
+
+                # Grade color
+                gc = "var(--success)" if grade in ['S','A+'] else "var(--warning)" if grade in ['A','B'] else "var(--text-muted)"
+                # Setup color
+                setup_colors = {"DRIFT_RIDE": "#10b981", "SCALP_DRIFT": "#6366f1", "SPIKE_CATCH": "#f59e0b",
+                                "POST_SPIKE": "#8b5cf6", "STOCH_SPIKE": "#ec4899", "NONE": "#71717a"}
+                sc = setup_colors.get(setup, "#71717a")
+                # Direction
+                dir_c = "var(--success)" if direction == "LONG" else "var(--danger)" if direction == "SHORT" else "var(--text-muted)"
+                dir_icon = "▲" if direction == "LONG" else "▼" if direction == "SHORT" else "●"
+
+                # Spike probability indicator
+                sp = r.get('spike_prob', 0)
+                sp_c = "var(--danger)" if sp >= 60 else "var(--warning)" if sp >= 40 else "var(--text-muted)"
+
+                # Tags
+                tags = ""
+                if r.get('vr_edge'): tags += "<span class='pill pill-green' style='font-size:9px;padding:1px 6px;'>VR</span> "
+                if r.get('stoch_ready'): tags += "<span class='pill' style='font-size:9px;padding:1px 6px;color:#ec4899;border-color:#ec489930;'>TIMER</span> "
+                if r.get('grad_phase') == 'ACCELERATING': tags += "<span class='pill' style='font-size:9px;padding:1px 6px;color:#10b981;border-color:#10b98130;'>ACCEL</span> "
 
                 st.markdown(f"""<div class='scan-row' style='animation-delay:{i*0.05}s;'>
                     <span class='scan-rank'>#{i+1}</span>
-                    <span class='scan-name'>{r['name']}</span>
-                    <span class='scan-score' style='color:{sc};'>{score}</span>
-                    <div>
-                        <span class='pill' style='font-size:10px;padding:2px 8px;color:{bias_c};border-color:{bias_c}30;'>{r['bias']}</span>
-                        {vr_tag}
-                    </div>
-                    <span class='scan-meta' style='min-width:260px;text-align:right;'>
-                        ADX {r['adx']} · H {r['hurst']} · Z {r['zscore']} · {r.get('spike_phase','?')[:12]} · D:{r.get('drift_str',0)}
+                    <span class='scan-name' style='min-width:140px;'>{r['name']}</span>
+                    <span style='font-weight:800;color:{gc};font-size:14px;min-width:28px;'>{grade}</span>
+                    <span class='scan-score' style='color:{gc};min-width:32px;'>{score}</span>
+                    <span class='pill' style='font-size:10px;padding:2px 8px;color:{sc};border-color:{sc}30;background:{sc}10;min-width:90px;text-align:center;'>{setup.replace('_',' ')}</span>
+                    <span style='font-size:12px;color:{dir_c};font-weight:700;min-width:20px;'>{dir_icon}</span>
+                    <span class='scan-meta' style='min-width:300px;text-align:right;font-size:10px;'>
+                        <span style='color:{sp_c};'>SP:{sp:.0f}%</span> ·
+                        D:{r.get('drift_quality','?')[:5]} ·
+                        R:{r.get('regime','?')[:10]} ·
+                        G:{r.get('grad_phase','?')[:5]} ·
+                        H:{r.get('hurst',0)} ·
+                        K:{r.get('kurtosis',3.0)}
                     </span>
+                    <span style='min-width:60px;text-align:right;'>{tags}</span>
                 </div>""", unsafe_allow_html=True)
+
+            # Legend
+            st.markdown("""<div style='margin-top:16px;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);'>
+                <span style='font-size:10px;color:var(--text-muted);'>
+                    SP=Spike Probability · D=Drift Quality · R=Regime · G=Gradient · H=Hurst · K=Kurtosis ·
+                    <span style='color:#10b981;'>VR</span>=Variance Ratio Edge ·
+                    <span style='color:#ec4899;'>TIMER</span>=Stochastic Ready ·
+                    <span style='color:#10b981;'>ACCEL</span>=Gradient Accelerating
+                </span>
+            </div>""", unsafe_allow_html=True)
         else:
             st.info("No results found")
