@@ -5048,15 +5048,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # V24 M5: Regime-aware SL multiplier
         regime_sl_mult = bc_regime.get('sl_mult', 1.0) if is_bc else 1.0
-    # V26: Dynamic SL by regime
-    if is_bc:
-        regime_name_sl = bc_regime.get('regime', 'UNKNOWN')
-        if regime_name_sl == "DRIFT_SMOOTH":
-            regime_sl_mult = min(regime_sl_mult, 1.2)  # Tight SL — drift is predictable
-        elif regime_name_sl == "PRE_SPIKE":
-            regime_sl_mult = max(regime_sl_mult, 1.8)  # Wide SL — high volatility
-        elif regime_name_sl == "SPIKE_CLUSTER":
-            regime_sl_mult = max(regime_sl_mult, 2.0)  # Widest SL — extreme volatility
+        # V26: Dynamic SL by regime
+        if is_bc:
+            regime_name_sl = bc_regime.get('regime', 'UNKNOWN')
+            if regime_name_sl == "DRIFT_SMOOTH":
+                regime_sl_mult = min(regime_sl_mult, 1.2)  # Tight SL — drift is predictable
+            elif regime_name_sl == "PRE_SPIKE":
+                regime_sl_mult = max(regime_sl_mult, 1.8)  # Wide SL — high volatility
+            elif regime_name_sl == "SPIKE_CLUSTER":
+                regime_sl_mult = max(regime_sl_mult, 2.0)  # Widest SL — extreme volatility
 
         # BC-0: POST-SPIKE FADE (highest priority — time sensitive)
         if is_bc and bc_fade.get('post_spike') and bc_conflicts.get('allow_fade', True):
