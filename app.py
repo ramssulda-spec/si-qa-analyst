@@ -3940,19 +3940,6 @@ def detect_alignment(h4r, h1r, m15r, d):
     elif sc>=10: return "WEAK",5
     return "NONE",0
 
-def check_momentum(h4,h1,m15,d):
-    sc=0
-    if d=="BULLISH":
-        if h4['MACD'].iloc[-1]>0:sc+=1
-        if h1['MACD'].iloc[-1]>0:sc+=1
-        if m15['MACD'].iloc[-1]>0:sc+=1
-    else:
-        if h4['MACD'].iloc[-1]<0:sc+=1
-        if h1['MACD'].iloc[-1]<0:sc+=1
-        if m15['MACD'].iloc[-1]<0:sc+=1
-    return sc
-
-
 # ==============================================================================
 # 🔴 BUG FIX #4: WALK-FORWARD QUE TESTA CADA TIPO DE SETUP
 # ==============================================================================
@@ -4241,15 +4228,15 @@ class SetupScore:
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
     markov_bonus:float; spectral_bonus:float
-    adx_slope_bonus:float
+    adx_slope_bonus:float; market_structure_bonus:float; sweep_bonus:float; entry_sync_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
                     win_rate, profit_factor, profile, **bonuses):
     ts=25 if adx>profile.get('adx_strong',25) else(15 if adx>profile.get('adx_trend_min',15) else 0)
-    mp=(momentum_score/3)*20
+    mp=(momentum_score/3)*12  # V26: reduced from 20 (gradient-based, BC drift doesn't need 20pts)
     dr=dist_ema50/atr if atr>0 else 999
-    vs=15 if dr<0.5 else(10 if dr<1.0 else(5 if dr<1.5 else 0))
+    vs=8 if dr<0.5 else(5 if dr<1.0 else(2 if dr<1.5 else 0))  # V26: reduced (EMA distance less relevant for BC drift)
     hs=min((win_rate*0.15)+(profit_factor*5),25)
     base=ts+mp+pattern_score+vs+hs
 
@@ -4258,7 +4245,7 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
     grp_stat = min(20, bonuses.get('vr_bonus',0) + bonuses.get('acf_bonus',0) +
                    bonuses.get('hurst_bonus',0))
     # V25: BC-SPECIFIC GROUP (max 28)
-    grp_bc = min(28, bonuses.get('bc_score_bonus',0) + bonuses.get('m5_precision_bonus',0) +
+    grp_bc = min(35, bonuses.get('bc_score_bonus',0) + bonuses.get('m5_precision_bonus',0) +
                   bonuses.get('drift_quality_bonus',0) + bonuses.get('spike_timing_bonus',0))
     grp_gen = min(12, bonuses.get('generator_bonus',0))
     grp_mom = min(12, bonuses.get('zscore_bonus',0) + bonuses.get('consecutive_bonus',0))  # V26: only BC-useful components
@@ -4284,7 +4271,7 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
           'hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'markov_bonus','spectral_bonus',
-          'adx_slope_bonus']
+          'adx_slope_bonus','market_structure_bonus','sweep_bonus','entry_sync_bonus']
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in all_keys],bonus,total,g)
 
@@ -4444,6 +4431,9 @@ def trim_data_for_ai(data):
         "BC_FREQ", "BC_ABSORB", "BC_MULTI", "BC_STOCH",
         # V24-BC: Audit-driven data
         "BC_REGIME", "BC_KURTOSIS", "BC_CONFLICTS", "BC_CLEAN_ATR",
+        # V26: Additional BC engine data for AI analysis
+        "BC_GRADIENT", "BC_EMA_STACK", "BC_CONSEC", "BC_CHANNEL",
+        "BC_RECOVERY", "BC_SCORE_DATA",
         "EXPECTANCY", "EXPECTANCY_STRESSED", "HIGH_RISK", "MELTDOWN",
     ]
     trimmed = {}
@@ -4789,8 +4779,21 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     adx = c4['ADX']
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
-    momentum_old = check_momentum(h4, h1, m15, bias)
-    momentum = momentum_old  # keep for scoring compatibility
+    # V26: Gradient-based momentum (replaces MACD-based check_momentum)
+    grad_phase_mom = bc_gradient.get('phase', 'STABLE')
+    grad_val_mom = bc_gradient.get('gradient', 0)
+    if grad_phase_mom == 'ACCELERATING' and grad_val_mom > 1.0:
+        momentum = 3  # Strong acceleration = full momentum
+    elif grad_phase_mom == 'ACCELERATING':
+        momentum = 2  # Moderate acceleration
+    elif grad_phase_mom == 'STABLE' and grad_val_mom > 0.5:
+        momentum = 2  # Stable but positive
+    elif grad_phase_mom == 'STABLE':
+        momentum = 1  # Stable
+    elif grad_phase_mom == 'DECELERATING':
+        momentum = 0  # Decelerating = no momentum credit
+    else:
+        momentum = 1  # Default
 
     # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
@@ -4803,7 +4806,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ EDGE TESTS V20 — BC OPTIMIZED ═══
     # BC assets: neutralize expensive tests that add near-zero value
-    is_bc_asset = True  # System is 100% Boom/Crash
 
     vr = variance_ratio_test(h1['close'])
     acf = autocorrelation_analysis(h1['close'])
@@ -5068,7 +5070,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 return
 
         # BC-1: SPIKE CATCH (imminent spike — high R:R)
-        if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= 50 \
+        # V26: BB squeeze + spike probability lowers the threshold for spike catch
+        spike_min_prob = 40 if bb_spike_boost else 50
+        if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= spike_min_prob \
                 and bc_conflicts.get('allow_spike_catch', True):
             is_boom = gen_type == "BOOM"
             if is_boom and is_long:  # Boom spike UP → BUY
@@ -5502,6 +5506,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     hold = optimal_holding_period(acf, setup_type)
 
     confs = []
+    risks = []
     if markov.get('has_dependence'): confs.append(f"\U0001f52e Markov: {markov['best_transition']}")
     if spectral.get('has_cycle'): confs.append(f"\U0001f4c8 Cycle: {spectral['dominant_period']:.0f} bars")
     if rt_detail: confs.append(f"\U0001f504 {regime_transition}: {rt_detail}")
@@ -5526,7 +5531,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if m5_precision_bonus >= 5: confs.append(f"🎯 M5 Precision ({bc_m5_pulse.get('pulse_phase','?')})")
     if bc_score_bonus >= 8: confs.append(f"🏆 BC Health ({bc_regime.get('regime','?')})")
     # V21+ precision confluences
-
 
 
     # V23 confluences
@@ -5593,7 +5597,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     if bc_m5_wicks.get('signal') in ['STRONG_REJECTION', 'MODERATE_REJECTION']:
         confs.append(f"💪 M5 Wicks: {bc_m5_wicks['signal']} ({bc_m5_wicks['rejection_wicks']}/{bc_m5_wicks.get('total_significant',0)})")
 
-    risks = []
     # V25: BC-relevant risks only
     if regime_transition == "EXHAUSTION": risks.append("⚠️ Regime EXHAUSTION")
     if "RANGING" in regime: risks.append("⚠️ RANGING")
@@ -5707,6 +5710,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "VR":score.vr_bonus,"ACF":score.acf_bonus,
             "MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
             "ADX_SLOPE":score.adx_slope_bonus,
+            "MKT_STRUCT":score.market_structure_bonus,"SWEEP":score.sweep_bonus,"SYNC":score.entry_sync_bonus,
             
         }),
         # V21+ precision data
@@ -5744,7 +5748,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "BC_CLEAN_ATR": round(float(bc_atr_clean), 5),
         "RAW_ATR": round(float(c1['ATR']), 5),
         # FIX #8: BC Score data
-        "BC_SCORE": convert_np(bc_score_data),
+        "BC_SCORE_DATA": convert_np(bc_score_data),
         "BC_SCORE_VAL": bc_score_data.get('score', 0),
         "BC_GRADE": bc_score_data.get('grade', 'D'),
         # FIX #7: M5 Compression
