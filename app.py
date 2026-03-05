@@ -1517,7 +1517,6 @@ def adx_slope_analysis(df, lookback=14):
         return {"slope": 0, "acceleration": 0, "phase": "UNKNOWN", "confidence": 0}
 
 # ==============================================================================
-# V21+ ENGINE: EMA RIBBON SPREAD — Trend Strength Measurement
 # ==============================================================================
 # V21+ ENGINE: MULTI-TF TREND COHERENCE SCORING
 # ==============================================================================
@@ -4242,8 +4241,7 @@ class SetupScore:
     consecutive_bonus:float; generator_bonus:float; distribution_bonus:float
     vr_bonus:float; acf_bonus:float
     markov_bonus:float; spectral_bonus:float
-    adx_slope_bonus:float; ribbon_bonus:float; coherence_bonus:float
-    candle_bonus:float; mom_accel_bonus:float
+    adx_slope_bonus:float
     bonus_total:float; total:float; grade:str
 
 def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
@@ -4286,7 +4284,7 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
           'hurst_bonus','zscore_bonus','consecutive_bonus',
           'generator_bonus','distribution_bonus','vr_bonus','acf_bonus',
           'markov_bonus','spectral_bonus',
-          'adx_slope_bonus','ribbon_bonus','coherence_bonus','candle_bonus','mom_accel_bonus']
+          'adx_slope_bonus']
     return SetupScore(ts,mp,pattern_score,vs,hs,base,
         *[bonuses.get(k,0) for k in all_keys],bonus,total,g)
 
@@ -4424,7 +4422,7 @@ def trim_data_for_ai(data):
         "VR_TEST", "ACF_TEST", "VOL_CLUSTER", "DIST_ANALYSIS",
         "HURST", "HURST_REGIME", "HURST_R2", "ZSCORE",
         "BB_CYCLE", "CONSECUTIVE", "CONSECUTIVE_DIR", "ROC_STATUS",
-        "MARKET_STRUCTURE", "MARKET_REGIME", "MOMENTUM", "MOMENTUM_V21",
+        "MARKET_STRUCTURE", "MARKET_REGIME", "MOMENTUM",
         "TRIGGER_OK", "TRIGGER_TYPE", "CONFLUENCES", "RISKS",
         "ENTRY_TYPE", "SL_REASON",
         "WIN_RATE", "NET_PROFIT", "MAX_DRAWDOWN", "PROFIT_FACTOR",
@@ -4433,11 +4431,11 @@ def trim_data_for_ai(data):
         "ENTRY", "SL", "TP1", "TP2", "ATR",
         "REGIME_TRANSITION", "BIAS_CONFIDENCE", "BIAS_SCORE",
         "HOLDING_PERIOD", "SCORE_BREAKDOWN",
-        "ADX_SLOPE", "EMA_RIBBON", "TREND_COHERENCE", "CANDLE_STRUCTURE",
-        "MOM_ACCELERATION", "ATR_CHANNEL",
+        "ADX_SLOPE",
+        "ATR_CHANNEL",
         # V23 sniper data
-        "MKT_STRUCTURE", "CANDLE_MOMENTUM",
-        "LIQ_SWEEP", "ENTRY_SYNC", "CONT_PATTERN",
+        "MKT_STRUCTURE",
+        "LIQ_SWEEP", "ENTRY_SYNC",
         "EARLY_REVERSAL", "REVERSAL_DIR", "RW_PENALTY",
         "ENTRY_AGGRESSIVE", "ENTRY_IDEAL", "ENTRY_SNIPER",
         "TRAIL_BE", "TRAIL_1R", "MC_CONFIDENCE",
@@ -4663,6 +4661,18 @@ Considerar BC Regime para adaptar recomendação.
 Se regime PRE_SPIKE e prob > 60%, recomendar spike catch com SL adaptado.
 Se DRIFT_SMOOTH e drift forte, recomendar drift ride com SL tight.
 Se M5 pulse STARTING + drift active, recomendar SCALP_DRIFT (mais agressivo).
+
+### 🔷 V26: TIER CONFIDENCE
+Engine tiers medem concordância entre grupos:
+- TIER 1 (Decisão): drift + spike + regime (peso 3×)
+- TIER 2 (Confirmação): M5 pulse + wicks + EMA stack (peso 2×)
+- TIER 3 (Refinamento): gradient + consecutive + channel (peso 1×)
+Se tier_confidence ≥ 5: alta confiança (+5 BC Score). Se ≤ 2: baixa confiança (-5).
+
+### 💥 V26: BB SQUEEZE
+BB Squeeze (Bollinger Band compression) indica consolidação pré-spike.
+- SPIKE_CATCH + squeeze = +5 BC Score (spike mais provável)
+- DRIFT_RIDE + squeeze = -3 BC Score (drift pode pausar, risco de spike)
 Se POST_SPIKE e absorção confirmada, recomendar fade com target calculado.
 Se M5 wicks EXHAUSTION, alertar drift exausto e NÃO entrar scalp.
 Se engine conflicts presentes, alertar e ajustar recomendação.
@@ -4780,7 +4790,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
     momentum_old = check_momentum(h4, h1, m15, bias)
-    momentum_v21 = momentum_old  # V26: removed enhanced (MACD-based, redundant with bc_gradient)
     momentum = momentum_old  # keep for scoring compatibility
 
     # 🔴 FIX #1: Auto-detect periods/year
@@ -4818,24 +4827,15 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
     # ═══ V21+ PRECISION ENGINES — BC ADAPTED ═══
     adx_slope = adx_slope_analysis(h1)  # Keep: ADX still measures drift strength
-    ema_ribbon = {'quality': 'N/A', 'direction': 'N/A'}  # V26: removed (redundant with bc_ema_drift_stack)
-    trend_coherence = {'coherence': 'N/A', 'coherent_direction': 'N/A'}  # V26: removed (redundant with bc_ema_stack + alignment)
 
-    candle_struct = {'quality': 'N/A', 'pattern_type': 'N/A', 'score': 0}  # V26: removed (generic TA)
-    mom_accel = {'phase': 'N/A', 'confidence': 0}  # V26: removed (redundant with bc_drift_momentum_gradient)
     atr_channel = atr_channel_entry(h1, bias)
 
     # ═══ V23 SNIPER ENGINES ═══
     mkt_struct = detect_market_structure(h1)
-    candle_mom = {'conviction': 'NONE', 'score': 0}  # V26: removed (redundant with bc_m5_momentum_pulse)
 
     liq_sweep = detect_liquidity_sweep(m15, c1['ATR'])
     entry_sync = entry_sync_score(h4, h1, m15, m5, bias)
-    # V24-F: Skip continuation pattern for BC (redundant with drift_analyzer + gradient)
-    if gen_type in ["BOOM", "CRASH"]:
-        cont_pattern = {"pattern": "NONE", "confidence": 0}
-    else:
-        pass  # V26: removed detect_continuation_pattern
+
 
     # ═══ V24-F BOOM/CRASH ENGINES ═══
     # FIX #2: Use clean ATR for all BC engines
@@ -4970,14 +4970,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # ═══ V21+ PRECISION BONUSES ═══
     # V25: Trend bonuses use BC engines
     adx_slope_bonus = 0
-    ribbon_bonus = 0
-    coherence_bonus = 0
 
     # Candle Structure: entry quality bonus
-    candle_bonus = 0  # V26: removed (generic TA, BC uses M5 micro-structure)
 
     # Momentum Acceleration bonus
-    mom_accel_bonus = 0  # V26: removed (redundant with bc_drift_momentum_gradient)
 
     # ═══ V23 SNIPER BONUSES ═══
     # Market Structure bonus
@@ -4992,7 +4988,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         market_structure_bonus = 4
 
     # Candle Momentum bonus
-    candle_mom_bonus = 0  # V26: removed (redundant with bc_m5_momentum_pulse)
 
 
     # Liquidity Sweep bonus
@@ -5008,7 +5003,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     elif entry_sync.get('ready') == "ALMOST": entry_sync_bonus = 3
 
     # Continuation Pattern bonus
-    continuation_bonus = 0  # V26: removed (Flag/Pennant not BC-relevant)
 
 
     # V25: RANDOM WALK PENALTY (kept — valid for all stochastic processes)
@@ -5264,14 +5258,11 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         consecutive_bonus=consecutive_bonus, generator_bonus=gen_bonus,
         distribution_bonus=dist_bonus, vr_bonus=vr_bonus, acf_bonus=acf_bonus,
         markov_bonus=markov_bonus, spectral_bonus=spectral_bonus,
-        adx_slope_bonus=adx_slope_bonus, ribbon_bonus=ribbon_bonus,
-        coherence_bonus=coherence_bonus, candle_bonus=candle_bonus,
-        mom_accel_bonus=mom_accel_bonus,
+        adx_slope_bonus=adx_slope_bonus,
         # V23 bonuses (cleaned)
         market_structure_bonus=market_structure_bonus,
-        candle_mom_bonus=candle_mom_bonus,
         sweep_bonus=sweep_bonus, entry_sync_bonus=entry_sync_bonus,
-        continuation_bonus=continuation_bonus)
+        )
 
     # Filters — V24-F: BC Score as PRIMARY gate for BC setups
     # ═══ V25: BC-ONLY FILTER CONFIGS (threshold, min_pf) ═══
@@ -5704,7 +5695,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "SPECTRAL": convert_np(spectral), "MARKOV": convert_np(markov),
         "REGIME_TRANSITION": regime_transition, "RT_MULT": rt_mult, "RT_DETAIL": rt_detail,
         "BIAS_CONFIDENCE": bias_confidence, "BIAS_SCORE": bias_score,
-        "MOMENTUM_V21": momentum_v21,
         "INDEPENDENT_EDGES": convert_np(indep_edges),
         "HOLDING_PERIOD": convert_np(hold),
         "SCORE_BREAKDOWN": convert_np({
@@ -5716,23 +5706,16 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             "CONSEC":score.consecutive_bonus,"GEN":score.generator_bonus,"DIST":score.distribution_bonus,
             "VR":score.vr_bonus,"ACF":score.acf_bonus,
             "MARKOV":score.markov_bonus,"SPECTRAL":score.spectral_bonus,
-            "ADX_SLOPE":score.adx_slope_bonus,"RIBBON":score.ribbon_bonus,
-            "COHERENCE":score.coherence_bonus,"CANDLE":score.candle_bonus,
-            "MOM_ACCEL":score.mom_accel_bonus
+            "ADX_SLOPE":score.adx_slope_bonus,
+            
         }),
         # V21+ precision data
         "ADX_SLOPE": convert_np(adx_slope),
-        "EMA_RIBBON": convert_np(ema_ribbon),
-        "TREND_COHERENCE": convert_np(trend_coherence),
-        "CANDLE_STRUCT": convert_np(candle_struct),
-        "MOM_ACCEL": convert_np(mom_accel),
         "ATR_CHANNEL": convert_np(atr_channel),
         # V23 precision data
         "MKT_STRUCTURE": convert_np(mkt_struct),
-        "CANDLE_MOMENTUM": convert_np(candle_mom),
         "LIQ_SWEEP": convert_np(liq_sweep),
         "ENTRY_SYNC": convert_np(entry_sync),
-        "CONT_PATTERN": convert_np(cont_pattern),
         "EARLY_REVERSAL": early_reversal,
         "REVERSAL_DIR": reversal_dir,
         "RW_PENALTY": random_walk_penalty,
@@ -5820,6 +5803,10 @@ async def quick_scan(code, name):
         bc_consec = bc_consecutive_drift_counter(m15, profile, lookback=20)
         bc_channel = bc_price_channel_position(m15, profile, lookback=20)
         bc_absorb = bc_absorption_detector(m15, "BEARISH" if is_boom else "BULLISH", lookback=10)
+        bc_fade = bc_post_spike_fade(m15, profile, lookback=10, absorption_data=bc_absorb)
+        bc_recovery = bc_spike_recovery_speed(m15, profile, lookback=15)
+        bc_multi = bc_multi_spike_pattern(m15, profile, lookback=30)
+        bc_sd = bc_supply_demand_zones(h1, bc_atr, lookback=50)
 
         # ═══ STATISTICAL CONTEXT (on H1) ═══
         hurst_val, _, _ = calculate_hurst_exponent(h1['close'])
@@ -5881,16 +5868,22 @@ async def quick_scan(code, name):
         spike_imminent = bc_spike.get('spike_imminent', False)
         fade_ok = bc_drift.get('quality') == 'CHOPPY' and spike_prob < 30
 
-        if spike_imminent and spike_prob >= 50:
+        # Setup detection with full engine data
+        fade_available = bc_fade.get('post_spike', False) and bc_recovery.get('fade_safe', False)
+        multi_cluster = bc_multi.get('cluster_active', False)
+
+        if fade_available:
+            setup = "POST_SPIKE"  # Highest priority — time sensitive
+        elif spike_imminent and spike_prob >= 50:
             setup = "SPIKE_CATCH"
+        elif spike_prob >= 60 and bc_stoch.get('ready'):
+            setup = "STOCH_SPIKE"
         elif drift_active and drift_str >= 40 and grad_phase != 'DECELERATING':
             setup = "DRIFT_RIDE"
         elif drift_active and drift_str >= 20:
             setup = "SCALP_DRIFT"
         elif bc_regime_name == 'POST_SPIKE':
             setup = "POST_SPIKE"
-        elif spike_prob >= 60 and bc_stoch.get('ready'):
-            setup = "STOCH_SPIKE"
 
         # ═══ DIRECTION (BC-correct) ═══
         if is_boom:
@@ -5922,6 +5915,8 @@ async def quick_scan(code, name):
             "channel_pos": bc_channel.get('position', '?'),
             "consec_count": bc_consec.get('count', 0),
             "tier_conf": tier_conf, "vr_edge": vr.get('has_edge', False),
+            "fade_safe": bc_fade.get('post_spike', False) and bc_recovery.get('fade_safe', False),
+            "multi_cluster": bc_multi.get('cluster_active', False),
             "profile": profile['vol_class']
         }
     except Exception as e:
@@ -6234,16 +6229,14 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 <div class='section-line'></div>
             </div>""", unsafe_allow_html=True)
             adx_sl = data.get('ADX_SLOPE', {})
-            ribbon = data.get('EMA_RIBBON', {})
-            coherence = data.get('TREND_COHERENCE', {})
-            candle = data.get('CANDLE_STRUCT', {})
-            maccel = data.get('MOM_ACCEL', {})
             atr_ch = data.get('ATR_CHANNEL', {})
+            bc_stk = data.get('BC_EMA_STACK', {})
+            bc_grd = data.get('BC_GRADIENT', {})
 
             ep1, ep2, ep3, ep4 = st.columns(4)
             ep1.metric("ADX Phase", adx_sl.get('phase', '?'), f"slope={adx_sl.get('slope',0):.2f}")
-            ep2.metric("EMA Ribbon", ribbon.get('quality', '?'), ribbon.get('direction', '?'))
-            ep3.metric("TF Coherence", coherence.get('coherence', '?'), f"{coherence.get('score',0):.0f}%")
+            ep2.metric("EMA Stack", bc_stk.get('stack_quality', '?'), f"pairs={bc_stk.get('pairs_ok',0)}")
+            ep3.metric("Gradient", bc_grd.get('phase', '?'), f"val={bc_grd.get('gradient',0):.2f}")
             # Clean ATR (BC-specific: spike-filtered ATR for accurate SL)
             clean_atr_v = data.get('BC_CLEAN_ATR', 0)
             raw_atr_v = data.get('RAW_ATR', 0)
@@ -6251,9 +6244,12 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             atr_c = "🟢" if atr_ratio > 0.85 else "🟡" if atr_ratio > 0.7 else "🔴"
             ep4.metric(f"Clean ATR {atr_c}", f"{clean_atr_v:.2f}", f"ratio={atr_ratio:.0%} vs raw")
 
+            # V26: BC-specific precision metrics
+            bc_csc = data.get('BC_CONSEC', {})
+            bc_chn = data.get('BC_CHANNEL', {})
             ep5, ep6, ep7 = st.columns(3)
-            ep5.metric("Candle Struct", candle.get('quality', '?'), candle.get('pattern_type', '?'))
-            ep6.metric("Mom Accel", maccel.get('phase', '?'), f"conf={maccel.get('confidence',0):.0f}%")
+            ep5.metric("Consecutive", bc_csc.get('count', 0), bc_csc.get('zone', '?'))
+            ep6.metric("Channel Pos", bc_chn.get('position', '?'), f"{bc_chn.get('position_pct',50):.0f}%")
             ep7.metric("ATR Channel", atr_ch.get('quality', '?'), f"pos={atr_ch.get('channel_position',0.5):.2f}")
 
             # ── V23 SNIPER ENGINE ──
@@ -6263,17 +6259,20 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 <div class='section-line'></div>
             </div>""", unsafe_allow_html=True)
             ms_data = data.get('MKT_STRUCTURE', {})
-            cm_data = data.get('CANDLE_MOMENTUM', {})
             sw_data = data.get('LIQ_SWEEP', {})
             es_data = data.get('ENTRY_SYNC', {})
-            cp_data = data.get('CONT_PATTERN', {})
 
             s1, s2, s3, s4 = st.columns(4)
             ms_trend = ms_data.get('trend', '?')
             ms_event = ms_data.get('last_event', 'NONE')
             ms_color = "🟢" if ms_event.startswith("BOS_BULL") or ms_event.startswith("CHOCH_BULL") else "🔴" if ms_event.startswith("BOS_BEAR") or ms_event.startswith("CHOCH_BEAR") else "⚪"
             s1.metric(f"Mkt Structure {ms_color}", ms_trend, ms_event)
-            s2.metric("Candle Mom", cm_data.get('conviction', '?'), f"score={cm_data.get('score',0):.0f}")
+            # V26: BC Tier Confidence instead of Candle Momentum
+            bc_sc = data.get('BC_SCORE_DATA', {})
+            tier_c = bc_sc.get('tier_confidence', 0)
+            tier_label = "HIGH" if tier_c >= 5 else "MED" if tier_c >= 3 else "LOW"
+            tier_icon = "🟢" if tier_c >= 5 else "🟡" if tier_c >= 3 else "🔴"
+            s2.metric(f"Tier Confidence {tier_icon}", tier_label, f"score={tier_c}")
             # V25: Spike Probability (BC-specific)
             bc_sp = data.get('BC_SPIKE', {})
             sp_prob = bc_sp.get('probability', 0)
@@ -6284,7 +6283,10 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             s5, s6, s7 = st.columns(3)
             sweep_txt = sw_data.get('type', 'NONE')
             s5.metric("Liq Sweep", "🎯 YES" if sw_data.get('sweep') else "—", sweep_txt if sweep_txt != 'NONE' else '')
-            s6.metric("Continuation", cp_data.get('pattern', 'NONE'), f"{cp_data.get('confidence',0)}%")
+            bc_rec = data.get('BC_RECOVERY', {})
+            rec_phase = bc_rec.get('recovery_phase', 'NONE')
+            rec_icon = "🟢" if rec_phase == "RECOVERED" else "🟡" if rec_phase in ["RECOVERING","JUST_SPIKED"] else "⚪"
+            s6.metric(f"Recovery {rec_icon}", rec_phase, "fade_safe" if bc_rec.get('fade_safe') else "")
             er_txt = f"→ {data.get('REVERSAL_DIR','?')}" if data.get('EARLY_REVERSAL') else "No"
             rw_txt = f"{data.get('RW_PENALTY',0)}" if data.get('RW_PENALTY',0) != 0 else "OK"
             s7.metric("Early Reversal", "⚡ YES" if data.get('EARLY_REVERSAL') else "—", er_txt if data.get('EARLY_REVERSAL') else '')
