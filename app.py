@@ -4779,21 +4779,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     adx = c4['ADX']
     structure = classify_market_structure(h1)
     regime, regime_sc = classify_regime(h1)
-    # V26: Gradient-based momentum (replaces MACD-based check_momentum)
-    grad_phase_mom = bc_gradient.get('phase', 'STABLE')
-    grad_val_mom = bc_gradient.get('gradient', 0)
-    if grad_phase_mom == 'ACCELERATING' and grad_val_mom > 1.0:
-        momentum = 3  # Strong acceleration = full momentum
-    elif grad_phase_mom == 'ACCELERATING':
-        momentum = 2  # Moderate acceleration
-    elif grad_phase_mom == 'STABLE' and grad_val_mom > 0.5:
-        momentum = 2  # Stable but positive
-    elif grad_phase_mom == 'STABLE':
-        momentum = 1  # Stable
-    elif grad_phase_mom == 'DECELERATING':
-        momentum = 0  # Decelerating = no momentum credit
-    else:
-        momentum = 1  # Default
+    momentum = 1  # Placeholder — real calc after bc_gradient is available
 
     # 🔴 FIX #1: Auto-detect periods/year
     ppy = detect_periods_per_year(h1)
@@ -4863,6 +4849,22 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     # V24-F NEW TOOLS: 5 BC-specific trend + timing tools
     bc_ema_stack = bc_ema_drift_stack(m15, profile, lookback=20)
     bc_gradient = bc_drift_momentum_gradient(m15, profile, lookback=15)
+
+    # V26: Gradient-based momentum (replaces MACD-based check_momentum)
+    grad_phase_mom = bc_gradient.get('phase', 'STABLE')
+    grad_val_mom = bc_gradient.get('gradient', 0)
+    if grad_phase_mom == 'ACCELERATING' and grad_val_mom > 1.0:
+        momentum = 3
+    elif grad_phase_mom == 'ACCELERATING':
+        momentum = 2
+    elif grad_phase_mom == 'STABLE' and grad_val_mom > 0.5:
+        momentum = 2
+    elif grad_phase_mom == 'STABLE':
+        momentum = 1
+    elif grad_phase_mom == 'DECELERATING':
+        momentum = 0
+    else:
+        momentum = 1
     bc_recovery = bc_spike_recovery_speed(m15, profile, lookback=15)
     bc_consec = bc_consecutive_drift_counter(m15, profile, lookback=20)
     bc_channel = bc_price_channel_position(m15, profile, lookback=20)
