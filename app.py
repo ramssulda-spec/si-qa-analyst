@@ -5057,6 +5057,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 regime_sl_mult = max(regime_sl_mult, 2.0)  # Widest SL — extreme volatility
 
         # BC-0: POST-SPIKE FADE (highest priority — time sensitive)
+        # V26: BB Squeeze boost for spike detection
+        bb_spike_boost = bb_compression and bc_spike.get('probability', 0) > 50
+
         if is_bc and bc_fade.get('post_spike') and bc_conflicts.get('allow_fade', True):
             fade_dir = bc_fade['fade_direction']
             if (fade_dir == "BUY" and is_long) or (fade_dir == "SELL" and not is_long):
@@ -5190,9 +5193,6 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
-
-        # V26: BB Squeeze boosts spike_catch detection confidence
-        bb_spike_boost = bb_compression and bc_spike.get('probability', 0) > 50
 
         # ═══ V25: BC-ONLY SETUPS ═══
         # All BC setups handled above (POST_SPIKE, SPIKE_CATCH, SCALP_DRIFT,
