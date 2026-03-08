@@ -4408,7 +4408,8 @@ def trim_data_for_ai(data):
         "INDEX_PROFILE", "GEN_TYPE", "GEN_SIGNAL", "GEN_BONUS", "SIGMA_CALIBRATED",
         "VR_TEST", "ACF_TEST", "VOL_CLUSTER", "DIST_ANALYSIS",
         "HURST", "HURST_REGIME", "HURST_R2", "ZSCORE",
-        "BB_CYCLE", "CONSECUTIVE", "CONSECUTIVE_DIR", "ROC_STATUS",
+        "BB_CYCLE", "BB_COMPRESSION", "BB_SQUEEZE_ADJUST", "TIER_CONFIDENCE",
+        "CONSECUTIVE", "CONSECUTIVE_DIR", "ROC_STATUS",
         "MARKET_STRUCTURE", "MARKET_REGIME", "MOMENTUM",
         "TRIGGER_OK", "TRIGGER_TYPE", "CONFLUENCES", "RISKS",
         "ENTRY_TYPE", "SL_REASON",
@@ -4652,17 +4653,21 @@ Se regime PRE_SPIKE e prob > 60%, recomendar spike catch com SL adaptado.
 Se DRIFT_SMOOTH e drift forte, recomendar drift ride com SL tight.
 Se M5 pulse STARTING + drift active, recomendar SCALP_DRIFT (mais agressivo).
 
-### 🔷 V26: TIER CONFIDENCE
-Engine tiers medem concordância entre grupos:
+### 🔷 V26: TIER CONFIDENCE (campo: TIER_CONFIDENCE)
+Engine tiers medem concordância entre grupos de engines BC:
 - TIER 1 (Decisão): drift + spike + regime (peso 3×)
 - TIER 2 (Confirmação): M5 pulse + wicks + EMA stack (peso 2×)
 - TIER 3 (Refinamento): gradient + consecutive + channel (peso 1×)
-Se tier_confidence ≥ 5: alta confiança (+5 BC Score). Se ≤ 2: baixa confiança (-5).
+Valores: TIER_CONFIDENCE ≥ 5 = ALTA confiança (engines concordam). ≤ 2 = BAIXA (discordam).
+Use TIER_CONFIDENCE no dado para avaliar confiabilidade do sinal.
 
-### 💥 V26: BB SQUEEZE
-BB Squeeze (Bollinger Band compression) indica consolidação pré-spike.
-- SPIKE_CATCH + squeeze = +5 BC Score (spike mais provável)
-- DRIFT_RIDE + squeeze = -3 BC Score (drift pode pausar, risco de spike)
+### 💥 V26: BB SQUEEZE (campos: BB_COMPRESSION, BB_SQUEEZE_ADJUST)
+BB_COMPRESSION = True/False. Quando True, Bollinger Bands estão comprimidas (consolidação).
+BB_SQUEEZE_ADJUST = ajuste aplicado ao BC Score:
+- SPIKE_CATCH + squeeze = +5 (spike mais provável após compressão)
+- DRIFT_RIDE + squeeze = -3 (drift pode pausar, risco de spike iminente)
+BB_CYCLE mostra o estado: SQUEEZE / EXPANSION / NORMAL.
+Use estes campos para avaliar timing de entrada e risco.
 Se POST_SPIKE e absorção confirmada, recomendar fade com target calculado.
 Se M5 wicks EXHAUSTION, alertar drift exausto e NÃO entrar scalp.
 Se engine conflicts presentes, alertar e ajustar recomendação.
@@ -5680,7 +5685,8 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "DIST_ANALYSIS": convert_np(dist), "DIST_BONUS": dist_bonus,
         "HURST": float(hurst_val), "HURST_REGIME": hurst_regime, "HURST_R2": float(hurst_r2),
         "ZSCORE": float(round(z_current,2)),
-        "BB_CYCLE": bb_cycle, "CONSECUTIVE": int(consec_count), "CONSECUTIVE_DIR": consec_dir,
+        "BB_CYCLE": bb_cycle, "BB_COMPRESSION": bb_compression, "BB_SQUEEZE_ADJUST": bb_squeeze_adjust,
+        "CONSECUTIVE": int(consec_count), "CONSECUTIVE_DIR": consec_dir,
         "ROC_STATUS": roc_status, "MARKET_STRUCTURE": structure, "MARKET_REGIME": regime,
         "TRIGGER_OK": trigger_ok, "TRIGGER_TYPE": trigger_type,
         "CONFLUENCES": confs, "RISKS": risks, "MOMENTUM": f"{momentum}/3",
@@ -5751,6 +5757,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "RAW_ATR": round(float(c1['ATR']), 5),
         # FIX #8: BC Score data
         "BC_SCORE_DATA": convert_np(bc_score_data),
+        "TIER_CONFIDENCE": bc_score_data.get('tier_confidence', 0),
         "BC_SCORE_VAL": bc_score_data.get('score', 0),
         "BC_GRADE": bc_score_data.get('grade', 'D'),
         # FIX #7: M5 Compression
