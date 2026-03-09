@@ -4434,7 +4434,7 @@ def trim_data_for_ai(data):
         "BC_REGIME", "BC_KURTOSIS", "BC_CONFLICTS", "BC_CLEAN_ATR",
         # V26: Additional BC engine data for AI analysis
         "BC_GRADIENT", "BC_EMA_STACK", "BC_CONSEC", "BC_CHANNEL",
-        "BC_RECOVERY", "BC_SCORE_DATA",
+        "BC_RECOVERY", "BC_SCORE_DATA", "BC_GRADE", "BC_STATUS",
         "EXPECTANCY", "EXPECTANCY_STRESSED", "HIGH_RISK", "MELTDOWN",
     ]
     trimmed = {}
@@ -4669,6 +4669,12 @@ BB_SQUEEZE_ADJUST = ajuste aplicado ao BC Score:
 BB_CYCLE mostra o estado: SQUEEZE / EXPANSION / NORMAL.
 Use estes campos para avaliar timing de entrada e risco.
 Se POST_SPIKE e absorção confirmada, recomendar fade com target calculado.
+
+### 📊 SETUP_GRADE (V26: Unificado)
+O SETUP_GRADE agora reflecte o BC Grade (não o score genérico).
+- Se BC Grade = A+ mas Score Grade = A++ → mostra A+ (BC é fonte de verdade)
+- BC_GRADE e BC_STATUS mostram o estado real do BC Score.
+- SCORE_GRADE é o grade genérico (referência apenas, não decisório).
 Se M5 wicks EXHAUSTION, alertar drift exausto e NÃO entrar scalp.
 Se engine conflicts presentes, alertar e ajustar recomendação.
 Se expectancy stressed < 0, alertar HIGH RISK.
@@ -5499,7 +5505,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     trail_1 = entry + risk * 1.0 if "LONG" in sig else entry - risk * 1.0  # Trail at 1R
 
     # Pyramid
-    pyramid = ScalingEngine.calculate_pyramid(score.grade, score.total, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
+    # V26: Use BC grade for pyramid sizing (BC Score is source of truth)
+    effective_grade = bc_score_data.get('grade', score.grade) if is_bc_setup and bc_score_data.get('score',0) > 0 else score.grade
+    effective_score = bc_score_data.get('score', score.total) if is_bc_setup and bc_score_data.get('score',0) > 0 else score.total
+    pyramid = ScalingEngine.calculate_pyramid(effective_grade, effective_score, capital, risk_pct, entry, sl_val, float(c1['ATR']), adapted_profile)
 
     show = any(x in sig for x in ["DRIFT","SPIKE","SCALP","FADE","REVERSAL","STOCH"])
 
@@ -5675,7 +5684,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "FINAL_DECISION": sig, "TRADE_STYLE": trade_style or "N/A", "SETUP_TYPE": setup_type or "N/A",
         "MAX_HOLD": max_hold_info,
         "SETUP_SCORE": float(round(score.total,1)), "BASE_SCORE": float(round(score.base_total,1)),
-        "BONUS_SCORE": float(round(score.bonus_total,1)), "SETUP_GRADE": score.grade,
+        "BONUS_SCORE": float(round(score.bonus_total,1)),
+        # V26: SETUP_GRADE = BC Grade when BC setup (source of truth), else Score Grade
+        "SETUP_GRADE": bc_score_data.get('grade', score.grade) if is_bc_setup and bc_score_data.get('score',0) > 0 else score.grade,
+        "SCORE_GRADE": score.grade,  # Original score grade (reference only)
         "INDEX_PROFILE": vc, "GEN_TYPE": gen_type,
         "GEN_ANALYSIS": convert_np(gen), "GEN_SIGNAL": gen_signal, "GEN_BONUS": gen_bonus,
         "SIGMA_CALIBRATED": sigma_calibrated,
@@ -5757,9 +5769,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
         "RAW_ATR": round(float(c1['ATR']), 5),
         # FIX #8: BC Score data
         "BC_SCORE_DATA": convert_np(bc_score_data),
+        "BC_GRADE": bc_score_data.get('grade', 'D'),
+        "BC_STATUS": bc_score_data.get('status', 'FAIL'),
         "TIER_CONFIDENCE": bc_score_data.get('tier_confidence', 0),
         "BC_SCORE_VAL": bc_score_data.get('score', 0),
-        "BC_GRADE": bc_score_data.get('grade', 'D'),
         # FIX #7: M5 Compression
         "BC_COMPRESS": convert_np(bc_compress),
         # V24-F NEW TOOLS
