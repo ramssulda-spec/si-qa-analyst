@@ -5087,7 +5087,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # BC-1: SPIKE CATCH (imminent spike — high R:R)
         # V26: BB squeeze + spike probability lowers the threshold for spike catch
-        spike_min_prob = 40 if bb_spike_boost else 50
+        spike_min_prob = 30 if bb_spike_boost else 40  # V26: lowered from 50/40 to allow more DAY trades
         if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= spike_min_prob \
                 and bc_conflicts.get('allow_spike_catch', True):
             is_boom = gen_type == "BOOM"
@@ -5104,10 +5104,33 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
 
-        # BC-1.5: SCALP DRIFT (aggressive micro-drift — M5 timed, tight SL)
-        # More aggressive than DRIFT_RIDE: lower strength threshold (25 vs 40)
-        # BUT requires M5 pulse confirmation + stack + gradient + wick safety
-        if is_bc and bc_drift.get('drift_active') and bc_drift.get('strength', 0) >= 25 \
+        # BC-2: DRIFT RIDE DAY (follow the natural drift — strongest day trade)
+        # V26: Checked BEFORE SCALP_DRIFT — strong drift = DAY trade, weak = SCALP
+        if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
+                and bc_conflicts.get('allow_drift_ride', True):
+            is_boom = gen_type == "BOOM"
+            drift_str = bc_drift['strength']
+            drift_q = bc_drift.get('quality', 'CHOPPY')
+            # V26: DAY if strength ≥40 + quality SMOOTH/MODERATE, SCALP only if CHOPPY
+            is_day = drift_str >= 40 and drift_q in ['SMOOTH', 'MODERATE']
+            style = "DAY" if is_day else "SCALP"
+
+            if is_boom and not is_long:  # Boom drifts DOWN → SELL
+                sig = "SHORT (DRIFT RIDE)"
+                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
+                entry_type = f"Drift DOWN str={drift_str}% q={drift_q} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                trade_style = style; setup_type = "DRIFT_RIDE"
+                return
+            elif not is_boom and is_long:  # Crash drifts UP → BUY
+                sig = "LONG (DRIFT RIDE)"
+                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
+                entry_type = f"Drift UP str={drift_str}% q={drift_q} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                trade_style = style; setup_type = "DRIFT_RIDE"
+                return
+
+        # BC-3: SCALP DRIFT (micro-drift — M5 timed, tight SL)
+        # V26: Only for weaker drifts (20-39) or when DRIFT_RIDE didn't trigger
+        if is_bc and bc_drift.get('drift_active') and bc_drift.get('strength', 0) >= 20 \
                 and bc_conflicts.get('allow_drift_ride', True):
             m5_pulse_ok = bc_m5_pulse.get('optimal_entry', False)
             m5_struct_ok = bc_m5_struct.get('entry_window', False)
@@ -5116,48 +5139,27 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             wick_safe = bc_m5_wicks.get('signal') not in ['EXHAUSTION', 'WEAK_EXHAUSTION']
             spike_safe = bc_consec.get('spike_risk', 0) < 70
 
-            # Need at least: (M5 pulse OR M5 structure) + stack + gradient + wick + spike safety
             m5_confirmed = m5_pulse_ok or m5_struct_ok
             if m5_confirmed and stack_ok and gradient_ok and wick_safe and spike_safe:
                 is_boom = gen_type == "BOOM"
-                # Adaptive SL: tightens with spike proximity
                 spike_proximity = bc_consec.get('spike_risk', 0) / 100.0
                 scalp_sl_mult = profile.get('sl_scalp_mult', 1.0) * 0.7 * (1.0 - spike_proximity * 0.25)
-                scalp_sl_mult = max(0.4, scalp_sl_mult)  # Floor: never less than 0.4× ATR
+                scalp_sl_mult = max(0.4, scalp_sl_mult)
 
-                if is_boom and not is_long:  # Boom drift DOWN → SELL scalp
+                if is_boom and not is_long:
                     sig = "SHORT (SCALP DRIFT)"
                     sl_val = entry + scalp_sl_mult * bc_atr_clean * regime_sl_mult
                     m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
                     entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
                     trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
                     return
-                elif not is_boom and is_long:  # Crash drift UP → BUY scalp
+                elif not is_boom and is_long:
                     sig = "LONG (SCALP DRIFT)"
                     sl_val = entry - scalp_sl_mult * bc_atr_clean * regime_sl_mult
                     m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
                     entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
                     trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
                     return
-
-        # BC-2: DRIFT RIDE (follow the natural drift — safest)
-        if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
-                and bc_conflicts.get('allow_drift_ride', True):
-            is_boom = gen_type == "BOOM"
-            if is_boom and not is_long:  # Boom drifts DOWN → SELL
-                sig = "SHORT (DRIFT RIDE)"
-                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift DOWN str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
-                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
-                setup_type = "DRIFT_RIDE"
-                return
-            elif not is_boom and is_long:  # Crash drifts UP → BUY
-                sig = "LONG (DRIFT RIDE)"
-                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift UP str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
-                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
-                setup_type = "DRIFT_RIDE"
-                return
 
         # BC-3: STOCHASTIC SPIKE TIMER (confirmed signal)
         # FIX #2: Use bc_atr_clean instead of c1['ATR']
@@ -5179,26 +5181,26 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 sig = "SHORT (STOCH DRIFT)"
                 sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT SELL"
-                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
+                trade_style = "DAY" if bc_drift.get('strength', 0) >= 40 else "SCALP"; setup_type = "DRIFT_RIDE"
                 return
             elif stoch_sig == "DRIFT_BUY" and is_long:
                 sig = "LONG (STOCH DRIFT)"
                 sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT BUY"
-                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
+                trade_style = "DAY" if bc_drift.get('strength', 0) >= 40 else "SCALP"; setup_type = "DRIFT_RIDE"
                 return
 
         # BC-4: REVERSAL (CHoCH + absorption + supply/demand)
         if is_bc and mkt_struct.get('choch'):
             choch_bull = "BULL" in str(mkt_struct.get('last_event', ''))
             choch_bear = "BEAR" in str(mkt_struct.get('last_event', ''))
-            if choch_bull and is_long and bc_absorb.get('absorption'):
+            if choch_bull and is_long and (bc_absorb.get('absorption') or bc_absorb.get('strength', 0) > 20):
                 sig = "LONG (REVERSAL)"
                 sl_val = entry - profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"CHoCH Bull + Absorption ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
-            elif choch_bear and not is_long and bc_absorb.get('absorption'):
+            elif choch_bear and not is_long and (bc_absorb.get('absorption') or bc_absorb.get('strength', 0) > 20):
                 sig = "SHORT (REVERSAL)"
                 sl_val = entry + profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
