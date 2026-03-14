@@ -2,6 +2,7 @@ import streamlit as st
 import asyncio
 import websockets
 import json
+import os
 import time
 import pandas as pd
 import numpy as np
@@ -2108,12 +2109,32 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
             elif total >= 20: grade = "C"
             else: grade = "D"
 
-            if total >= 30: status = "PASS"    # Lower threshold for scalp
-            elif total >= 20: status = "MONITOR"
-            else: status = "FAIL"
+            # ═══ V25: SNIPER HARD VETOES (Zero Tolerance) ═══
+            vetoes = []
+            if drift_qual == 'CHOPPY':
+                vetoes.append("VETO: Choppy Drift Quality")
+            if spike_risk > 60:
+                vetoes.append("VETO: Extreme Spike Risk")
+            if not bc_conflicts.get('allow_drift_ride', True):
+                vetoes.append("VETO: HTF Momentum Conflict")
+            if not grad_safe:
+                vetoes.append("VETO: Dying Momentum Gradient")
+            if wick_sig in ['EXHAUSTION', 'WEAK_EXHAUSTION']:
+                vetoes.append("VETO: Drift Exhaustion Rejection")
+
+            if vetoes:
+                total = min(total, 19)
+                grade = "D (VETO)"
+                status = "VETO_FAIL"
+                breakdown['vetoes'] = vetoes
+            else:
+                if total >= 30: status = "PASS"    # Lower threshold for scalp
+                elif total >= 20: status = "MONITOR"
+                else: status = "FAIL"
 
             return {"score": total, "grade": grade, "status": status,
-                    "breakdown": breakdown, "setup_type": setup_type}
+                    "breakdown": breakdown, "setup_type": setup_type, "vetoes": vetoes}
+
 
         # ═══ STANDARD BC SCORING (non-scalp setups) ═══
 
@@ -2265,25 +2286,47 @@ def calculate_bc_score(setup_type, bc_spike, bc_drift, bc_regime, bc_kurt,
         elif total >= 25: grade = "C"
         else: grade = "D"
 
-        if total >= 55: status = "PASS"
-        elif total >= 40: status = "MONITOR"
-        else: status = "FAIL"
+        # ═══ V25: SNIPER HARD VETOES (Zero Tolerance) ═══
+        vetoes = []
+        if setup_type in ["DRIFT_RIDE"] and not bc_conflicts.get('allow_drift_ride', True):
+            vetoes.append("VETO: HTF Momentum Conflict")
+        if setup_type in ["SPIKE_CATCH"] and not bc_conflicts.get('allow_spike_catch', True):
+            vetoes.append("VETO: Spike Absorption Conflict")
+        if setup_type in ["DRIFT_RIDE"] and bc_ema_stack.get('destack_warning'):
+            vetoes.append("VETO: Dying Drift Stack")
+        if setup_type in ["DRIFT_RIDE"] and bc_consec.get('spike_risk', 0) > 60:
+            vetoes.append("VETO: Extreme Spike Risk")
+        
+        if vetoes:
+            total = min(total, 39)
+            grade = "D (VETO)"
+            status = "VETO_FAIL"
+            breakdown['vetoes'] = vetoes
+        else:
+            if total >= 55: status = "PASS"
+            elif total >= 40: status = "MONITOR"
+            else: status = "FAIL"
 
         # V26: Tier confidence — measures agreement between engine tiers
+        # FIX: ensure variables have default values for non-drift setups
+        safe_stack_pts = stack_score // 2 if 'stack_score' in locals() else 0
+        safe_grad_pts = grad_pts if 'grad_pts' in locals() else 0
+        
         tier1_ok = drift_score > 5 or timing_score > 5  # TIER 1 engines agree
-        tier2_ok = (m5_pulse_pts + m5_struct_pts + stack_pts) > 5  # TIER 2 confirms
-        tier3_ok = grad_pts > 0  # TIER 3 refines
+        tier2_ok = safe_stack_pts > 2  # TIER 2 confirms (m5 specific vars removed from standard)
+        tier3_ok = safe_grad_pts > 0  # TIER 3 refines
         tier_confidence = (3 if tier1_ok else 0) + (2 if tier2_ok else 0) + (1 if tier3_ok else 0)
+        
         # Bonus for tier alignment
-        if tier_confidence >= 5:
+        if tier_confidence >= 5 and status == "PASS":
             total += 5  # TIER 1+2 agree → bonus
-        elif tier_confidence <= 2:
+        elif tier_confidence <= 2 and status != "VETO_FAIL":
             total -= 5  # Only TIER 3+ → penalty
 
-        return {"score": total, "grade": grade, "status": status,
+        return {"score": total, "grade": grade, "status": status, "vetoes": vetoes,
                 "breakdown": breakdown, "setup_type": setup_type, "tier_confidence": tier_confidence}
-    except:
-        return {"score": 0, "grade": "D", "status": "FAIL",
+    except Exception as e:
+        return {"score": 0, "grade": "D", "status": "ERROR", "error_msg": str(e),
                 "breakdown": {}, "setup_type": setup_type, "tier_confidence": 0}
 
 # ==============================================================================
@@ -4400,6 +4443,62 @@ def compress_image_for_ai(img, max_size=800):
     except:
         return img
 
+# ==============================================================================
+# 🧠 AGENTIC AI: MEMÓRIA EPISÓDICA E DIÁRIO DE TRADES V25
+# ==============================================================================
+class AgentCognitiveMemory:
+    def __init__(self, db_path="agent_memory.json"):
+        self.db = db_path
+        if not os.path.exists(self.db):
+            try:
+                with open(self.db, 'w') as f:
+                    json.dump({}, f)
+            except:
+                pass
+                
+    def get_recent_lessons(self, asset: str) -> str:
+        try:
+            with open(self.db, 'r') as f:
+                memory = json.load(f)
+            asset_memory = memory.get(asset, [])
+            if not asset_memory:
+                return "Você não tem lições recentes documentadas para este ativo."
+            
+            lessons = []
+            for m in asset_memory[-3:]:  # Pegar os últimos 3 trades logados
+                lessons.append(f"- [Data: {m['date']}] Raciocínio Anterior: {m['rationale']} | Resultado: {m['result']} | Causa/Lição: {m['ai_post_mortem']}")
+            return "\n".join(lessons)
+        except:
+            return "Sem memória episódica acessível."
+            
+    def record_autopsy(self, asset: str, rationale: str, result: str, ai_post_mortem: str):
+        try:
+            try:
+                with open(self.db, 'r') as f:
+                    memory = json.load(f)
+            except:
+                memory = {}
+                
+            if asset not in memory:
+                memory[asset] = []
+                
+            memory[asset].append({
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "rationale": rationale,
+                "result": result,
+                "ai_post_mortem": ai_post_mortem
+            })
+            
+            if len(memory[asset]) > 10:
+                memory[asset] = memory[asset][-10:]
+                
+            with open(self.db, 'w') as f:
+                json.dump(memory, f, indent=4, ensure_ascii=False)
+        except:
+            pass
+
+agent_memory = AgentCognitiveMemory()
+
 def trim_data_for_ai(data):
     """Remove campos pesados/redundantes que a IA não precisa para análise.
     Mantém apenas os campos essenciais para o prompt."""
@@ -4455,7 +4554,7 @@ def trim_data_for_ai(data):
     return trimmed
 
 def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=None,
-                            max_retries=2, base_timeout=120):
+                            max_retries=2, base_timeout=120, asset_name=None):
     """Chama Gemini com retry, fallback de modelos, e compressão de payload.
     
     Fluxo:
@@ -4478,7 +4577,14 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
     if len(json_payload) > 15000:
         json_payload = json_payload[:15000] + "...(truncated)"
     
-    content = [system_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
+    # 🧠 Injetar memória episódica dinâmica
+    dynamic_prompt = system_prompt
+    if asset_name:
+        lessons = agent_memory.get_recent_lessons(asset_name)
+        if "Você não tem lições recentes" not in lessons and "Sem memória" not in lessons:
+            dynamic_prompt += f"\n\n## 🧠 MUDANÇA COGNITIVA: DIÁRIO DE TRADES ({asset_name}):\n{lessons}\n\n⚠️ INSTRUÇÃO CRÍTICA: Baseado no seu histórico de erros e acertos acima, aja como um trader profissional evolutivo. Não cometa o mesmo erro duas vezes. Contextualize o momento de agora baseado na Lição aprendida antes."
+            
+    content = [dynamic_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
     
     last_error = None
     
@@ -5087,7 +5193,7 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
 
         # BC-1: SPIKE CATCH (imminent spike — high R:R)
         # V26: BB squeeze + spike probability lowers the threshold for spike catch
-        spike_min_prob = 30 if bb_spike_boost else 40  # V26: lowered from 50/40 to allow more DAY trades
+        spike_min_prob = 40 if bb_spike_boost else 50
         if is_bc and bc_spike.get('spike_imminent') and bc_spike.get('probability', 0) >= spike_min_prob \
                 and bc_conflicts.get('allow_spike_catch', True):
             is_boom = gen_type == "BOOM"
@@ -5104,33 +5210,10 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 trade_style = "DAY"; setup_type = "SPIKE_CATCH"
                 return
 
-        # BC-2: DRIFT RIDE DAY (follow the natural drift — strongest day trade)
-        # V26: Checked BEFORE SCALP_DRIFT — strong drift = DAY trade, weak = SCALP
-        if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
-                and bc_conflicts.get('allow_drift_ride', True):
-            is_boom = gen_type == "BOOM"
-            drift_str = bc_drift['strength']
-            drift_q = bc_drift.get('quality', 'CHOPPY')
-            # V26: DAY if strength ≥40 + quality SMOOTH/MODERATE, SCALP only if CHOPPY
-            is_day = drift_str >= 40 and drift_q in ['SMOOTH', 'MODERATE']
-            style = "DAY" if is_day else "SCALP"
-
-            if is_boom and not is_long:  # Boom drifts DOWN → SELL
-                sig = "SHORT (DRIFT RIDE)"
-                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift DOWN str={drift_str}% q={drift_q} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
-                trade_style = style; setup_type = "DRIFT_RIDE"
-                return
-            elif not is_boom and is_long:  # Crash drifts UP → BUY
-                sig = "LONG (DRIFT RIDE)"
-                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
-                entry_type = f"Drift UP str={drift_str}% q={drift_q} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
-                trade_style = style; setup_type = "DRIFT_RIDE"
-                return
-
-        # BC-3: SCALP DRIFT (micro-drift — M5 timed, tight SL)
-        # V26: Only for weaker drifts (20-39) or when DRIFT_RIDE didn't trigger
-        if is_bc and bc_drift.get('drift_active') and bc_drift.get('strength', 0) >= 20 \
+        # BC-1.5: SCALP DRIFT (aggressive micro-drift — M5 timed, tight SL)
+        # More aggressive than DRIFT_RIDE: lower strength threshold (25 vs 40)
+        # BUT requires M5 pulse confirmation + stack + gradient + wick safety
+        if is_bc and bc_drift.get('drift_active') and bc_drift.get('strength', 0) >= 25 \
                 and bc_conflicts.get('allow_drift_ride', True):
             m5_pulse_ok = bc_m5_pulse.get('optimal_entry', False)
             m5_struct_ok = bc_m5_struct.get('entry_window', False)
@@ -5139,27 +5222,48 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
             wick_safe = bc_m5_wicks.get('signal') not in ['EXHAUSTION', 'WEAK_EXHAUSTION']
             spike_safe = bc_consec.get('spike_risk', 0) < 70
 
+            # Need at least: (M5 pulse OR M5 structure) + stack + gradient + wick + spike safety
             m5_confirmed = m5_pulse_ok or m5_struct_ok
             if m5_confirmed and stack_ok and gradient_ok and wick_safe and spike_safe:
                 is_boom = gen_type == "BOOM"
+                # Adaptive SL: tightens with spike proximity
                 spike_proximity = bc_consec.get('spike_risk', 0) / 100.0
                 scalp_sl_mult = profile.get('sl_scalp_mult', 1.0) * 0.7 * (1.0 - spike_proximity * 0.25)
-                scalp_sl_mult = max(0.4, scalp_sl_mult)
+                scalp_sl_mult = max(0.4, scalp_sl_mult)  # Floor: never less than 0.4× ATR
 
-                if is_boom and not is_long:
+                if is_boom and not is_long:  # Boom drift DOWN → SELL scalp
                     sig = "SHORT (SCALP DRIFT)"
                     sl_val = entry + scalp_sl_mult * bc_atr_clean * regime_sl_mult
                     m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
                     entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
                     trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
                     return
-                elif not is_boom and is_long:
+                elif not is_boom and is_long:  # Crash drift UP → BUY scalp
                     sig = "LONG (SCALP DRIFT)"
                     sl_val = entry - scalp_sl_mult * bc_atr_clean * regime_sl_mult
                     m5_info = f"Pulse:{bc_m5_pulse.get('pulse_phase','?')}" if m5_pulse_ok else f"Struct:{bc_m5_struct.get('pattern','?')}"
                     entry_type = f"M5 Scalp | {m5_info} | Str:{bc_drift['strength']}% Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f} Wicks:{bc_m5_wicks.get('signal','?')}"
                     trade_style = "SCALP"; setup_type = "SCALP_DRIFT"
                     return
+
+        # BC-2: DRIFT RIDE (follow the natural drift — safest)
+        if is_bc and bc_drift.get('safe_to_ride') and bc_drift.get('strength', 0) >= 40 \
+                and bc_conflicts.get('allow_drift_ride', True):
+            is_boom = gen_type == "BOOM"
+            if is_boom and not is_long:  # Boom drifts DOWN → SELL
+                sig = "SHORT (DRIFT RIDE)"
+                sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
+                entry_type = f"Drift DOWN str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
+                setup_type = "DRIFT_RIDE"
+                return
+            elif not is_boom and is_long:  # Crash drifts UP → BUY
+                sig = "LONG (DRIFT RIDE)"
+                sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
+                entry_type = f"Drift UP str={bc_drift['strength']}% q={bc_drift['quality']} Stack:{bc_ema_stack.get('stack_quality','?')} Grad:{bc_gradient.get('gradient',1):.2f}"
+                trade_style = "SCALP" if bc_drift['strength'] < 60 else "DAY"
+                setup_type = "DRIFT_RIDE"
+                return
 
         # BC-3: STOCHASTIC SPIKE TIMER (confirmed signal)
         # FIX #2: Use bc_atr_clean instead of c1['ATR']
@@ -5181,26 +5285,26 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
                 sig = "SHORT (STOCH DRIFT)"
                 sl_val = entry + profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT SELL"
-                trade_style = "DAY" if bc_drift.get('strength', 0) >= 40 else "SCALP"; setup_type = "DRIFT_RIDE"
+                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
                 return
             elif stoch_sig == "DRIFT_BUY" and is_long:
                 sig = "LONG (STOCH DRIFT)"
                 sl_val = entry - profile.get('sl_scalp_mult', 1.0) * bc_atr_clean * regime_sl_mult
                 entry_type = f"Stoch K={bc_stoch['stoch_k']:.0f} RSI={bc_stoch.get('rsi',50):.0f} → DRIFT BUY"
-                trade_style = "DAY" if bc_drift.get('strength', 0) >= 40 else "SCALP"; setup_type = "DRIFT_RIDE"
+                trade_style = "SCALP"; setup_type = "DRIFT_RIDE"
                 return
 
         # BC-4: REVERSAL (CHoCH + absorption + supply/demand)
         if is_bc and mkt_struct.get('choch'):
             choch_bull = "BULL" in str(mkt_struct.get('last_event', ''))
             choch_bear = "BEAR" in str(mkt_struct.get('last_event', ''))
-            if choch_bull and is_long and (bc_absorb.get('absorption') or bc_absorb.get('strength', 0) > 20):
+            if choch_bull and is_long and bc_absorb.get('absorption'):
                 sig = "LONG (REVERSAL)"
                 sl_val = entry - profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"CHoCH Bull + Absorption ({bc_absorb.get('strength',0):.0f}%)"
                 trade_style = "DAY"; setup_type = "REVERSAL"
                 return
-            elif choch_bear and not is_long and (bc_absorb.get('absorption') or bc_absorb.get('strength', 0) > 20):
+            elif choch_bear and not is_long and bc_absorb.get('absorption'):
                 sig = "SHORT (REVERSAL)"
                 sl_val = entry + profile.get('sl_atr_mult', 1.5) * bc_atr_clean * regime_sl_mult
                 entry_type = f"CHoCH Bear + Absorption ({bc_absorb.get('strength',0):.0f}%)"
@@ -6098,7 +6202,8 @@ if mode == "Analysis":
                 images=imgs,
                 status_widget=status,
                 max_retries=2,
-                base_timeout=120
+                base_timeout=120,
+                asset_name=target
             )
             
             if ai_text:
@@ -6656,6 +6761,22 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
             st.markdown(f"""<div class='card-accent'>
                 {ai}
             </div>""", unsafe_allow_html=True)
+
+            # ── AUTOPSY LOOP / DIÁRIO DE TRADES ──
+            expander = st.expander("🧪 Registrar Autópsia (Aprender com este Trade)")
+            with expander:
+                st.markdown("<p style='font-size:13px; color:var(--text-muted);'>Registre o resultado deste setup para que a IA aprenda a não repetir este erro no futuro.</p>", unsafe_allow_html=True)
+                col_r1, col_r2 = st.columns(2)
+                res_type = col_r1.selectbox("Resultado", ["LOSS (Falhou)", "WIN (Sucesso)"], key="res_type_box")
+                ai_correction = st.text_area("O que causou o erro/acerto? (Sua lição para a IA):", placeholder="Ex: Ignorei absorção de volume na M5...", key="autopsy_text")
+                if st.button("Registrar na Memória da IA", use_container_width=True):
+                    agent_memory.record_autopsy(
+                        asset=target, 
+                        rationale=f"Grade {g} | Score {s} | {dec}", 
+                        result=res_type, 
+                        ai_post_mortem=ai_correction
+                    )
+                    st.success(f"Memória atualizada para {target}! No próximo sinal, a IA avaliará essa lição.")
 
 # ==============================================================================
 # SCANNER MODE — V26: BC Engine-Powered
