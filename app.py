@@ -4,6 +4,7 @@ import websockets
 import json
 import os
 import time
+import threading
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
@@ -623,6 +624,16 @@ st.markdown("""
     }
     .grade-low .grade-letter { font-size: 64px; font-weight: 800; color: var(--text-muted);
         font-family: 'Outfit', sans-serif; }
+
+    /* Auto Tracker Pulse */
+    .tracker-pulse {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 12px #10b981;
+        animation: pulseGlow 2s infinite;
+        display: inline-block;
+        margin-right: 8px;
+    }
 
     /* ═══════════════════════════════════════════
        SCORE BAR — Animated Fill with Glow
@@ -3731,6 +3742,53 @@ DERIV_SERVERS = [
     "wss://green.binaryws.com/websockets/v3?app_id=1089"
 ]
 
+# ==============================================================================
+# 🚀 V25 ACTIVE LIVE TRACKER (Autopsy Automator)
+# ==============================================================================
+class LiveTradeMonitor:
+    def __init__(self):
+        self.active = False
+        self.trades = []
+
+    def add_trade(self, asset, entry, sl, tp, rationale):
+        self.trades.append({
+            'asset': asset, 'entry': entry, 'sl': sl, 'tp': tp,
+            'rationale': rationale, 'status': 'ACTIVE'
+        })
+        if not self.active:
+            self.active = True
+            threading.Thread(target=self._run_loop, daemon=True).start()
+
+    def _run_loop(self):
+        asyncio.run(self._monitor_ticks())
+
+    async def _monitor_ticks(self):
+        while self.trades:
+            for t in self.trades[:]:
+                if t['status'] != 'ACTIVE':
+                    continue
+                try:
+                    res = await socket_req(DERIV_SERVERS[0], {"ticks": t['asset'], "subscribe": 0})
+                    if 'error' in res: continue
+                    if 'tick' in res and 'quote' in res['tick']:
+                        price = res['tick']['quote']
+                        is_long = t['tp'] > t['sl']
+                        
+                        hit_sl = price <= t['sl'] if is_long else price >= t['sl']
+                        hit_tp = price >= t['tp'] if is_long else price <= t['tp']
+                        
+                        if hit_sl or hit_tp:
+                            res_str = "LOSS (Falhou)" if hit_sl else "WIN (Sucesso)"
+                            mem = f"🛑 OVERWATCH AUTOMÁTICO: {'Stop Loss' if hit_sl else 'Take Profit'} trigado no preço {price}."
+                            agent_memory.record_autopsy(asset=t['asset'], rationale=t['rationale'], result=res_str, ai_post_mortem=mem)
+                            self.trades.remove(t)
+                except Exception:
+                    pass
+            await asyncio.sleep(5) # Poll de 5 em 5s
+        self.active = False
+
+trade_monitor = LiveTradeMonitor()
+
 async def socket_req(url, req):
     try:
         async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
@@ -4325,12 +4383,14 @@ def calculate_score(adx, momentum_score, pattern_score, dist_ema50, atr,
 # CHART V20
 # ==============================================================================
 
-def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None):
+def plot_candles(df, title, entry=None, sl=None, tp1=None, tp2=None, use_log=False):
     """V25: BC-specific chart rendering."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3.5, 1],
                                      facecolor='#09090b', gridspec_kw={'hspace': 0.08})
     ax1.set_facecolor('#09090b')
     ax2.set_facecolor('#09090b')
+    if use_log:
+        ax1.set_yscale('log')
 
     # Candles — thin, clean
     for i in range(len(df)):
@@ -4555,107 +4615,58 @@ def trim_data_for_ai(data):
 
 def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=None,
                             max_retries=2, base_timeout=120, asset_name=None):
-    """Chama Gemini com retry, fallback de modelos, e compressão de payload.
-    
-    Fluxo:
-    1. Comprime imagens (1960px → 800px)
-    2. Trima dados (remove campos pesados)
-    3. Tenta modelo primário com retry
-    4. Se falhar, tenta modelos fallback
-    5. Se tudo falhar, retorna análise sem IA
-    """
+    """V25-AGENTS: Multi-Debate Agent ('Devil's Advocate') para decisões ultra-precisas."""
     genai.configure(api_key=api_key)
     
-    # Comprimir imagens para reduzir payload (~60% menor)
     compressed_imgs = [compress_image_for_ai(img, max_size=800) for img in images]
-    
-    # Trimar dados para reduzir JSON (~40% menor)
     trimmed_data = trim_data_for_ai(data)
     json_payload = json.dumps(trimmed_data, ensure_ascii=False)
     
-    # Limitar tamanho do JSON (Gemini tem limite de contexto)
     if len(json_payload) > 15000:
         json_payload = json_payload[:15000] + "...(truncated)"
     
-    # 🧠 Injetar memória episódica dinâmica
-    dynamic_prompt = system_prompt
-    if asset_name:
-        lessons = agent_memory.get_recent_lessons(asset_name)
-        if "Você não tem lições recentes" not in lessons and "Sem memória" not in lessons:
-            dynamic_prompt += f"\n\n## 🧠 MUDANÇA COGNITIVA: DIÁRIO DE TRADES ({asset_name}):\n{lessons}\n\n⚠️ INSTRUÇÃO CRÍTICA: Baseado no seu histórico de erros e acertos acima, aja como um trader profissional evolutivo. Não cometa o mesmo erro duas vezes. Contextualize o momento de agora baseado na Lição aprendida antes."
-            
-    content = [dynamic_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
+    lessons = agent_memory.get_recent_lessons(asset_name) if asset_name else ""
     
-    last_error = None
-    
-    for model_name in GEMINI_MODELS:
-        for attempt in range(max_retries + 1):
-            try:
-                if status_widget:
-                    model_short = model_name.split("/")[-1].split("-preview")[0]
-                    if attempt > 0:
-                        status_widget.write(f"🔄 Retry {attempt}/{max_retries} ({model_short})...")
-                    else:
-                        status_widget.write(f"🤖 Gerando análise IA ({model_short})...")
-                
-                model = genai.GenerativeModel(
-                    model_name,
-                    safety_settings=SAFETY_SETTINGS,
-                )
-                
-                # Tentar com timeout configurável (compatível com versões recentes)
+    def run_agent(role_prompt, timeout=120):
+        content = [role_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
+        last_err = None
+        for model_name in GEMINI_MODELS:
+            for attempt in range(max_retries + 1):
                 try:
-                    response = model.generate_content(
-                        content,
-                        request_options={"timeout": base_timeout}
-                    )
-                except TypeError:
-                    # Versão antiga da lib não suporta request_options
-                    response = model.generate_content(content)
-                
-                if response and response.text:
-                    if status_widget:
-                        status_widget.write(f"✅ Análise gerada com {model_short}")
-                    return response.text, None
-                    
-            except Exception as e:
-                last_error = str(e)
-                error_lower = last_error.lower()
-                
-                # 503 = high demand → tentar próximo modelo imediatamente
-                if "503" in last_error or "high demand" in error_lower or "overloaded" in error_lower:
-                    if status_widget:
-                        status_widget.write(f"⚠️ {model_name.split('/')[-1]} sobrecarregado, tentando próximo...")
-                    break  # Pula para próximo modelo (não faz retry no mesmo)
-                
-                # Timeout → retry com backoff
-                if "timeout" in error_lower or "deadline" in error_lower:
-                    if attempt < max_retries:
-                        wait = (attempt + 1) * 5  # 5s, 10s
-                        if status_widget:
-                            status_widget.write(f"⏱️ Timeout, aguardando {wait}s...")
-                        time.sleep(wait)
-                        continue
-                    else:
-                        break  # Esgotou retries, tenta próximo modelo
-                
-                # Rate limit → esperar e retry
-                if "429" in last_error or "rate" in error_lower:
-                    wait = (attempt + 1) * 10
-                    if status_widget:
-                        status_widget.write(f"⏳ Rate limit, aguardando {wait}s...")
-                    time.sleep(wait)
-                    continue
-                
-                # Outro erro → retry simples
-                if attempt < max_retries:
-                    time.sleep(3)
-                    continue
-                else:
-                    break
+                    model = genai.GenerativeModel(model_name, safety_settings=SAFETY_SETTINGS)
+                    try:
+                        resp = model.generate_content(content, request_options={"timeout": timeout})
+                    except TypeError:
+                        resp = model.generate_content(content)
+                    if resp and resp.text:
+                        return resp.text, None
+                except Exception as e:
+                    last_err = str(e)
+                    if "503" in last_err.lower() or "overloaded" in last_err.lower():
+                        break
+                    time.sleep(2)
+        return None, last_err
+
+    # AGENTE 1: PESSIMISTA
+    if status_widget: status_widget.write("🤖 [Agente 1] Analista de Risco avaliando fragilidades do setup...")
+    risk_prompt = system_prompt + f"\n\n## DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o GERENTE DE RISCO PESSIMISTA. Sua única função é encontrar falhas, exaustões e motivos matemáticos/lógicos para NÃO entrar neste trade. Seja direto."
+    risk_analysis, err1 = run_agent(risk_prompt, 60)
     
-    # Todos os modelos falharam — retornar análise básica sem IA
-    return None, last_error
+    # AGENTE 2: OTIMISTA
+    if status_widget: status_widget.write("🤖 [Agente 2] Caçador de Oportunidades avaliando o edge...")
+    opp_prompt = system_prompt + f"\n\n## DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o CAÇADOR DE OPORTUNIDADES OTIMISTA. Sua única função é encontrar o edge mercadológico (padrão, liquidez, spikes) para ENTRAR no trade."
+    opp_analysis, err2 = run_agent(opp_prompt, 60)
+    
+    # JUIZ FINAL: CONSENSO
+    if status_widget: status_widget.write("⚖️ [Juiz IA] Analisando opiniões e emitindo Veredito Final (Consenso)...")
+    judge_prompt = system_prompt + f"\n\n## DIÁRIO: {lessons}\n\nAja como JUIZ FINAL APATECO. Analise as duas visões abaixo e MANTENHA COERÊNCIA SUPERDOTADA. Se o risco for fatal, declare bloqueio.\n\n-- VISÃO PESSIMISTA --\n{risk_analysis or 'N/A'}\n\n-- VISÃO OTIMISTA --\n{opp_analysis or 'N/A'}\n\nEMITA O VEREDITO FINAL detalhado e estruturado para o usuário:"
+    final_analysis, err3 = run_agent(judge_prompt, 90)
+    
+    if final_analysis:
+        if status_widget: status_widget.write("✅ Conclusão do Debate de IAs Gerada!")
+        return final_analysis, None
+    else:
+        return None, err3 or err1
 
 # ==============================================================================
 # SYSTEM PROMPT V24-BC
@@ -5619,9 +5630,9 @@ def sniper_core_v20(name, h1_raw, h4_raw, m15_raw, m5_raw, capital=10000, risk_p
     show = any(x in sig for x in ["DRIFT","SPIKE","SCALP","FADE","REVERSAL","STOCH"])
 
     imgs = [
-        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
-        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
-        plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None),
+        plot_candles(h4.tail(150), f"{name} H4 — {regime} | Gen:{gen_signal}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, use_log=False),
+        plot_candles(h1.tail(200), f"{name} H1 — H:{hurst_val} Z:{z_current:.1f} σ:{sigma_calibrated or 0:.3f}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, use_log=True),
+        plot_candles(m15.tail(200), f"{name} M15 — BB:{bb_cycle} VR:{vr.get('dominant_type','?')} ACF:{acf.get('dominant_type','?')}", entry if show else None, sl_val if show else None, tp1 if show else None, tp2 if show else None, use_log=True),
     ]
 
     # V21: Optimal holding
@@ -6698,6 +6709,13 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                         <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
+                
+                # Active Live Tracker Activation
+                if st.button("🚀 INICIAR ACTIVE OVERWATCH (Tracking & Autópsia Live)"):
+                    trade_monitor.add_trade(target, data['ENTRY'], data['SL'], data['TP1'], 
+                        rationale=f"Grade {g} | Score {data.get('SETUP_SCORE', 0)} | {dec}")
+                    st.success(f"Overwatch ativado para {target}! O sistema está lendo ticks ocultamente. Se bater no SL ou TP, a autópsia será automaticamente registrada na Memória da IA.")
+                    st.markdown("<span class='tracker-pulse'></span> <span style='color:var(--text-muted); font-size:12px;'>Monitoramento tick-a-tick em andamento... Pode fechar ou sair desta tela.</span>", unsafe_allow_html=True)
 
                 # Pyramid
                 pyr = data.get('PYRAMID', {})
