@@ -3745,28 +3745,18 @@ DERIV_SERVERS = [
 # ==============================================================================
 # 🚀 V25 ACTIVE LIVE TRACKER (Autopsy Automator)
 # ==============================================================================
-class LiveTradeMonitor:
-    def __init__(self):
-        self.active = False
-        self.trades = []
+# A background task must run independently but UI needs st.session_state
+if 'active_trades' not in st.session_state:
+    st.session_state['active_trades'] = []
 
-    def add_trade(self, asset, entry, sl, tp, rationale):
-        self.trades.append({
-            'asset': asset, 'entry': entry, 'sl': sl, 'tp': tp,
-            'rationale': rationale, 'status': 'ACTIVE'
-        })
-        if not self.active:
-            self.active = True
-            threading.Thread(target=self._run_loop, daemon=True).start()
-
-    def _run_loop(self):
-        asyncio.run(self._monitor_ticks())
-
-    async def _monitor_ticks(self):
-        while self.trades:
-            for t in self.trades[:]:
-                if t['status'] != 'ACTIVE':
-                    continue
+def start_overwatch_bg():
+    def _run_loop():
+        asyncio.run(_monitor_ticks())
+        
+    async def _monitor_ticks():
+        while st.session_state.get('active_trades'):
+            trades_copy = list(st.session_state.get('active_trades', []))
+            for t in trades_copy:
                 try:
                     res = await socket_req(DERIV_SERVERS[0], {"ticks": t['asset'], "subscribe": 0})
                     if 'error' in res: continue
@@ -3781,13 +3771,29 @@ class LiveTradeMonitor:
                             res_str = "LOSS (Falhou)" if hit_sl else "WIN (Sucesso)"
                             mem = f"🛑 OVERWATCH AUTOMÁTICO: {'Stop Loss' if hit_sl else 'Take Profit'} trigado no preço {price}."
                             agent_memory.record_autopsy(asset=t['asset'], rationale=t['rationale'], result=res_str, ai_post_mortem=mem)
-                            self.trades.remove(t)
+                            
+                            # Remover o trade dos ativos rastreados no backend (seguro)
+                            try:
+                                if t in st.session_state['active_trades']:
+                                    st.session_state['active_trades'].remove(t)
+                            except: pass
                 except Exception:
                     pass
-            await asyncio.sleep(5) # Poll de 5 em 5s
-        self.active = False
+            await asyncio.sleep(5)
+            
+    threading.Thread(target=_run_loop, daemon=True).start()
 
-trade_monitor = LiveTradeMonitor()
+def add_active_trade(asset, entry, sl, tp, rationale):
+    new_trade = {
+        'asset': asset, 'entry': entry, 'sl': sl, 'tp': tp,
+        'rationale': rationale, 'status': 'ACTIVE'
+    }
+    # Verifica duplicidade
+    if not any(t['asset'] == asset for t in st.session_state['active_trades']):
+        st.session_state['active_trades'].append(new_trade)
+        # Se for o primeiro, dispara a thread
+        if len(st.session_state['active_trades']) == 1:
+            start_overwatch_bg()
 
 async def socket_req(url, req):
     try:
@@ -6725,13 +6731,13 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                         <span class='plan-note'>M5 {data.get('TRIGGER_TYPE','—')}</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
-                
                 # Active Live Tracker Activation
-                is_tracking = any(t['asset'] == target for t in trade_monitor.trades)
+                active_list = st.session_state.get('active_trades', [])
+                is_tracking = any(t['asset'] == target for t in active_list)
                 
                 if not is_tracking:
                     if st.button("🚀 INICIAR ACTIVE OVERWATCH (Tracking & Autópsia Live)"):
-                        trade_monitor.add_trade(target, data['ENTRY'], data['SL'], data['TP1'], 
+                        add_active_trade(target, data['ENTRY'], data['SL'], data['TP1'], 
                             rationale=f"Grade {g} | Score {data.get('SETUP_SCORE', 0)} | {d}")
                         st.session_state['run_target'] = target # Força state rerun
                         st.rerun()
@@ -6739,7 +6745,8 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                     st.success(f"Overwatch ativado para {target}! O sistema está lendo ticks ocultamente. Se bater no SL ou TP, a autópsia será automaticamente registrada.")
                     st.markdown("<span class='tracker-pulse'></span> <span style='color:var(--text-muted); font-size:12px; font-weight: 500;'>Monitoramento tick-a-tick em andamento... Pode navegar para outro ativo sem perder o tracking.</span>", unsafe_allow_html=True)
                     if st.button("🛑 PARAR OVERWATCH"):
-                        trade_monitor.trades = [t for t in trade_monitor.trades if t['asset'] != target]
+                        st.session_state['active_trades'] = [t for t in st.session_state['active_trades'] if t['asset'] != target]
+                        st.session_state['run_target'] = target
                         st.rerun()
 
                 # Pyramid
