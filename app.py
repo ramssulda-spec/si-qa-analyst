@@ -6174,62 +6174,66 @@ if mode == "Analysis":
             </div>
         </div>""", unsafe_allow_html=True)
         run = st.button("Analyze", use_container_width=True)
+        if run:
+            st.session_state['run_target'] = target
+            st.session_state.pop('analysis_cache', None)
 
     with right:
-        if run:
-            if not api: st.error("API key required"); st.stop()
+        if st.session_state.get('run_target') == target:
+            if 'analysis_cache' not in st.session_state:
+                if not api: st.error("API key required"); st.stop()
 
-            status = st.status("◆ Analyzing...", expanded=True)
-            status.markdown("""<div class='loading-stage'>
-                <div class='stage-dot loading-active' style='background:#6366f1;'></div>
-                <span style='color:#818cf8;font-size:12px;'>Connecting to Deriv — fetching H4 · H1 · M15 · M5 data...</span>
-            </div>""", unsafe_allow_html=True)
-            h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
-            if err: status.update(state='error'); st.error(err); st.stop()
-            status.markdown("""<div class='loading-stage'>
-                <div class='stage-dot' style='background:#10b981;'></div>
-                <span style='color:#6ee7b7;font-size:12px;'>Data loaded ✓</span>
-            </div><div class='loading-stage'>
-                <div class='stage-dot loading-active' style='background:#6366f1;'></div>
-                <span style='color:#818cf8;font-size:12px;'>Running 15 BC engines + 3 M5 scalp engines + statistical validation...</span>
-            </div>""", unsafe_allow_html=True)
-            data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
-            status.markdown("""<div class='loading-stage'>
-                <div class='stage-dot' style='background:#10b981;'></div>
-                <span style='color:#6ee7b7;font-size:12px;'>Analysis complete · Monte Carlo done ✓</span>
-            </div>""", unsafe_allow_html=True)
-            imgs = data.pop("IMAGES")
-            
-            # ── GEMINI AI COM RETRY + FALLBACK ──
-            status.markdown("""<div class='loading-stage'>
-                <div class='stage-dot loading-active' style='background:#a855f7;'></div>
-                <span style='color:#c4b5fd;font-size:12px;'>Generating AI insight with Gemini...</span>
-            </div>""", unsafe_allow_html=True)
-            dc = convert_np(data)
-            ai_text, ai_error = call_gemini_with_retry(
-                api_key=api,
-                system_prompt=SYSTEM_PROMPT,
-                data=dc,
-                images=imgs,
-                status_widget=status,
-                max_retries=2,
-                base_timeout=120,
-                asset_name=target
-            )
-            
-            if ai_text:
-                ai = ai_text
-                status.update(label="◆ Analysis Complete", state="complete")
-            else:
-                # Fallback: análise automática SEM IA (dados já calculados)
-                g = data.get('SETUP_GRADE', '?')
-                s = data.get('SETUP_SCORE', 0)
-                dec = data.get('FINAL_DECISION', '?')
-                wr = data.get('WIN_RATE', 0)
-                pf = data.get('PROFIT_FACTOR', 0)
-                confs = data.get('CONFLUENCES', [])
-                risks = data.get('RISKS', [])
-                ai = f"""## ⚡ VEREDICTO: {dec}
+                status = st.status("◆ Analyzing...", expanded=True)
+                status.markdown("""<div class='loading-stage'>
+                    <div class='stage-dot loading-active' style='background:#6366f1;'></div>
+                    <span style='color:#818cf8;font-size:12px;'>Connecting to Deriv — fetching H4 · H1 · M15 · M5 data...</span>
+                </div>""", unsafe_allow_html=True)
+                h1r, h4r, m15r, m5r, err = asyncio.run(fetch_multi_tf(assets[target]))
+                if err: status.update(state='error'); st.error(err); st.stop()
+                status.markdown("""<div class='loading-stage'>
+                    <div class='stage-dot' style='background:#10b981;'></div>
+                    <span style='color:#6ee7b7;font-size:12px;'>Data loaded ✓</span>
+                </div><div class='loading-stage'>
+                    <div class='stage-dot loading-active' style='background:#6366f1;'></div>
+                    <span style='color:#818cf8;font-size:12px;'>Running 15 BC engines + 3 M5 scalp engines + statistical validation...</span>
+                </div>""", unsafe_allow_html=True)
+                data = sniper_core_v20(target, h1r, h4r, m15r, m5r, capital, risk_pct)
+                status.markdown("""<div class='loading-stage'>
+                    <div class='stage-dot' style='background:#10b981;'></div>
+                    <span style='color:#6ee7b7;font-size:12px;'>Analysis complete · Monte Carlo done ✓</span>
+                </div>""", unsafe_allow_html=True)
+                imgs = data.pop("IMAGES")
+                
+                # ── GEMINI AI COM RETRY + FALLBACK ──
+                status.markdown("""<div class='loading-stage'>
+                    <div class='stage-dot loading-active' style='background:#a855f7;'></div>
+                    <span style='color:#c4b5fd;font-size:12px;'>Generating AI insight with Gemini...</span>
+                </div>""", unsafe_allow_html=True)
+                dc = convert_np(data)
+                ai_text, ai_error = call_gemini_with_retry(
+                    api_key=api,
+                    system_prompt=SYSTEM_PROMPT,
+                    data=dc,
+                    images=imgs,
+                    status_widget=status,
+                    max_retries=2,
+                    base_timeout=120,
+                    asset_name=target
+                )
+                
+                if ai_text:
+                    ai = ai_text
+                    status.update(label="◆ Analysis Complete", state="complete")
+                else:
+                    # Fallback: análise automática SEM IA (dados já calculados)
+                    g = data.get('SETUP_GRADE', '?')
+                    s = data.get('SETUP_SCORE', 0)
+                    dec = data.get('FINAL_DECISION', '?')
+                    wr = data.get('WIN_RATE', 0)
+                    pf = data.get('PROFIT_FACTOR', 0)
+                    confs = data.get('CONFLUENCES', [])
+                    risks = data.get('RISKS', [])
+                    ai = f"""## ⚡ VEREDICTO: {dec}
 **Grade:** {g} | **Score:** {s}/220 | **WR:** {wr:.0f}% | **PF:** {pf:.1f}
 
 ### 📊 CONFLUÊNCIAS
@@ -6242,7 +6246,19 @@ if mode == "Analysis":
 *⚠️ Análise IA indisponível ({ai_error[:80] if ai_error else 'todos os modelos falharam'}). 
 Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA não foi gerado.*
 *💡 Dica: Se o erro persistir, verifique sua API key e tente novamente em alguns minutos.*"""
-                status.update(label="⚠️ Done (sem IA)", state="complete")
+                    status.update(label="⚠️ Done (sem IA)", state="complete")
+                st.session_state['analysis_cache'] = {
+                    'data': data,
+                    'imgs': imgs,
+                    'ai': ai,
+                    'ai_error': ai_error
+                }
+
+            cached = st.session_state['analysis_cache']
+            data = cached['data']
+            imgs = cached['imgs']
+            ai = cached['ai']
+            ai_error = cached['ai_error']
 
             # ── GRADE CARD ── (V25 Premium)
             g = data['SETUP_GRADE']
