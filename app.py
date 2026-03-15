@@ -6729,7 +6729,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 # Active Live Tracker Activation
                 if st.button("🚀 INICIAR ACTIVE OVERWATCH (Tracking & Autópsia Live)"):
                     trade_monitor.add_trade(target, data['ENTRY'], data['SL'], data['TP1'], 
-                        rationale=f"Grade {g} | Score {data.get('SETUP_SCORE', 0)} | {dec}")
+                        rationale=f"Grade {g} | Score {data.get('SETUP_SCORE', 0)} | {d}")
                     st.success(f"Overwatch ativado para {target}! O sistema está lendo ticks ocultamente. Se bater no SL ou TP, a autópsia será automaticamente registrada na Memória da IA.")
                     st.markdown("<span class='tracker-pulse'></span> <span style='color:var(--text-muted); font-size:12px;'>Monitoramento tick-a-tick em andamento... Pode fechar ou sair desta tela.</span>", unsafe_allow_html=True)
 
@@ -6806,7 +6806,7 @@ Dados estatísticos acima são 100% válidos — apenas o resumo narrativo da IA
                 if st.button("Registrar na Memória da IA", use_container_width=True):
                     agent_memory.record_autopsy(
                         asset=target, 
-                        rationale=f"Grade {g} | Score {s} | {dec}", 
+                        rationale=f"Grade {g} | Score {data.get('SETUP_SCORE', 0)} | {d}", 
                         result=res_type, 
                         ai_post_mortem=ai_correction
                     )
