@@ -3795,6 +3795,99 @@ def add_active_trade(asset, entry, sl, tp, rationale):
         if len(st.session_state['active_trades']) == 1:
             start_overwatch_bg()
 
+# ==============================================================================
+# 📡 V26 SONAR INSTITUCIONAL: TICK DENSITY ENGINE (Oculto)
+# ==============================================================================
+class TickStreamingEngine:
+    def __init__(self):
+        self.active_asset = None
+        self.tick_buffer = deque(maxlen=2000)
+        self.running = False
+        self.current_z_score = 0.0
+        self.status = "FRIO"
+        self.thread = None
+        
+    def start_listening(self, asset):
+        if self.active_asset == asset and self.running:
+            return
+        self.running = False # Stop current loop gracefully
+        self.active_asset = asset
+        self.tick_buffer.clear()
+        self.current_z_score = 0.0
+        self.status = "AQUECENDO"
+        self.running = True
+        self.thread = threading.Thread(target=self._run_loop, daemon=True)
+        self.thread.start()
+        
+    def _run_loop(self):
+        asyncio.run(self._listen_ticks())
+        
+    async def _listen_ticks(self):
+        url = DERIV_SERVERS[0]
+        while self.running and self.active_asset:
+            try:
+                async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
+                    await ws.send(json.dumps({"ticks": self.active_asset, "subscribe": 1}))
+                    while self.running:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=15.0)
+                        data = json.loads(msg)
+                        if 'tick' in data:
+                            tick = data['tick']
+                            # Add to buffer: (timestamp, price)
+                            self.tick_buffer.append((time.time(), tick['quote']))
+                            self._analyze_density()
+            except Exception as e:
+                await asyncio.sleep(2)
+                
+    def _analyze_density(self):
+        if len(self.tick_buffer) < 50:
+            self.status = "AQUECENDO"
+            return
+            
+        now = time.time()
+        recent_ticks = [t for t in self.tick_buffer if now - t[0] <= 5]
+        baseline_ticks = [t for t in self.tick_buffer if now - t[0] <= 60]
+        
+        if len(baseline_ticks) < 10:
+            return
+            
+        recent_rate = len(recent_ticks) / 5.0
+        baseline_duration = max(now - baseline_ticks[0][0], 1.0)
+        baseline_rate = len(baseline_ticks) / baseline_duration
+        
+        # Price displacement
+        if len(recent_ticks) > 1:
+            price_delta_recent = abs(recent_ticks[-1][1] - recent_ticks[0][1])
+        else:
+            price_delta_recent = 0.0001
+            
+        if len(baseline_ticks) > 1:
+            price_delta_base = abs(baseline_ticks[-1][1] - baseline_ticks[0][1])
+        else:
+            price_delta_base = 0.0001
+            
+        epsilon = 0.0001
+        current_density = recent_rate / (price_delta_recent + epsilon)
+        baseline_density = baseline_rate / (price_delta_base + epsilon)
+        
+        if baseline_density > 0:
+            ratio = current_density / baseline_density
+            z_score = (ratio - 1.0) * 1.5 
+            self.current_z_score = max(0.0, min(z_score, 10.0))
+        
+        if self.current_z_score > 3.0:
+            self.status = "🚨 EXTREMA ABSORÇÃO (Risco Direcional)"
+        elif self.current_z_score > 1.5:
+            self.status = "🟡 AGLOMERAÇÃO (Aquecendo)"
+        else:
+            self.status = "🟢 FLUXO NORMAL"
+
+@st.cache_resource
+def get_sonar_engine():
+    return TickStreamingEngine()
+
+sonar_engine = get_sonar_engine()
+
 async def socket_req(url, req):
     try:
         async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
@@ -6167,6 +6260,12 @@ if mode == "Analysis":
     with left:
         target = st.selectbox("Asset", list(assets.keys()), label_visibility="collapsed")
         prof = get_profile(target)
+        
+        # Conectar Sonar ao Ativo Atual
+        if 'sonar_target' not in st.session_state or st.session_state['sonar_target'] != target:
+            sonar_engine.start_listening(assets[target])
+            st.session_state['sonar_target'] = target
+
         st.markdown(f"""<div style='padding:12px 16px;background:var(--bg-surface);border:1px solid var(--border);
             border-radius:10px;margin:8px 0 16px;'>
             <div style='display:flex;align-items:center;justify-content:space-between;'>
@@ -6179,6 +6278,27 @@ if mode == "Analysis":
                     background:{"var(--success)" if prof.get("gen_type","") in ["BOOM","CRASH"] else "var(--text-muted)"};'></div>
             </div>
         </div>""", unsafe_allow_html=True)
+        
+        # Display Visual do Sonar
+        st.markdown("""<div class='section-header' style='margin-top: 10px;'>
+            <div class='section-icon'>📡</div>
+            <span class='section-title'>Sonar | Tick Density</span>
+            <div class='section-line'></div>
+        </div>""", unsafe_allow_html=True)
+        
+        sonar_z = sonar_engine.current_z_score
+        sonar_status = sonar_engine.status
+        sonar_color = "🟢" if sonar_z <= 1.5 else "🟡" if sonar_z <= 3.0 else "🔴"
+        
+        st.markdown(f"""
+        <div style='padding:12px; border-radius:10px; background:var(--bg-surface); border:1px solid var(--border); font-family:JetBrains Mono; margin-bottom: 16px;'>
+            <div style='font-size:11px; opacity:0.6; text-transform:uppercase;'>Status</div>
+            <div style='font-size:12px; margin:4px 0; font-weight:600;'>{sonar_status}</div>
+            <div style='font-size:11px; opacity:0.6; text-transform:uppercase;'>Z-Score de Densidade (1M)</div>
+            <div style='font-size:18px; margin:4px 0; font-weight:bold; color:var(--text-primary);'>{sonar_z:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         run = st.button("Analyze", use_container_width=True)
         if run:
             st.session_state['run_target'] = target
@@ -6208,6 +6328,14 @@ if mode == "Analysis":
                     <div class='stage-dot' style='background:#10b981;'></div>
                     <span style='color:#6ee7b7;font-size:12px;'>Analysis complete · Monte Carlo done ✓</span>
                 </div>""", unsafe_allow_html=True)
+                
+                # Injetar Status do Sonar na IA
+                data["TICK_SONAR_M1"] = {
+                    "z_score_density": round(sonar_engine.current_z_score, 2),
+                    "status": sonar_engine.status,
+                    "warning_ai": "SE Z-SCORE > 3.0 E STATUS DE EXTREMA ABSORÇÃO, VETE O TRADE OU CORTE O LOTE PELA METADE, POIS O PREÇO ESTÁ PRESTES A REVERTER (MANIPULAÇÃO EM CURSO)."
+                }
+                
                 imgs = data.pop("IMAGES")
                 
                 # ── GEMINI AI COM RETRY + FALLBACK ──
