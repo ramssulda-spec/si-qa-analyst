@@ -3826,22 +3826,31 @@ class TickStreamingEngine:
         url = DERIV_SERVERS[0]
         while self.running and self.active_asset:
             try:
+                # Add a timeout limit for the connection attempt
                 async with websockets.connect(url, ping_interval=20, close_timeout=15) as ws:
                     await ws.send(json.dumps({"ticks": self.active_asset, "subscribe": 1}))
                     while self.running:
                         msg = await asyncio.wait_for(ws.recv(), timeout=15.0)
                         data = json.loads(msg)
+                        
+                        if 'error' in data:
+                            self.status = f"ERRO API: {data['error'].get('message', 'Unknown')}"
+                            await asyncio.sleep(5)
+                            continue
+                            
                         if 'tick' in data:
                             tick = data['tick']
                             # Add to buffer: (timestamp, price)
                             self.tick_buffer.append((time.time(), tick['quote']))
                             self._analyze_density()
             except Exception as e:
-                await asyncio.sleep(2)
+                self.status = f"CONECTANDO... ({str(e)[:20]})"
+                await asyncio.sleep(3)
                 
     def _analyze_density(self):
-        if len(self.tick_buffer) < 50:
-            self.status = "AQUECENDO"
+        # Baixado para 10 ticks para sair do aquecimento em ~10 segundos em vez de 1 minuto
+        if len(self.tick_buffer) < 10:
+            self.status = f"AQUECENDO ({len(self.tick_buffer)}/10 ticks)"
             return
             
         now = time.time()
@@ -6285,6 +6294,12 @@ if mode == "Analysis":
             <span class='section-title'>Sonar | Tick Density</span>
             <div class='section-line'></div>
         </div>""", unsafe_allow_html=True)
+        
+        # Botão para atualizar a UI do Streamlit com o valor real do Bot (Streamlit é estático)
+        cols = st.columns([1, 1])
+        with cols[0]:
+            if st.button("🔄 Puxar Radar", use_container_width=True):
+                pass
         
         sonar_z = sonar_engine.current_z_score
         sonar_status = sonar_engine.status
