@@ -14,10 +14,12 @@ import io
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from collections import deque
+from collections import deque, Counter
 from scipy.stats import norm, median_abs_deviation, chi2 as chi2_dist
 from itertools import permutations as _perms
-from math import factorial, log as math_log
+from math import factorial, log as math_log, sqrt
+import re
+from concurrent.futures import ThreadPoolExecutor
 import time
 import warnings
 warnings.filterwarnings('ignore')
@@ -4624,19 +4626,42 @@ class AgentCognitiveMemory:
             except:
                 pass
                 
-    def get_recent_lessons(self, asset: str) -> str:
+    def _cosine_similarity(self, text1: str, text2: str) -> float:
+        words1 = re.findall(r'\w+', text1.lower())
+        words2 = re.findall(r'\w+', text2.lower())
+        c1 = Counter(words1)
+        c2 = Counter(words2)
+        terms = set(c1).union(c2)
+        dotprod = sum(c1.get(k, 0) * c2.get(k, 0) for k in terms)
+        mag1 = sqrt(sum(c1.get(k, 0)**2 for k in terms))
+        mag2 = sqrt(sum(c2.get(k, 0)**2 for k in terms))
+        if not mag1 or not mag2: return 0.0
+        return dotprod / (mag1 * mag2)
+                
+    def get_semantic_lessons(self, asset: str, current_json: str) -> str:
         try:
             with open(self.db, 'r') as f:
                 memory = json.load(f)
             asset_memory = memory.get(asset, [])
             if not asset_memory:
-                return "Você não tem lições recentes documentadas para este ativo."
+                return "Você não tem lições documentadas para este ativo."
+            
+            # V26: Busca Semântica RAG usando TF-IDF Cosine Simility Local
+            # Avalia todos os setups já arquivados vs setup atual (current_json)
+            scored_memories = []
+            for m in asset_memory:
+                score = self._cosine_similarity(m['rationale'], current_json)
+                scored_memories.append((score, m))
+                
+            # Classifica e pega os 3 acontecimentos mais idênticos (mesmo que antigos)
+            scored_memories.sort(key=lambda x: x[0], reverse=True)
+            top_memories = [m for _, m in scored_memories[:3]]
             
             lessons = []
-            for m in asset_memory[-3:]:  # Pegar os últimos 3 trades logados
-                lessons.append(f"- [Data: {m['date']}] Raciocínio Anterior: {m['rationale']} | Resultado: {m['result']} | Causa/Lição: {m['ai_post_mortem']}")
+            for i, m in enumerate(top_memories):
+                lessons.append(f"- [Hit RAG #{i+1} | Data: {m['date']}] Setup Histórico Semelhante: {m['rationale']} | Resultado Oficial: {m['result']} | Causa/Lição Aprendida: {m['ai_post_mortem']}")
             return "\n".join(lessons)
-        except:
+        except Exception:
             return "Sem memória episódica acessível."
             
     def record_autopsy(self, asset: str, rationale: str, result: str, ai_post_mortem: str):
@@ -4733,7 +4758,8 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
     if len(json_payload) > 15000:
         json_payload = json_payload[:15000] + "...(truncated)"
     
-    lessons = agent_memory.get_recent_lessons(asset_name) if asset_name else ""
+    # V26: Busca Vetorial (Trazemos as memórias mais matematicamente relevantes praquele cenario!)
+    lessons = agent_memory.get_semantic_lessons(asset_name, json_payload) if asset_name else ""
     
     def run_agent(role_prompt, timeout=120):
         content = [role_prompt, f"ANALYSIS DATA: {json_payload}"] + compressed_imgs
@@ -4755,23 +4781,24 @@ def call_gemini_with_retry(api_key, system_prompt, data, images, status_widget=N
                     time.sleep(2)
         return None, last_err
 
-    # AGENTE 1: PESSIMISTA
-    if status_widget: status_widget.write("🤖 [Agente 1] Analista de Risco avaliando fragilidades do setup...")
-    risk_prompt = system_prompt + f"\n\n## DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o GERENTE DE RISCO PESSIMISTA. Sua única função é encontrar falhas, exaustões e motivos matemáticos/lógicos para NÃO entrar neste trade. Seja direto."
-    risk_analysis, err1 = run_agent(risk_prompt, 60)
+    # V26 MULTI-THREADING DOS AGENTES OFFLINE PARA CORTE DE TEMPO
+    if status_widget: status_widget.write("🤖 [Agentes 1 & 2] Lendo banco RAG Vectorial e processando viés Otimista e Pessimista via multi-threading...")
+    risk_prompt = system_prompt + f"\n\n## RAG BRAIN DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o GERENTE DE RISCO PESSIMISTA. Sua única função é encontrar falhas, exaustões e motivos matemáticos/lógicos para NÃO entrar neste trade. Você ODEIA RISCO. Seja direto."
+    opp_prompt = system_prompt + f"\n\n## RAG BRAIN DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o CAÇADOR DE OPORTUNIDADES OTIMISTA. Sua única função é encontrar o edge mercadológico (padrão, liquidez, spikes) ignorando ruídos leves para ENTRAR no trade."
     
-    # AGENTE 2: OTIMISTA
-    if status_widget: status_widget.write("🤖 [Agente 2] Caçador de Oportunidades avaliando o edge...")
-    opp_prompt = system_prompt + f"\n\n## DIÁRIO ({asset_name}):\n{lessons}\n\nAja como o CAÇADOR DE OPORTUNIDADES OTIMISTA. Sua única função é encontrar o edge mercadológico (padrão, liquidez, spikes) para ENTRAR no trade."
-    opp_analysis, err2 = run_agent(opp_prompt, 60)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_risk = executor.submit(run_agent, risk_prompt, 60)
+        f_opp = executor.submit(run_agent, opp_prompt, 60)
+        risk_analysis, err1 = f_risk.result()
+        opp_analysis, err2 = f_opp.result()
     
-    # JUIZ FINAL: CONSENSO
-    if status_widget: status_widget.write("⚖️ [Juiz IA] Analisando opiniões e emitindo Veredito Final (Consenso)...")
-    judge_prompt = system_prompt + f"\n\n## DIÁRIO: {lessons}\n\nAja como JUIZ FINAL APATECO. Analise as duas visões abaixo e MANTENHA COERÊNCIA SUPERDOTADA. Se o risco for fatal, declare bloqueio.\n\n-- VISÃO PESSIMISTA --\n{risk_analysis or 'N/A'}\n\n-- VISÃO OTIMISTA --\n{opp_analysis or 'N/A'}\n\nEMITA O VEREDITO FINAL detalhado e estruturado para o usuário:"
+    # JUIZ FINAL: CONSENSO ABERTO E COMBINADO
+    if status_widget: status_widget.write("⚖️ [Juiz IA] Analisando relatórios isolados e emitindo Veredito Final (Consenso)...")
+    judge_prompt = system_prompt + f"\n\n## DIÁRIO RAG: {lessons}\n\nAja como JUIZ FINAL APATECO. Analise as duas visões abaixo em choque e MANTENHA COERÊNCIA SUPERDOTADA. Se o risco for fatal ou o Tick Sonar apitar alta Absorção Falsa, declare bloqueio.\n\n-- VISÃO PESSIMISTA --\n{risk_analysis or 'FAILL (ERR:'+str(err1)+')'}\n\n-- VISÃO OTIMISTA --\n{opp_analysis or 'FAIL (ERR:'+str(err2)+')'}\n\nEMITA O VEREDITO FINAL detalhado e estruturado para o usuário:"
     final_analysis, err3 = run_agent(judge_prompt, 90)
     
     if final_analysis:
-        if status_widget: status_widget.write("✅ Conclusão do Debate de IAs Gerada!")
+        if status_widget: status_widget.write("✅ Conclusão do Debate Cognitivo Híbrido Gerada Rápido!")
         return final_analysis, None
     else:
         return None, err3 or err1
