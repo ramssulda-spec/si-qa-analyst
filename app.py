@@ -6330,29 +6330,6 @@ with st.sidebar:
         <span style='color:#6366f1;'>◆</span> 15 BC Engines · 3 M5 Scalp
     </div>""", unsafe_allow_html=True)
 
-    # V26: ORGÂNICO MUTAÇÕES - EVOLUTION ENGINE SIDEBAR
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown("<span style='font-size:11px;color:#71717a;font-weight:600;'>ORGANISMO (AUTO-BACKTESTER M1/M5)</span>",
-                unsafe_allow_html=True)
-    
-    if 'mutation_status' in st.session_state:
-        st.info(st.session_state['mutation_status'])
-        
-    dna_path = f"dna_{target.lower()}_profile.json"
-    if os.path.exists(dna_path):
-        try:
-            with open(dna_path, 'r') as f:
-                dna_mem = json.load(f)
-            st.success(f"🧬 DNA Mutante ativo: {dna_mem.get('_type', 'Evolution')}")
-        except: pass
-        
-    if st.button("🧪 Forçar Mutação Genética", use_container_width=True):
-        st.session_state['mutation_status'] = "Iniciada..."
-        _df_h1 = pd.DataFrame() # Mocking calls to simulate backend run inside thread
-        organism = EvolutionaryMutationEngine(target, _df_h1, _df_h1, _df_h1, _df_h1)
-        threading.Thread(target=organism.run_evolution, args=(get_profile(target),), daemon=True).start()
-        st.rerun()
-
     # FIX #5: Kill-Switch Trade Tracking (FUNCTIONAL)
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("<span style='font-size:11px;color:#71717a;font-weight:600;'>KILL-SWITCH</span>",
@@ -6439,6 +6416,30 @@ if mode == "Analysis":
             <div style='font-size:18px; margin:4px 0; font-weight:bold; color:var(--text-primary);'>{sonar_z:.2f}</div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # V26: ORGÂNICO MUTAÇÕES - EVOLUTION ENGINE PANEL
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:11px;color:#71717a;font-weight:600;'>ORGANISMO (AUTO-BACKTESTER)</span>", unsafe_allow_html=True)
+        
+        if 'mutation_status' in st.session_state:
+            st.info(st.session_state['mutation_status'])
+            
+        dna_path = f"dna_{target.lower()}_profile.json"
+        if os.path.exists(dna_path):
+            try:
+                with open(dna_path, 'r') as f:
+                    dna_mem = json.load(f)
+                st.success(f"🧬 DNA Mutante ativo: {dna_mem.get('_type', 'Evolution')}")
+            except: pass
+            
+        if st.button("🧪 Forçar Mutação Genética", use_container_width=True):
+            st.session_state['mutation_status'] = "Iniciada..."
+            _df_h1 = pd.DataFrame() # Mocking calls to simulate backend run inside thread
+            organism = EvolutionaryMutationEngine(target, _df_h1, _df_h1, _df_h1, _df_h1)
+            threading.Thread(target=organism.run_evolution, args=(get_profile(target),), daemon=True).start()
+            st.rerun()
+            
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
         run = st.button("Analyze", use_container_width=True)
         if run:
